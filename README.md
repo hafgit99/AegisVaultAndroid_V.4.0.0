@@ -12,6 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Version-4.0.0-blue?style=for-the-badge&logo=android" alt="Version">
   <img src="https://img.shields.io/badge/React--Native-0.72+-61DAFB?style=for-the-badge&logo=react" alt="React Native">
+  <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Security-AES--256-green?style=for-the-badge" alt="Security">
 </p>
 
@@ -67,10 +68,9 @@
    npx react-native run-android --mode release
    ```
 
-## ⚖️ License & Privacy
+## ⚖️ License
 
-Aegis Vault is built with privacy in mind. We do not track you, and we do not store your master password. 
-Please refer to our **Privacy Policy** and **Terms of Use** within the app for more details.
+Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ---
 
