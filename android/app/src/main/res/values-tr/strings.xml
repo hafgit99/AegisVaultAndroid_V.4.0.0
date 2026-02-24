@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Aegis Vault</string>
+    <string name="autofill_description">Aegis Vault ile şifrelerinizi ve formlarınızı güvenle doldurun.</string>
+    <string name="autofill_unlock_prompt">🛡️ Aegis: Kasayı Aç</string>
+    <string name="autofill_no_match">🛡️ Aegis: Kayıt Bulunamadı</string>
+</resources>

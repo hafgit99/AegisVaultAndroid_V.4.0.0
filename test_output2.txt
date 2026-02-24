@@ -1,0 +1,27 @@
+
+> AegisAndroid@0.0.1 test
+> jest
+
+FAIL __tests__/App.test.tsx
+  ● Test suite failed to run
+
+    Base module not found. Did you do a pod install/clear the gradle cache?
+
+    [0m[31m[1m>[22m[39m[90m 1 |[39m [36mimport[39m { open } [36mfrom[39m [32m'@op-engineering/op-sqlite'[39m[33m;[39m
+     [90m   |[39m [31m[1m^[22m[39m
+     [90m 2 |[39m [36mimport[39m pbkdf2 [36mfrom[39m [32m'react-native-quick-crypto'[39m[33m;[39m
+     [90m 3 |[39m
+     [90m 4 |[39m [90m// The requested interface for Security Module with PBKDF2 310k iterations.[39m[0m
+
+      at Object.<anonymous> (node_modules/@op-engineering/op-sqlite/src/functions.ts:21:11)
+      at Object.require (node_modules/@op-engineering/op-sqlite/src/index.ts:3:1)
+      at Object.require (src/SecurityModule.ts:1:1)
+      at Object.require (src/Dashboard.tsx:4:1)
+      at Object.require (App.tsx:3:1)
+      at Object.require (__tests__/App.test.tsx:7:1)
+
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        1.781 s
+Ran all test suites.

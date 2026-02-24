@@ -73,3 +73,11 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Others
+*.apk
+.env
+.env.*
+! .env.example
+*.log
+

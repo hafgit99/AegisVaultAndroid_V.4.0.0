@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Aegis Vault — Autofill Service Configuration
+  Android 8.0+ (API 26+) Autofill Framework
+
+  supportsInlineSuggestions: Android 11+ (API 30+) keyboard inline suggestions.
+  Chrome 131+ varsayılan olarak inline mod kullanır; bu olmadan Chrome'da
+  öneri çubuğu görünmeyebilir.
+
+  settingsActivity: Kullanıcının autofill ayarlarını yapılandırabileceği ekran.
+-->
+<autofill-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.aegisandroid.MainActivity"
+    android:supportsInlineSuggestions="true" />

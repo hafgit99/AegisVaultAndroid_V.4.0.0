@@ -1,6 +1,6 @@
 {
   "name": "AegisAndroid",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -10,10 +10,21 @@
     "test": "jest"
   },
   "dependencies": {
-    "react": "19.2.3",
-    "react-native": "0.84.0",
+    "@op-engineering/op-sqlite": "^15.2.5",
+    "@react-native-documents/picker": "^12.0.1",
     "@react-native/new-app-screen": "0.84.0",
-    "react-native-safe-area-context": "^5.5.2"
+    "i18next": "^25.8.13",
+    "react": "19.2.3",
+    "react-i18next": "^16.5.4",
+    "react-native": "0.84.0",
+    "react-native-argon2": "^4.0.0",
+    "react-native-biometrics": "^3.0.1",
+    "react-native-fs": "^2.20.0",
+    "react-native-nitro-modules": "^0.33.9",
+    "react-native-qrcode-svg": "^6.3.21",
+    "react-native-quick-crypto": "^1.0.13",
+    "react-native-safe-area-context": "^5.5.2",
+    "react-native-svg": "^15.15.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -26,7 +37,8 @@
     "@react-native/eslint-config": "0.84.0",
     "@react-native/metro-config": "0.84.0",
     "@react-native/typescript-config": "0.84.0",
-    "@types/jest": "^29.5.13",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^25.3.0",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",
     "eslint": "^8.19.0",
@@ -37,5 +49,8 @@
   },
   "engines": {
     "node": ">= 22.11.0"
+  },
+  "op-sqlite": {
+    "sqlcipher": true
   }
 }
