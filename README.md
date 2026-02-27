@@ -16,6 +16,10 @@
   <img src="https://img.shields.io/badge/Security-AES--256-green?style=for-the-badge" alt="Security">
 </p>
 
+<p align="center">
+  <img src="AegisVaultAndroid.png" width="100%" alt="Aegis Vault Android Infographic">
+</p>
+
 ---
 
 ## 🌟 Overview
@@ -40,11 +44,9 @@
 - **State:** React Hooks & Context API
 - **Design:** Modern Glassmorphism UI
 
-## 📸 Screenshots
+## 📱 Visual Showcase
 
-| Login Experience | Secure Vault | Security Audit |
-| :---: | :---: | :---: |
-| ![Screen 1](https://via.placeholder.com/200x400?text=Login+UI) | ![Screen 2](https://via.placeholder.com/200x400?text=Vault+UI) | ![Screen 3](https://via.placeholder.com/200x400?text=Security+UI) |
+The main infographic at the top of this page provides a comprehensive visual overview of the application's interface, security features, and user experience.
 
 ## 🚀 Installation & Build
 
