@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/hafgit99/AegisVaultAndroid_V.4.0.0/main/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png" width="128" alt="Aegis Vault Logo">
+  <img src="android/app/src/main/res/mipmap-xxhdpi/ic_launcher.jpg" width="128" alt="Aegis Vault Logo">
 </p>
 
-<h1 align="center">🛡️ Aegis Vault Android — v4.1.0</h1>
+<h1 align="center">🛡️ Aegis Vault Android — v4.0.0</h1>
 
 <p align="center">
   <strong>Secure. Native. Uncompromising.</strong><br>
@@ -10,25 +10,25 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-4.1.0-blue?style=for-the-badge&logo=android" alt="Version">
+  <img src="https://img.shields.io/badge/Version-4.0.0-blue?style=for-the-badge&logo=android" alt="Version">
   <img src="https://img.shields.io/badge/React--Native-0.84.0-61DAFB?style=for-the-badge&logo=react" alt="React Native">
   <img src="https://img.shields.io/badge/Security-AES--256--GCM-green?style=for-the-badge" alt="Security">
   <img src="https://img.shields.io/badge/Database-SQLCipher-9cf?style=for-the-badge&logo=sqlite" alt="SQLCipher">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/hafgit99/AegisVaultAndroid_V.4.0.0/main/AegisVaultAndroid.png" width="100%" alt="Aegis Vault Android Infographic">
+  <img src="AegisVaultAndroid.png" width="100%" alt="Aegis Vault Android Infographic">
 </p>
 
 ---
 
 ## 🌟 Overview
 
-**Aegis Vault** is a high-performance, privacy-first vault application engineered to protect your digital identity. In version 4.1.0, we've overhauled our security architecture to remove legacy fallback methods and embrace **native Android hardware security**. 
+**Aegis Vault** is a high-performance, privacy-first vault application engineered to protect your digital identity. In version 4.0.0, we've overhauled our security architecture to remove legacy fallback methods and embrace **native Android hardware security**. 
 
 By leveraging the **Android Keystore (TEE/Secure Element)**, Aegis Vault ensures that your encryption keys never leave the secure hardware environment of your device.
 
-## ✨ Key Enhancements in v4.1.0
+## ✨ Key Enhancements in v4.0.0
 
 - **🚫 Zero-UI Authentication:** Removed the legacy Master Password to streamline access. Aegis now relies exclusively on the device's native secure authentication.
 - **🛡️ Universal Auth Fallback:** Full support for **PIN, Pattern, and Password** fallback. If biometric sensors fail or aren't available, the system seamlessly uses your device's native lock screen credentials.
