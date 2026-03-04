@@ -18,7 +18,7 @@ export class CloudSyncModule {
    * We orchestrate: Export AES Vault -> Upload -> Delete temporary local backup
    */
   static async syncToCloud(apiUrl: string, token: string, authType: 'Bearer' | 'Basic', password: string): Promise<boolean> {
-    if (!apiUrl || !apiUrl.startsWith('http')) throw new Error('Invalid Cloud Sync URL');
+    if (!apiUrl || !apiUrl.startsWith('https://')) throw new Error('HTTPS is required for cloud sync. Plain HTTP connections are not allowed.');
     
     // 1. Generate encrypted backup in a temporary file
     const tempExportPath = await BackupModule.exportEncrypted(password);
@@ -57,7 +57,7 @@ export class CloudSyncModule {
    * Download encrypted vault from cloud endpoint and import it.
    */
   static async syncFromCloud(apiUrl: string, token: string, authType: 'Bearer' | 'Basic', password: string): Promise<any> {
-    if (!apiUrl || !apiUrl.startsWith('http')) throw new Error('Invalid Cloud Sync URL');
+    if (!apiUrl || !apiUrl.startsWith('https://')) throw new Error('HTTPS is required for cloud sync. Plain HTTP connections are not allowed.');
 
     const tempImportPath = `${RNFS.DocumentDirectoryPath}/aegis_cloud_import_temp.aegis`;
     

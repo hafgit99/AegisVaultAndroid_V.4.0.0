@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { StatusBar, useColorScheme, ActivityIndicator, View } from 'react-native';
+import { StatusBar, ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Dashboard } from './src/Dashboard';
 import { initI18n } from './src/i18n';
+import { ThemeProvider, useTheme } from './src/ThemeContext';
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+function AppContent(): React.JSX.Element {
+  const { colors, isDark } = useTheme();
   const [i18nLoaded, setI18nLoaded] = useState(false);
 
   useEffect(() => {
@@ -13,19 +14,31 @@ function App(): React.JSX.Element {
   }, []);
 
   if (!i18nLoaded) {
-    return <View style={{ flex: 1, backgroundColor: '#F0EEE9', justifyContent: 'center' }}><ActivityIndicator size="large" color="#72886f" /></View>;
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={colors.sage} />
+      </View>
+    );
   }
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#F0EEE9' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
         <StatusBar
-          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-          backgroundColor="#F0EEE9"
+          barStyle={colors.statusBarStyle}
+          backgroundColor={colors.statusBarBg}
         />
         <Dashboard />
       </SafeAreaView>
     </SafeAreaProvider>
+  );
+}
+
+function App(): React.JSX.Element {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

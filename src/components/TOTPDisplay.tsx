@@ -1,13 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Clipboard, Alert } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { generateTOTP, isValidTOTPSecret } from '../TOTPModule';
-
-const C = {
-  navy: '#101828', sage: '#72886f', sageLight: 'rgba(114,136,111,0.12)',
-  card: 'rgba(255,255,255,0.45)', cardBorder: 'rgba(255,255,255,0.55)',
-  green: '#22c55e', greenBg: 'rgba(34,197,94,0.08)', muted: 'rgba(16,24,40,0.45)',
-  cyan: '#06b6d4', red: '#ef4444', white: '#fff', amber: '#f59e0b',
-};
+import { useTheme } from '../ThemeContext';
 
 interface Props {
   secret: string;
@@ -19,6 +14,8 @@ interface Props {
 }
 
 export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1', issuer, compact = false }: Props) => {
+  const { t } = useTranslation();
+  const { colors: C } = useTheme();
   const [code, setCode] = useState('------');
   const [remaining, setRemaining] = useState(period);
   const [progress, setProgress] = useState(0);
@@ -59,8 +56,8 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
 
   if (!valid) {
     return (
-      <View style={[st.container, compact && st.containerCompact]}>
-        <Text style={st.invalidText}>⚠️ Geçersiz TOTP anahtarı</Text>
+      <View style={[st.container, { backgroundColor: C.card, borderColor: C.cardBorder }, compact && st.containerCompact]}>
+        <Text style={[st.invalidText, { color: C.amber }]}>{t('totp.invalid')}</Text>
       </View>
     );
   }
@@ -78,12 +75,12 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
 
   if (compact) {
     return (
-      <TouchableOpacity style={st.compactContainer} onPress={copyCode} activeOpacity={0.7}>
+      <TouchableOpacity style={[st.compactContainer, { borderColor: `${C.sage}26` }]} onPress={copyCode} activeOpacity={0.7}>
         <View style={st.compactLeft}>
           <View style={[st.compactTimer, { borderColor: timerColor }]}>
             <Text style={[st.compactTimerText, { color: timerColor }]}>{remaining}</Text>
           </View>
-          <Animated.Text style={[st.compactCode, { transform: [{ scale: pulseAnim }] }]}>
+          <Animated.Text style={[st.compactCode, { color: C.navy, transform: [{ scale: pulseAnim }] }]}>
             {formattedCode}
           </Animated.Text>
         </View>
@@ -95,21 +92,21 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
   }
 
   return (
-    <TouchableOpacity style={st.container} onPress={copyCode} activeOpacity={0.7}>
+    <TouchableOpacity style={[st.container, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={copyCode} activeOpacity={0.7}>
       {/* Header */}
       <View style={st.header}>
         <View style={st.headerLeft}>
           <Text style={st.totpIcon}>🔑</Text>
-          <Text style={st.headerLabel}>TOTP Doğrulama Kodu</Text>
+          <Text style={[st.headerLabel, { color: C.muted }]}>{t('totp.title')}</Text>
         </View>
         <Text style={{ fontSize: 13, color: copied ? C.green : C.muted, fontWeight: '600' }}>
-          {copied ? '✓ Kopyalandı' : 'Kopyala'}
+          {copied ? `✓ ${t('fields.copied')}` : t('fields.copy')}
         </Text>
       </View>
 
       {/* Code Display */}
       <View style={st.codeRow}>
-        <Animated.Text style={[st.codeText, { transform: [{ scale: pulseAnim }] }]}>
+        <Animated.Text style={[st.codeText, { color: C.navy, transform: [{ scale: pulseAnim }] }]}>
           {formattedCode}
         </Animated.Text>
       </View>
@@ -117,7 +114,7 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
       {/* Timer */}
       <View style={st.timerRow}>
         {/* Progress bar */}
-        <View style={st.progressBar}>
+        <View style={[st.progressBar, { backgroundColor: C.divider }]}>
           <View style={[st.progressFill, {
             width: `${arcProgress * 100}%`,
             backgroundColor: timerColor,
@@ -131,7 +128,7 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
       </View>
 
       {issuer && (
-        <Text style={st.issuerText}>{issuer}</Text>
+        <Text style={[st.issuerText, { color: C.muted }]}>{issuer}</Text>
       )}
     </TouchableOpacity>
   );
@@ -139,12 +136,10 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
 
 const st = StyleSheet.create({
   container: {
-    backgroundColor: C.card,
     borderRadius: 20,
     padding: 18,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: C.cardBorder,
   },
   containerCompact: {
     padding: 12,
@@ -167,7 +162,6 @@ const st = StyleSheet.create({
   headerLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: C.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -178,7 +172,6 @@ const st = StyleSheet.create({
   codeText: {
     fontSize: 36,
     fontWeight: '800',
-    color: C.navy,
     letterSpacing: 8,
     fontVariant: ['tabular-nums'],
   },
@@ -191,13 +184,11 @@ const st = StyleSheet.create({
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(16,24,40,0.06)',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: 3,
-    transition: 'width 1s linear',
   },
   timerBadge: {
     borderWidth: 2,
@@ -214,14 +205,12 @@ const st = StyleSheet.create({
   },
   issuerText: {
     fontSize: 11,
-    color: C.muted,
     fontWeight: '600',
     marginTop: 10,
     textAlign: 'center',
   },
   invalidText: {
     fontSize: 12,
-    color: C.amber,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -236,7 +225,6 @@ const st = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(114,136,111,0.15)',
   },
   compactLeft: {
     flexDirection: 'row',
@@ -259,7 +247,6 @@ const st = StyleSheet.create({
   compactCode: {
     fontSize: 22,
     fontWeight: '800',
-    color: C.navy,
     letterSpacing: 4,
     fontVariant: ['tabular-nums'],
   },

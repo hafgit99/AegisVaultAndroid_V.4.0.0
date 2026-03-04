@@ -18,7 +18,11 @@
     "error": "Hata oluştu",
     "retry": "Tekrar deneyebilirsiniz",
     "failed_attempts": "{{count}}. başarısız deneme • {{seconds}} sn bekleniyor",
-    "bio_not_found": "Biyometri bulunamadı"
+    "bio_not_found": "Biyometri bulunamadı",
+    "master_pw_placeholder": "Master şifre ile giriş...",
+    "master_pw_btn": "🔑 Şifre ile Giriş",
+    "master_pw_wrong": "Master şifre yanlış",
+    "master_pw_min": "Master şifre en az 8 karakter olmalıdır"
   },
   "nav": {
     "vault": "Kasa",
@@ -87,6 +91,13 @@
     "title": "TOTP Doğrulama Kodu",
     "invalid": "⚠️ Geçersiz TOTP anahtarı"
   },
+  "pw_strength": {
+    "none": "Yok",
+    "weak": "Zayıf",
+    "medium": "Orta",
+    "strong": "Güçlü",
+    "very_strong": "Çok Güçlü"
+  },
   "generator": {
     "title": "Zor Parolalar Üretin",
     "subtitle": "Kriptografik olarak güvenli & cihaz içi PRNG",
@@ -117,13 +128,20 @@
     "import_export": "İçe / Dışa Aktarma",
     "import_export_desc": "Bitwarden, 1Password, CSV, JSON ve şifreli yedek",
     "cloud": "☁️ Bulut Senkronizasyon (Cloud Sync)",
-    "cloud_desc": "WebDAV / HTTP API üzerinden şifreli depo",
+    "cloud_desc": "WebDAV / HTTPS API üzerinden şifreli depo",
     "about": "ℹ️ Hakkında",
     "about_desc": "Aegis Vault Android v1.0.0\nSQLCipher + JSI + Argon2id",
     "lock_vault": "🔒 Kasayı Kilitle",
     "off": "Kapalı",
     "sec": "sn",
     "min": "dk",
+    "theme": {
+      "title": "🌓 Tema",
+      "light": "Açık",
+      "dark": "Koyu",
+      "system": "Sistem",
+      "desc": "Uygulama görünümünü seçin"
+    },
     "autofill": {
       "title": "🔑 Otomatik Doldurma (Autofill)",
       "enable": "🔑 Autofill Servisini Etkinleştir",
@@ -131,6 +149,20 @@
       "support": "Android 8.0+ destekleniyor",
       "how_to": "📋 Nasıl Kullanılır?",
       "steps": "1. Yukarıdaki butona tıklayın → \"Aegis Vault\" seçin\n2. Kasayı biyometri ile açın (otomatik senkronize olur)\n3. Herhangi bir uygulamada/tarayıcıda şifre kutusuna dokunun\n4. Klavyenin üstünde çıkan Aegis önerisini seçin"
+    },
+    "master_pw": {
+      "title": "🔑 Master Şifre",
+      "set": "Master Şifre Belirle",
+      "set_desc": "Biyometri yanında alternatif giriş yöntemi",
+      "remove": "Master Şifreyi Kaldır",
+      "set_placeholder": "Yeni master şifre (min. 8 karakter)",
+      "set_confirm": "Master şifre tekrar",
+      "set_success": "Master şifre başarıyla belirlendi",
+      "set_error": "Master şifre belirlenemedi",
+      "remove_confirm": "Master şifreyi kaldırmak istediğinize emin misiniz?",
+      "removed": "Master şifre kaldırıldı",
+      "mismatch": "Şifreler eşleşmiyor",
+      "too_short": "Şifre en az 8 karakter olmalıdır"
     }
   },
   "cloud": {
@@ -142,7 +174,7 @@
     "info": "💡 Kasanız buluta aktarılırken cihazdaki veritabanınızdan bağımsız AES-256-GCM ile şifrelenir. Sıfır-bilgi (Zero-Knowledge) prensibi gereği kimse sunucudaki datayı okuyamaz.",
     "btn_up": "↑ Gönder",
     "btn_down": "↓ İndir",
-    "err_url": "Lütfen geçerli bir URL girin (http:// veya https://)",
+    "err_url": "Lütfen geçerli bir HTTPS URL girin. Güvenlik nedeniyle şifresiz HTTP bağlantılarına izin verilmemektedir.",
     "err_len": "Cloud senkronizasyon şifresi en az 6 karakter olmalıdır.",
     "success_up": "Kasa güvenli bir şekilde buluta yüklendi.",
     "success_down": "Kasa senkronize edildi. {{imported}} kayıt içe aktarıldı, {{skipped}} atlandı.",
@@ -208,7 +240,8 @@
     "cancel": "İptal",
     "hdr": "Ekler",
     "hdr_sub": "{{count}} dosya",
-    "btn_add": "Dosya Ekle"
+    "btn_add": "Dosya Ekle",
+    "max_size": "Maks. 50 MB"
   },
   "legal": {
     "terms": "Kullanım Koşulları",
@@ -256,5 +289,36 @@
     "factory_confirm": "KRİTİK: Bu işlem her şeyi kalıcı olarak silecek ve uygulamayı ilk haline döndürecektir. Kesinlikle emin misiniz?",
     "success": "Sıfırlama başarılı",
     "factory_success": "Uygulama fabrika ayarlarına döndürüldü. Şimdi yeniden başlatılacak."
+  },
+  "a11y": {
+    "lock_screen_logo": "Aegis Vault logosu",
+    "bio_unlock_btn": "Biyometrik kilidi aç butonu",
+    "bio_unlock_hint": "Parmak izi veya yüz tanıma ile kasanızı açmak için çift dokunun",
+    "master_pw_input": "Master şifre giriş alanı",
+    "master_pw_toggle": "Master şifreyi göster/gizle",
+    "master_pw_submit": "Master şifre ile giriş yap butonu",
+    "lang_tr": "Dili Türkçe olarak değiştir",
+    "lang_en": "Dili İngilizce olarak değiştir",
+    "vault_lock_btn": "Kasayı kilitle butonu",
+    "vault_trash_btn": "Çöp kutusu butonu",
+    "vault_donate_btn": "Bağış butonu",
+    "search_clear": "Aramayı temizle",
+    "search_input": "Kayıtlarda arama yapın",
+    "category_filter": "{{category}} kategorisine göre filtrele",
+    "vault_item": "{{title}} adlı kayıt, {{category}} kategorisi",
+    "add_new_btn": "Yeni kayıt ekle butonu",
+    "nav_tab": "{{label}} sekmesine geç",
+    "gen_refresh": "Yeni şifre oluştur butonu",
+    "gen_copy": "Şifreyi panoya kopyala butonu",
+    "gen_length_dec": "Şifre uzunluğunu azalt",
+    "gen_length_inc": "Şifre uzunluğunu artır",
+    "detail_fav": "Favori durumunu değiştir",
+    "detail_edit": "Kaydı düzenle butonu",
+    "detail_delete": "Kaydı sil butonu",
+    "modal_close": "Pencereyi kapat",
+    "pw_toggle": "Şifreyi göster/gizle",
+    "pw_copy": "Şifreyi kopyala",
+    "setting_toggle": "{{label}} ayarını aç/kapat",
+    "theme_option": "{{theme}} temasını seç"
   }
 }

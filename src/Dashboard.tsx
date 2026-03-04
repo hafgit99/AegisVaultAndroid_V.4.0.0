@@ -20,18 +20,12 @@ import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { switchLanguage } from './i18n';
 import { AutofillService } from './AutofillService';
-
-const rnBiometrics = new ReactNativeBiometrics();
-const C = {
-  bg: '#F0EEE9', navy: '#101828', sage: '#72886f', sageLight: 'rgba(114,136,111,0.12)',
-  sageMid: 'rgba(114,136,111,0.25)', card: 'rgba(255,255,255,0.45)',
-  cardBorder: 'rgba(255,255,255,0.55)', red: '#ef4444', redBg: 'rgba(239,68,68,0.08)',
-  green: '#22c55e', cyan: '#06b6d4', white: '#fff', muted: 'rgba(16,24,40,0.45)',
-  divider: 'rgba(16,24,40,0.06)', inputBg: 'rgba(255,255,255,0.7)',
-};
+import { useTheme } from './ThemeContext';
+import { ThemeMode } from './theme';
+const rnBiometrics = new ReactNativeBiometrics({ allowDeviceCredentials: true });
 const getCatIcon = (c: string) => ({all:'📋',login:'🔑',card:'💳',identity:'🪪',note:'📝',wifi:'📶'})[c] || '🔑';
-const getCatColor = (c: string) => ({ login: 'rgba(114,136,111,0.15)', card: 'rgba(6,182,212,0.15)',
-  identity: 'rgba(245,158,11,0.15)', note: 'rgba(139,92,246,0.15)', wifi: 'rgba(59,130,246,0.15)' }[c] || C.sageLight);
+const getCatColor = (c: string, sage: string) => ({ login: 'rgba(114,136,111,0.15)', card: 'rgba(6,182,212,0.15)',
+  identity: 'rgba(245,158,11,0.15)', note: 'rgba(139,92,246,0.15)', wifi: 'rgba(59,130,246,0.15)' }[c] || `${sage}20`);
 const getCats = (t: any) => [
   { id: 'all', label: t('vault.categories.all'), icon: '📋' }, { id: 'login', label: t('vault.categories.login'), icon: '🔑' },
   { id: 'card', label: t('vault.categories.card'), icon: '💳' }, { id: 'identity', label: t('vault.categories.identity'), icon: '🪪' },
@@ -42,9 +36,12 @@ type Tab = 'vault' | 'generator' | 'settings';
 // ═══════════════════════════════════════════════════
 export const Dashboard = () => {
   const { t, i18n } = useTranslation();
+  const { colors: C, isDark, themeMode, setThemeMode } = useTheme();
   const insets = useSafeAreaInsets();
   const [unlocked, setUnlocked] = useState(false);
   const [authStatus, setAuthStatus] = useState(t('lock_screen.prompt'));
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+  const [failCount, setFailCount] = useState(0);
   const [tab, setTab] = useState<Tab>('vault');
   const [items, setItems] = useState<VaultItem[]>([]);
   const [search, setSearch] = useState('');
@@ -144,8 +141,7 @@ export const Dashboard = () => {
   }, [unlocked, settings.autoLockSeconds]);
   const resetTimer = () => { if (unlocked && settings.autoLockSeconds > 0) SecurityModule.resetAutoLockTimer(settings.autoLockSeconds, autoLockCb); };
 
-  const [lockoutRemaining, setLockoutRemaining] = useState(0);
-  const [failCount, setFailCount] = useState(0);
+
 
   const auth = async () => {
     try {
@@ -190,6 +186,8 @@ export const Dashboard = () => {
     } catch { setAuthStatus(t('lock_screen.error')); }
   };
 
+
+
   // Lockout countdown timer
   useEffect(() => {
     if (lockoutRemaining <= 0) return;
@@ -228,10 +226,10 @@ export const Dashboard = () => {
 
   // Lock screen
   if (!unlocked) return (
-    <View style={s.loginBox}>
-      <Text style={{ fontSize: 52, marginBottom: 12 }}>🛡️</Text>
-      <Text style={s.title}>{t('lock_screen.title')}</Text>
-      <Text style={s.subtitle}>{authStatus}</Text>
+    <View style={[s.loginBox, { backgroundColor: C.bg }]}>
+      <Text style={{ fontSize: 52, marginBottom: 12 }} accessibilityLabel={t('a11y.lock_screen_logo')}>🛡️</Text>
+      <Text style={[s.title, { color: C.navy }]}>{t('lock_screen.title')}</Text>
+      <Text style={[s.subtitle, { color: C.muted }]}>{authStatus}</Text>
       {lockoutRemaining > 0 && (
         <View style={{ backgroundColor: 'rgba(239,68,68,0.08)', borderRadius: 14, padding: 14, marginBottom: 16 }}>
           <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 13, textAlign: 'center' }}>
@@ -243,20 +241,25 @@ export const Dashboard = () => {
         </View>
       )}
       <TouchableOpacity
-        style={[s.bioBtn, lockoutRemaining > 0 && { opacity: 0.4 }]}
+        style={[s.bioBtn, { backgroundColor: C.card, borderColor: C.sageMid }, lockoutRemaining > 0 && { opacity: 0.4 }]}
         onPress={auth}
         activeOpacity={0.75}
         disabled={lockoutRemaining > 0}
+        accessibilityRole="button"
+        accessibilityLabel={t('a11y.bio_unlock_btn')}
+        accessibilityHint={t('a11y.bio_unlock_hint')}
       >
         <Animated.View style={[s.glow, { opacity: lockoutRemaining > 0 ? 0 : glow }]} />
-        <Text style={s.bioBtnText}>{t('lock_screen.bio_btn')}</Text>
+        <Text style={[s.bioBtnText, { color: C.navy }]}>{t('lock_screen.bio_btn')}</Text>
       </TouchableOpacity>
+
+
       
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 40 }}>
-        <TouchableOpacity onPress={() => switchLanguage('tr')} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: i18n.language === 'tr' ? C.sage : C.card, borderRadius: 20 }}>
+        <TouchableOpacity onPress={() => switchLanguage('tr')} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: i18n.language === 'tr' ? C.sage : C.card, borderRadius: 20 }} accessibilityRole="button" accessibilityLabel={t('a11y.lang_tr')}>
           <Text style={{ color: i18n.language === 'tr' ? C.white : C.navy, fontWeight: '600' }}>🇹🇷 Türkçe</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => switchLanguage('en')} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: i18n.language === 'en' ? C.sage : C.card, borderRadius: 20 }}>
+        <TouchableOpacity onPress={() => switchLanguage('en')} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: i18n.language === 'en' ? C.sage : C.card, borderRadius: 20 }} accessibilityRole="button" accessibilityLabel={t('a11y.lang_en')}>
           <Text style={{ color: i18n.language === 'en' ? C.white : C.navy, fontWeight: '600' }}>🇬🇧 English</Text>
         </TouchableOpacity>
       </View>
@@ -290,18 +293,18 @@ export const Dashboard = () => {
   );
 
   return (
-    <View style={s.root} onTouchStart={resetTimer}>
+    <View style={[s.root, { backgroundColor: C.bg }]} onTouchStart={resetTimer}>
       {tab === 'vault' && <VaultView items={items} search={search} setSearch={setSearch} selCat={selCat} setSelCat={setSelCat}
         onRefresh={load} count={count} onAdd={() => { setEditItem(null); setShowAdd(true); }}
-        onDetail={(i: VaultItem) => { setEditItem(i); setShowDetail(true); }} onLock={lock} onDonation={() => setShowDonation(true)} onTrash={() => setShowTrash(true)} insets={insets} />}
-      {tab === 'generator' && <GenView settings={settings} insets={insets} />}
-      {tab === 'settings' && <SettView settings={settings} setSettings={setSettings} onLock={lock} onBackup={() => setShowBackup(true)} onCloud={() => setShowCloud(true)} openLegal={(type: any) => setLegalType(type)} onDonation={() => setShowDonation(true)} onTrash={() => setShowTrash(true)} insets={insets} onRefresh={load} />}
+        onDetail={(i: VaultItem) => { setEditItem(i); setShowDetail(true); }} onLock={lock} onDonation={() => setShowDonation(true)} onTrash={() => setShowTrash(true)} insets={insets} C={C} />}
+      {tab === 'generator' && <GenView settings={settings} insets={insets} C={C} />}
+      {tab === 'settings' && <SettView settings={settings} setSettings={setSettings} onLock={lock} onBackup={() => setShowBackup(true)} onCloud={() => setShowCloud(true)} openLegal={(type: any) => setLegalType(type)} onDonation={() => setShowDonation(true)} onTrash={() => setShowTrash(true)} insets={insets} onRefresh={load} C={C} themeMode={themeMode} setThemeMode={setThemeMode} />}
 
-      <View style={[s.nav, { paddingBottom: Math.max(20, insets.bottom + 10) }]}>
+      <View style={[s.nav, { paddingBottom: Math.max(20, insets.bottom + 10), backgroundColor: C.navBg, borderTopColor: C.navBorder }]}>
         {([['vault',t('nav.vault'),'🔒'],['generator',t('nav.generator'),'⚡'],['settings',t('nav.settings'),'⚙️']] as const).map(([id,lbl,ic]) => (
-          <TouchableOpacity key={id} style={s.navItem} onPress={() => setTab(id as Tab)} activeOpacity={0.6}>
+          <TouchableOpacity key={id} style={s.navItem} onPress={() => setTab(id as Tab)} activeOpacity={0.6} accessibilityRole="tab" accessibilityLabel={t('a11y.nav_tab', { label: lbl })} accessibilityState={{ selected: tab === id }}>
             <Text style={[s.navIc, tab === id && s.navAct]}>{ic}</Text>
-            <Text style={[s.navLbl, tab === id && s.navLblAct]}>{lbl}</Text>
+            <Text style={[s.navLbl, { color: C.muted }, tab === id && { color: C.sage }]}>{lbl}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -340,28 +343,28 @@ export const Dashboard = () => {
 };
 
 // ── Vault ──
-const VaultView = ({ items, search, setSearch, selCat, setSelCat, onRefresh, count, onAdd, onDetail, onLock, onDonation, onTrash, insets }: any) => {
+const VaultView = ({ items, search, setSearch, selCat, setSelCat, onRefresh, count, onAdd, onDetail, onLock, onDonation, onTrash, insets, C }: any) => {
   const { t } = useTranslation();
   return (
   <View style={{ flex: 1 }}>
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 + (insets?.bottom || 0) }}>
-      <View style={s.hdr}><View><Text style={s.hdrT}>{t('lock_screen.title')}</Text><Text style={s.hdrS}>{count} {t('vault.items_count')} • AES-256</Text></View>
+      <View style={s.hdr}><View><Text style={[s.hdrT, { color: C.navy }]}>{t('lock_screen.title')}</Text><Text style={[s.hdrS, { color: C.sage }]}>{count} {t('vault.items_count')} • AES-256</Text></View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TouchableOpacity onPress={onTrash} style={s.lockIc}><Text style={{ fontSize: 20 }}>🗑️</Text></TouchableOpacity>
-          <TouchableOpacity onPress={onDonation} style={s.lockIc}><Text style={{ fontSize: 20 }}>❤️</Text></TouchableOpacity>
-          <TouchableOpacity onPress={onLock} style={s.lockIc}><Text style={{ fontSize: 20 }}>🔒</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onTrash} style={[s.lockIc, { backgroundColor: C.card, borderColor: C.cardBorder }]} accessibilityRole="button" accessibilityLabel={t('a11y.vault_trash_btn')}><Text style={{ fontSize: 20 }}>🗑️</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onDonation} style={[s.lockIc, { backgroundColor: C.card, borderColor: C.cardBorder }]} accessibilityRole="button" accessibilityLabel={t('a11y.vault_donate_btn')}><Text style={{ fontSize: 20 }}>❤️</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onLock} style={[s.lockIc, { backgroundColor: C.card, borderColor: C.cardBorder }]} accessibilityRole="button" accessibilityLabel={t('a11y.vault_lock_btn')}><Text style={{ fontSize: 20 }}>🔒</Text></TouchableOpacity>
         </View>
       </View>
-      <View style={s.srch}>
+      <View style={[s.srch, { backgroundColor: C.inputBg, borderColor: C.cardBorder }]}>
         <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
-        <TextInput style={s.srchIn} placeholder={t('vault.search')} placeholderTextColor={C.muted} value={search} onChangeText={setSearch} returnKeyType="search" onSubmitEditing={onRefresh} />
-        {search ? <TouchableOpacity onPress={() => { setSearch(''); }}><Text style={{ fontSize: 16, color: C.muted, padding: 4 }}>✕</Text></TouchableOpacity> : null}
+        <TextInput style={[s.srchIn, { color: C.navy }]} placeholder={t('vault.search')} placeholderTextColor={C.muted} value={search} onChangeText={setSearch} returnKeyType="search" onSubmitEditing={onRefresh} accessibilityLabel={t('a11y.search_input')} />
+        {search ? <TouchableOpacity onPress={() => { setSearch(''); }} accessibilityRole="button" accessibilityLabel={t('a11y.search_clear')}><Text style={{ fontSize: 16, color: C.muted, padding: 4 }}>✕</Text></TouchableOpacity> : null}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16, flexGrow: 0 }}>
         {getCats(t).map(c => (
-          <TouchableOpacity key={c.id} style={[s.cat, selCat === c.id && s.catAct]} onPress={() => setSelCat(c.id)} activeOpacity={0.7}>
+          <TouchableOpacity key={c.id} style={[s.cat, { backgroundColor: C.card, borderColor: C.cardBorder }, selCat === c.id && { backgroundColor: C.sage, borderColor: C.sage }]} onPress={() => setSelCat(c.id)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.category_filter', { category: c.label })} accessibilityState={{ selected: selCat === c.id }}>
             <Text style={{ fontSize: 14, marginRight: 5 }}>{c.icon}</Text>
-            <Text style={[s.catLbl, selCat === c.id && s.catLblAct]}>{c.label}</Text>
+            <Text style={[s.catLbl, { color: C.navy }, selCat === c.id && { color: C.white }]}>{c.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -371,24 +374,24 @@ const VaultView = ({ items, search, setSearch, selCat, setSelCat, onRefresh, cou
           <Text style={{ fontSize: 18, fontWeight: '700', color: C.navy, marginBottom: 6 }}>{t('vault.search')}</Text>
         </View>
       ) : items.map((i: VaultItem) => (
-        <TouchableOpacity key={i.id} style={s.item} onPress={() => onDetail(i)} activeOpacity={0.7}>
-          <View style={[s.avatar, { backgroundColor: getCatColor(i.category) }]}><Text style={{ fontSize: 20 }}>{getCatIcon(i.category)}</Text></View>
+        <TouchableOpacity key={i.id} style={[s.item, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={() => onDetail(i)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.vault_item', { title: i.title, category: getCats(t).find(x => x.id === i.category)?.label || '' })}>
+          <View style={[s.avatar, { backgroundColor: getCatColor(i.category, C.sage) }]}><Text style={{ fontSize: 20 }}>{getCatIcon(i.category)}</Text></View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={s.itemT} numberOfLines={1}>{i.title}</Text>{i.favorite === 1 && <Text style={{ fontSize: 12 }}>⭐</Text>}
+              <Text style={[s.itemT, { color: C.navy }]} numberOfLines={1}>{i.title}</Text>{i.favorite === 1 && <Text style={{ fontSize: 12 }}>⭐</Text>}
             </View>
-            <Text style={s.itemS} numberOfLines={1}>{i.username || i.url || getCats(t).find(x => x.id === i.category)?.label}</Text>
+            <Text style={[s.itemS, { color: C.muted }]} numberOfLines={1}>{i.username || i.url || getCats(t).find(x => x.id === i.category)?.label}</Text>
           </View>
           <Text style={{ fontSize: 22, color: C.muted, fontWeight: '300' }}>›</Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
-    <TouchableOpacity style={[s.fab, { bottom: 90 + (insets?.bottom || 0) }]} onPress={onAdd} activeOpacity={0.8}><Text style={s.fabT}>+</Text></TouchableOpacity>
+    <TouchableOpacity style={[s.fab, { bottom: 90 + (insets?.bottom || 0), backgroundColor: C.sage }]} onPress={onAdd} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('a11y.add_new_btn')}><Text style={s.fabT}>+</Text></TouchableOpacity>
   </View>
 )};
 
 // ── Generator ──
-const GenView = ({ settings, insets }: any) => {
+const GenView = ({ settings, insets, C }: any) => {
   const { t } = useTranslation();
   const [pw, setPw] = useState('');
   const [len, setLen] = useState(settings.passwordLength);
@@ -400,24 +403,24 @@ const GenView = ({ settings, insets }: any) => {
   const str = SecurityModule.getPasswordStrength(pw);
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 + (insets?.bottom || 0) }}>
-      <Text style={s.hdrT}>{t('generator.title')}</Text><Text style={s.hdrS}>{t('generator.subtitle')}</Text>
-      <View style={s.genBox}><Text style={s.genPw} selectable>{pw}</Text>
+      <Text style={[s.hdrT, { color: C.navy }]}>{t('generator.title')}</Text><Text style={[s.hdrS, { color: C.sage }]}>{t('generator.subtitle')}</Text>
+      <View style={[s.genBox, { backgroundColor: C.card, borderColor: C.cardBorder }]}><Text style={[s.genPw, { color: C.navy }]} selectable>{pw}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, gap: 10 }}>
-          <View style={[s.bar, { flex: 1 }]}><View style={[s.barFill, { width: `${(str.score/7)*100}%`, backgroundColor: str.color }]} /></View>
+          <View style={[s.bar, { flex: 1, backgroundColor: C.divider }]}><View style={[s.barFill, { width: `${(str.score/7)*100}%`, backgroundColor: str.color }]} /></View>
           <Text style={{ fontSize: 12, fontWeight: '700', color: str.color }}>{t(`generator.strength.${str.score > 3 ? 'strong' : 'weak'}`)}</Text></View></View>
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-        <TouchableOpacity style={[s.genBtn, { backgroundColor: C.sage }]} onPress={gen} activeOpacity={0.7}><Text style={{ color: '#fff', fontWeight: '700' }}>🔄 {t('generator.generate')}</Text></TouchableOpacity>
+        <TouchableOpacity style={[s.genBtn, { backgroundColor: C.sage }]} onPress={gen} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.gen_refresh')}><Text style={{ color: '#fff', fontWeight: '700' }}>🔄 {t('generator.generate')}</Text></TouchableOpacity>
         <TouchableOpacity style={[s.genBtn, copied ? { backgroundColor: 'rgba(34,197,94,0.12)' } : { backgroundColor: C.card, borderWidth: 1, borderColor: C.cardBorder }]}
-          onPress={() => { Clipboard.setString(pw); setCopied(true); setTimeout(() => setCopied(false), 2000); }} activeOpacity={0.7}>
+          onPress={() => { Clipboard.setString(pw); setCopied(true); setTimeout(() => setCopied(false), 2000); }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.gen_copy')}>
           <Text style={{ color: copied ? C.green : C.sage, fontWeight: '700' }}>{copied ? `✓ ${t('fields.copied')}` : `📋 ${t('generator.copy')}`}</Text>
         </TouchableOpacity>
       </View>
-      <View style={s.optBox}>
-        <Text style={s.sLbl}>{t('generator.length')}: {len}</Text>
+      <View style={[s.optBox, { backgroundColor: C.card, borderColor: C.cardBorder }]}>
+        <Text style={[s.sLbl, { color: C.muted }]}>{t('generator.length')}: {len}</Text>
         <View style={s.sliderR}>
-          <TouchableOpacity onPress={() => setLen(Math.max(6, len - 1))} style={s.sliderB}><Text style={s.sliderBT}>−</Text></TouchableOpacity>
-          <View style={s.sliderTr}><View style={[s.sliderFl, { width: `${((len-6)/58)*100}%` }]} /></View>
-          <TouchableOpacity onPress={() => setLen(Math.min(64, len + 1))} style={s.sliderB}><Text style={s.sliderBT}>+</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setLen(Math.max(6, len - 1))} style={[s.sliderB, { backgroundColor: C.sageLight }]} accessibilityRole="button" accessibilityLabel={t('a11y.gen_length_dec')}><Text style={[s.sliderBT, { color: C.sage }]}>−</Text></TouchableOpacity>
+          <View style={[s.sliderTr, { backgroundColor: C.divider }]}><View style={[s.sliderFl, { width: `${((len-6)/58)*100}%`, backgroundColor: C.sage }]} /></View>
+          <TouchableOpacity onPress={() => setLen(Math.min(64, len + 1))} style={[s.sliderB, { backgroundColor: C.sageLight }]} accessibilityRole="button" accessibilityLabel={t('a11y.gen_length_inc')}><Text style={[s.sliderBT, { color: C.sage }]}>+</Text></TouchableOpacity>
         </View>
         <ToggleRow label={t('generator.uppercase')} value={up} onToggle={setUp} />
         <ToggleRow label={t('generator.lowercase')} value={lo} onToggle={setLo} />
@@ -429,31 +432,47 @@ const GenView = ({ settings, insets }: any) => {
 };
 
 
+
+
+
 // ── Settings ──
-const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openLegal, onDonation, onTrash, insets, onRefresh }: any) => {
+const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openLegal, onDonation, onTrash, insets, onRefresh, C, themeMode, setThemeMode }: any) => {
   const { t, i18n } = useTranslation();
   const upd = async (k: string, v: any) => { const n = { ...st2, [k]: v }; setSettings(n); await SecurityModule.setSetting(k, String(v)); };
   const ALO = [{l:t('settings.off'),v:0},{l:`30 ${t('settings.sec')}`,v:30},{l:`1 ${t('settings.min')}`,v:60},{l:`2 ${t('settings.min')}`,v:120},{l:`5 ${t('settings.min')}`,v:300},{l:`15 ${t('settings.min')}`,v:900}];
   const CLO = [{l:t('settings.off'),v:0},{l:`15 ${t('settings.sec')}`,v:15},{l:`30 ${t('settings.sec')}`,v:30},{l:`1 ${t('settings.min')}`,v:60}];
+  const THEMES: { l: string; v: ThemeMode }[] = [{l:t('settings.theme.light'),v:'light'},{l:t('settings.theme.dark'),v:'dark'},{l:t('settings.theme.system'),v:'system'}];
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 + (insets?.bottom || 0) }}>
-      <Text style={s.hdrT}>{t('settings.title')}</Text><Text style={s.hdrS}>{t('settings.subtitle')}</Text>
-      
-      <Text style={s.sec}>🌐 Language / Dil</Text>
-      <View style={s.sCard}>
+      <Text style={[s.hdrT, { color: C.navy }]}>{t('settings.title')}</Text><Text style={[s.hdrS, { color: C.sage }]}>{t('settings.subtitle')}</Text>
+
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.theme.title')}</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}>
+        <Text style={[s.sLbl, { color: C.muted }]}>{t('settings.theme.desc')}</Text>
         <View style={s.chipR}>
-          <TouchableOpacity onPress={() => switchLanguage('tr')} style={[s.oChip, i18n.language === 'tr' && s.oChipA]}>
-            <Text style={[s.oChipT, i18n.language === 'tr' && s.oChipTA]}>🇹🇷 Türkçe</Text>
+          {THEMES.map(o => (
+            <TouchableOpacity key={o.v} style={[s.oChip, { backgroundColor: C.inputBg, borderColor: C.cardBorder }, themeMode===o.v && { backgroundColor: C.sage, borderColor: C.sage }]} onPress={() => setThemeMode(o.v)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('a11y.theme_option', { theme: o.l })} accessibilityState={{ selected: themeMode===o.v }}>
+              <Text style={[s.oChipT, { color: C.navy }, themeMode===o.v && { color: C.white }]}>{o.l}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+      
+      <Text style={[s.sec, { color: C.navy }]}>🌐 Language / Dil</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}>
+        <View style={s.chipR}>
+          <TouchableOpacity onPress={() => switchLanguage('tr')} style={[s.oChip, { backgroundColor: C.inputBg, borderColor: C.cardBorder }, i18n.language === 'tr' && { backgroundColor: C.sage, borderColor: C.sage }]} accessibilityRole="button" accessibilityLabel={t('a11y.lang_tr')}>
+            <Text style={[s.oChipT, { color: C.navy }, i18n.language === 'tr' && { color: C.white }]}>🇹🇷 Türkçe</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => switchLanguage('en')} style={[s.oChip, i18n.language === 'en' && s.oChipA]}>
-            <Text style={[s.oChipT, i18n.language === 'en' && s.oChipTA]}>🇬🇧 English</Text>
+          <TouchableOpacity onPress={() => switchLanguage('en')} style={[s.oChip, { backgroundColor: C.inputBg, borderColor: C.cardBorder }, i18n.language === 'en' && { backgroundColor: C.sage, borderColor: C.sage }]} accessibilityRole="button" accessibilityLabel={t('a11y.lang_en')}>
+            <Text style={[s.oChipT, { color: C.navy }, i18n.language === 'en' && { color: C.white }]}>🇬🇧 English</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* ── Autofill Section ── */}
-      <Text style={s.sec}>{t('settings.autofill.title')}</Text>
-      <TouchableOpacity style={s.sCard} onPress={() => AutofillService.openSettings()} activeOpacity={0.7}>
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.autofill.title')}</Text>
+      <TouchableOpacity style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={() => AutofillService.openSettings()} activeOpacity={0.7}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.navy }}>{t('settings.autofill.enable')}</Text>
@@ -476,25 +495,27 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         </Text>
       </View>
 
-      <Text style={s.sec}>{t('settings.security')}</Text>
-      <View style={s.sCard}><ToggleRow label={t('settings.bio_login')} value={st2.biometricEnabled} onToggle={(v: boolean) => upd('biometricEnabled', v)} /></View>
-      <Text style={s.sec}>{t('settings.auto_lock')}</Text>
-      <View style={s.sCard}><Text style={s.sLbl}>{t('settings.auto_lock_desc')}</Text>
-        <View style={s.chipR}>{ALO.map(o => <TouchableOpacity key={o.v} style={[s.oChip, st2.autoLockSeconds===o.v && s.oChipA]} onPress={() => upd('autoLockSeconds',o.v)} activeOpacity={0.7}>
-          <Text style={[s.oChipT, st2.autoLockSeconds===o.v && s.oChipTA]}>{o.l}</Text></TouchableOpacity>)}</View></View>
-      <Text style={s.sec}>{t('settings.clipboard_clear')}</Text>
-      <View style={s.sCard}><Text style={s.sLbl}>{t('settings.clipboard_clear_desc')}</Text>
-        <View style={s.chipR}>{CLO.map(o => <TouchableOpacity key={o.v} style={[s.oChip, st2.clipboardClearSeconds===o.v && s.oChipA]} onPress={() => upd('clipboardClearSeconds',o.v)} activeOpacity={0.7}>
-          <Text style={[s.oChipT, st2.clipboardClearSeconds===o.v && s.oChipTA]}>{o.l}</Text></TouchableOpacity>)}</View></View>
-      <Text style={s.sec}>{t('settings.default_length')}</Text>
-      <View style={s.sCard}><Text style={s.sLbl}>{t('settings.default_length_desc', { length: st2.passwordLength })}</Text>
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.security')}</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}><ToggleRow label={t('settings.bio_login')} value={st2.biometricEnabled} onToggle={(v: boolean) => upd('biometricEnabled', v)} /></View>
+
+
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.auto_lock')}</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}><Text style={[s.sLbl, { color: C.muted }]}>{t('settings.auto_lock_desc')}</Text>
+        <View style={s.chipR}>{ALO.map(o => <TouchableOpacity key={o.v} style={[s.oChip, { backgroundColor: C.inputBg, borderColor: C.cardBorder }, st2.autoLockSeconds===o.v && { backgroundColor: C.sage, borderColor: C.sage }]} onPress={() => upd('autoLockSeconds',o.v)} activeOpacity={0.7}>
+          <Text style={[s.oChipT, { color: C.navy }, st2.autoLockSeconds===o.v && { color: C.white }]}>{o.l}</Text></TouchableOpacity>)}</View></View>
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.clipboard_clear')}</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}><Text style={[s.sLbl, { color: C.muted }]}>{t('settings.clipboard_clear_desc')}</Text>
+        <View style={s.chipR}>{CLO.map(o => <TouchableOpacity key={o.v} style={[s.oChip, { backgroundColor: C.inputBg, borderColor: C.cardBorder }, st2.clipboardClearSeconds===o.v && { backgroundColor: C.sage, borderColor: C.sage }]} onPress={() => upd('clipboardClearSeconds',o.v)} activeOpacity={0.7}>
+          <Text style={[s.oChipT, { color: C.navy }, st2.clipboardClearSeconds===o.v && { color: C.white }]}>{o.l}</Text></TouchableOpacity>)}</View></View>
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.default_length')}</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}><Text style={[s.sLbl, { color: C.muted }]}>{t('settings.default_length_desc', { length: st2.passwordLength })}</Text>
         <View style={s.sliderR}>
-          <TouchableOpacity onPress={() => upd('passwordLength', Math.max(8, st2.passwordLength-2))} style={s.sliderB}><Text style={s.sliderBT}>−</Text></TouchableOpacity>
-          <View style={s.sliderTr}><View style={[s.sliderFl, { width: `${((st2.passwordLength-8)/56)*100}%` }]} /></View>
-          <TouchableOpacity onPress={() => upd('passwordLength', Math.min(64, st2.passwordLength+2))} style={s.sliderB}><Text style={s.sliderBT}>+</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => upd('passwordLength', Math.max(8, st2.passwordLength-2))} style={[s.sliderB, { backgroundColor: C.sageLight }]}><Text style={[s.sliderBT, { color: C.sage }]}>−</Text></TouchableOpacity>
+          <View style={[s.sliderTr, { backgroundColor: C.divider }]}><View style={[s.sliderFl, { width: `${((st2.passwordLength-8)/56)*100}%`, backgroundColor: C.sage }]} /></View>
+          <TouchableOpacity onPress={() => upd('passwordLength', Math.min(64, st2.passwordLength+2))} style={[s.sliderB, { backgroundColor: C.sageLight }]}><Text style={[s.sliderBT, { color: C.sage }]}>+</Text></TouchableOpacity>
         </View></View>
-      <Text style={s.sec}>{t('settings.backup')}</Text>
-      <TouchableOpacity style={s.sCard} onPress={onBackup} activeOpacity={0.7}>
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.backup')}</Text>
+      <TouchableOpacity style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={onBackup} activeOpacity={0.7}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.navy }}>{t('settings.import_export')}</Text>
@@ -504,7 +525,7 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         </View>
       </TouchableOpacity>
 
-      <TouchableOpacity style={s.sCard} onPress={onCloud} activeOpacity={0.7}>
+      <TouchableOpacity style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={onCloud} activeOpacity={0.7}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.navy }}>{t('settings.cloud')}</Text>
@@ -514,8 +535,8 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         </View>
       </TouchableOpacity>
 
-      <Text style={s.sec}>{t('trash.title')}</Text>
-      <TouchableOpacity style={s.sCard} onPress={onTrash} activeOpacity={0.7}>
+      <Text style={[s.sec, { color: C.navy }]}>{t('trash.title')}</Text>
+      <TouchableOpacity style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={onTrash} activeOpacity={0.7}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.navy }}>{t('trash.subtitle')}</Text>
@@ -524,8 +545,8 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         </View>
       </TouchableOpacity>
 
-      <Text style={s.sec}>{t('donation.title')}</Text>
-      <TouchableOpacity style={s.sCard} onPress={onDonation} activeOpacity={0.7}>
+      <Text style={[s.sec, { color: C.navy }]}>{t('donation.title')}</Text>
+      <TouchableOpacity style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]} onPress={onDonation} activeOpacity={0.7}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: C.navy }}>{t('donation.subtitle')}</Text>
@@ -535,9 +556,9 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         </View>
       </TouchableOpacity>
 
-      <Text style={s.sec}>{t('settings.about')}</Text>
-      <View style={s.sCard}>
-        <Text style={s.sLbl}>{t('settings.about_desc')}</Text>
+      <Text style={[s.sec, { color: C.navy }]}>{t('settings.about')}</Text>
+      <View style={[s.sCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}>
+        <Text style={[s.sLbl, { color: C.muted }]}>{t('settings.about_desc')}</Text>
         <View style={{ flexDirection: 'row', gap: 16, marginTop: 16 }}>
           <TouchableOpacity onPress={() => openLegal('terms')} activeOpacity={0.7}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: C.sage }}>{t('legal.terms')}</Text>
@@ -548,9 +569,9 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         </View>
       </View>
 
-      <Text style={s.sec}>⚠️ {t('reset.vault_title')}</Text>
+      <Text style={[s.sec, { color: C.navy }]}>⚠️ {t('reset.vault_title')}</Text>
       <TouchableOpacity 
-        style={[s.sCard, { borderColor: 'rgba(239,68,68,0.2)' }]} 
+        style={[s.sCard, { backgroundColor: C.card, borderColor: 'rgba(239,68,68,0.2)' }]} 
         onPress={() => {
           Alert.alert(t('reset.vault_title'), t('reset.vault_confirm'), [
             { text: t('vault.cancel'), style: 'cancel' },
@@ -586,7 +607,7 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
         <Text style={{ fontSize: 12, color: C.navy, opacity: 0.6, marginTop: 4 }}>{t('reset.factory_desc')}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={s.lockBtn} onPress={onLock} activeOpacity={0.7}><Text style={s.lockBtnT}>{t('settings.lock_vault')}</Text></TouchableOpacity>
+      <TouchableOpacity style={[s.lockBtn, { backgroundColor: C.card, borderColor: C.red }]} onPress={onLock} activeOpacity={0.7}><Text style={[s.lockBtnT, { color: C.red }]}>{t('settings.lock_vault')}</Text></TouchableOpacity>
     </ScrollView>
   );
 };
@@ -594,6 +615,7 @@ const SettView = ({ settings: st2, setSettings, onLock, onBackup, onCloud, openL
 // ── Add/Edit Modal ──
 const AddModal = ({ visible, item, onClose, onSave, settings }: any) => {
   const { t } = useTranslation();
+  const { colors: C } = useTheme();
   const [form, setForm] = useState<any>({});
   const [showPw, setShowPw] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -616,11 +638,11 @@ const AddModal = ({ visible, item, onClose, onSave, settings }: any) => {
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView style={s.mdOv} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={s.mdC}>
+      <KeyboardAvoidingView style={[s.mdOv, { backgroundColor: 'rgba(0,0,0,0.5)' }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={[s.mdC, { backgroundColor: C.bg }]}>
           <View style={s.mdH}>
-            <Text style={s.mdT}>{item ? t('vault.edit') : t('vault.new_record')}</Text>
-            <TouchableOpacity onPress={onClose}><Text style={s.mdX}>✕</Text></TouchableOpacity>
+            <Text style={[s.mdT, { color: C.navy }]}>{item ? t('vault.edit') : t('vault.new_record')}</Text>
+            <TouchableOpacity onPress={onClose}><Text style={[s.mdX, { color: C.muted }]}>✕</Text></TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             <SelectChips label={t('fields.category')} options={getCats(t).filter((c: any) => c.id !== 'all')} value={form.category}
@@ -634,7 +656,7 @@ const AddModal = ({ visible, item, onClose, onSave, settings }: any) => {
             <CategoryForm category={form.category} form={form} setForm={setForm} showPw={showPw} setShowPw={setShowPw} pwLen={settings.passwordLength} t={t} />
             <AttachmentSection itemId={item?.id || null} attachments={attachments} onRefresh={refreshAtt} pendingFiles={pending} setPendingFiles={setPending} />
           </ScrollView>
-          <TouchableOpacity style={[s.saveBtn, !form.title?.trim() && { opacity: 0.4 }]}
+          <TouchableOpacity style={[s.saveBtn, { backgroundColor: C.sage }, !form.title?.trim() && { opacity: 0.4 }]}
             onPress={() => { if (form.title?.trim()) onSave({ ...form, data: JSON.stringify(form.data || {}) }, pending); }}
             disabled={!form.title?.trim()} activeOpacity={0.7}>
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{item ? t('vault.update') : t('vault.save')}</Text>
@@ -648,6 +670,7 @@ const AddModal = ({ visible, item, onClose, onSave, settings }: any) => {
 // ── Detail Modal ──
 const DetailModal = ({ visible, item, onClose, onEdit, onDelete, onFav, clipClear }: any) => {
   const { t } = useTranslation();
+  const { colors: C } = useTheme();
   const [showPw, setShowPw] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -726,12 +749,12 @@ const DetailModal = ({ visible, item, onClose, onEdit, onDelete, onFav, clipClea
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={s.mdOv}><View style={s.mdC}>
+      <View style={[s.mdOv, { backgroundColor: 'rgba(0,0,0,0.5)' }]}><View style={[s.mdC, { backgroundColor: C.bg }]}>
         <View style={s.mdH}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ fontSize: 22 }}>{getCatIcon(item.category)}</Text><Text style={s.mdT}>{item.title}</Text>
+            <Text style={{ fontSize: 22 }}>{getCatIcon(item.category)}</Text><Text style={[s.mdT, { color: C.navy }]}>{item.title}</Text>
           </View>
-          <TouchableOpacity onPress={onClose}><Text style={s.mdX}>✕</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onClose}><Text style={[s.mdX, { color: C.muted }]}>✕</Text></TouchableOpacity>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
           {renderCatFields()}
@@ -749,65 +772,66 @@ const DetailModal = ({ visible, item, onClose, onEdit, onDelete, onFav, clipClea
   );
 };
 
-// ── Styles ──
+// ── Styles (structural only — colors applied dynamically via theme) ──
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  loginBox: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 28 },
-  title: { fontSize: 30, fontWeight: '800', color: C.navy, marginBottom: 6 },
-  subtitle: { fontSize: 14, color: C.muted, marginBottom: 36 },
-  bioBtn: { backgroundColor: C.card, borderColor: C.sageMid, borderWidth: 1, paddingVertical: 17, paddingHorizontal: 32, borderRadius: 22, overflow: 'hidden' },
+  root: { flex: 1 },
+  loginBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+  title: { fontSize: 30, fontWeight: '800', marginBottom: 6 },
+  subtitle: { fontSize: 14, marginBottom: 36 },
+  bioBtn: { borderWidth: 1, paddingVertical: 17, paddingHorizontal: 32, borderRadius: 22, overflow: 'hidden' },
   glow: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(114,136,111,0.1)' },
-  bioBtnText: { color: C.navy, fontWeight: '700', fontSize: 15 },
-  info: { marginTop: 36, fontSize: 11, fontWeight: '600', opacity: 0.35, color: C.navy, textAlign: 'center' },
+  bioBtnText: { fontWeight: '700', fontSize: 15 },
+  info: { marginTop: 36, fontSize: 11, fontWeight: '600', opacity: 0.35, textAlign: 'center' },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  hdrT: { fontSize: 26, fontWeight: '800', color: C.navy },
-  hdrS: { fontSize: 13, color: C.sage, fontWeight: '600', marginTop: 3 },
-  lockIc: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.cardBorder },
-  srch: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.inputBg, borderRadius: 16, paddingHorizontal: 14, marginBottom: 16, borderWidth: 1, borderColor: C.cardBorder },
-  srchIn: { flex: 1, fontSize: 14, color: C.navy, paddingVertical: 12, fontWeight: '500' },
-  cat: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: C.card, marginRight: 8, borderWidth: 1, borderColor: C.cardBorder },
-  catAct: { backgroundColor: C.sage, borderColor: C.sage },
-  catLbl: { fontSize: 12, fontWeight: '600', color: C.navy },
-  catLblAct: { color: C.white },
-  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 18, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: C.cardBorder },
+  hdrT: { fontSize: 26, fontWeight: '800' },
+  hdrS: { fontSize: 13, fontWeight: '600', marginTop: 3 },
+  lockIc: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  srch: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 14, marginBottom: 16, borderWidth: 1 },
+  srchIn: { flex: 1, fontSize: 14, paddingVertical: 12, fontWeight: '500' },
+  cat: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, marginRight: 8, borderWidth: 1 },
+  catAct: {},
+  catLbl: { fontSize: 12, fontWeight: '600' },
+  catLblAct: {},
+  item: { flexDirection: 'row', alignItems: 'center', borderRadius: 18, padding: 16, marginBottom: 10, borderWidth: 1 },
   avatar: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  itemT: { fontSize: 15, fontWeight: '700', color: C.navy, flex: 1 },
-  itemS: { fontSize: 12, color: C.muted, marginTop: 3 },
-  fab: { position: 'absolute', right: 20, bottom: 90, width: 58, height: 58, borderRadius: 20, backgroundColor: C.sage, alignItems: 'center', justifyContent: 'center', elevation: 6 },
-  fabT: { fontSize: 28, color: C.white, fontWeight: '300', marginTop: -2 },
-  nav: { flexDirection: 'row', backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.divider, paddingBottom: 20, paddingTop: 10 },
+  itemT: { fontSize: 15, fontWeight: '700', flex: 1 },
+  itemS: { fontSize: 12, marginTop: 3 },
+  fab: { position: 'absolute', right: 20, bottom: 90, width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center', elevation: 6 },
+  fabT: { fontSize: 28, color: '#fff', fontWeight: '300', marginTop: -2 },
+  nav: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 20, paddingTop: 10 },
   navItem: { flex: 1, alignItems: 'center' },
   navIc: { fontSize: 22, opacity: 0.5 },
   navAct: { opacity: 1 },
-  navLbl: { fontSize: 10, color: C.muted, marginTop: 3, fontWeight: '600' },
-  navLblAct: { color: C.sage },
-  genBox: { backgroundColor: C.card, borderRadius: 20, padding: 24, marginTop: 20, marginBottom: 16, borderWidth: 1, borderColor: C.cardBorder },
-  genPw: { fontSize: 17, fontWeight: '700', color: C.navy, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 0.5, lineHeight: 24 },
+  navLbl: { fontSize: 10, marginTop: 3, fontWeight: '600' },
+  navLblAct: {},
+  genBox: { borderRadius: 20, padding: 24, marginTop: 20, marginBottom: 16, borderWidth: 1 },
+  genPw: { fontSize: 17, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 0.5, lineHeight: 24 },
   genBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
-  bar: { height: 6, borderRadius: 3, backgroundColor: C.divider, overflow: 'hidden' },
+  bar: { height: 6, borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 3 },
-  optBox: { backgroundColor: C.card, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: C.cardBorder },
+  optBox: { borderRadius: 20, padding: 20, borderWidth: 1 },
   sliderR: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  sliderB: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.sageLight, alignItems: 'center', justifyContent: 'center' },
-  sliderBT: { fontSize: 20, color: C.sage, fontWeight: '700' },
-  sliderTr: { flex: 1, height: 6, borderRadius: 3, backgroundColor: C.divider, overflow: 'hidden' },
-  sliderFl: { height: '100%', borderRadius: 3, backgroundColor: C.sage },
-  sec: { fontSize: 14, fontWeight: '700', color: C.navy, marginTop: 24, marginBottom: 10 },
-  sCard: { backgroundColor: C.card, borderRadius: 18, padding: 18, marginBottom: 8, borderWidth: 1, borderColor: C.cardBorder },
-  sLbl: { fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 18 },
+  sliderB: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  sliderBT: { fontSize: 20, fontWeight: '700' },
+  sliderTr: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
+  sliderFl: { height: '100%', borderRadius: 3 },
+  sec: { fontSize: 14, fontWeight: '700', marginTop: 24, marginBottom: 10 },
+  sCard: { borderRadius: 18, padding: 18, marginBottom: 8, borderWidth: 1 },
+  sLbl: { fontSize: 13, marginBottom: 12, lineHeight: 18 },
   chipR: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  oChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.cardBorder },
-  oChipA: { backgroundColor: C.sage, borderColor: C.sage },
-  oChipT: { fontSize: 12, fontWeight: '600', color: C.navy },
-  oChipTA: { color: C.white },
-  lockBtn: { marginTop: 24, backgroundColor: C.redBg, borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.15)' },
-  lockBtnT: { color: C.red, fontWeight: '700', fontSize: 15 },
-  mdOv: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  mdC: { backgroundColor: C.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '92%' },
+  oChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  oChipA: {},
+  oChipT: { fontSize: 12, fontWeight: '600' },
+  oChipTA: {},
+  lockBtn: { marginTop: 24, borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1 },
+  lockBtnT: { fontWeight: '700', fontSize: 15 },
+  mdOv: { flex: 1, justifyContent: 'flex-end' },
+  mdC: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: '92%' },
   mdH: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  mdT: { fontSize: 20, fontWeight: '800', color: C.navy },
-  mdX: { fontSize: 22, color: C.muted, padding: 4 },
-  saveBtn: { backgroundColor: C.sage, borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 20 },
+  mdT: { fontSize: 20, fontWeight: '800' },
+  mdX: { fontSize: 22, padding: 4 },
+  saveBtn: { borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 20 },
   actBtn: { paddingVertical: 14, paddingHorizontal: 18, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   actBtnT: { fontWeight: '700', fontSize: 14 },
 });
+

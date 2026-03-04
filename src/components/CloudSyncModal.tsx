@@ -2,15 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { CloudSyncModule } from '../CloudSyncModule';
 import { useTranslation } from 'react-i18next';
-
-const C = {
-  navy: '#101828', sage: '#72886f', muted: 'rgba(16,24,40,0.45)',
-  card: 'rgba(255,255,255,0.45)', inputBg: 'rgba(255,255,255,0.6)',
-  green: '#22c55e', red: '#ef4444',
-};
+import { useTheme } from '../ThemeContext';
 
 export const CloudSyncModal = ({ visible, onClose, onRefresh }: any) => {
   const { t } = useTranslation();
+  const { colors: C } = useTheme();
   const [url, setUrl] = useState('');
   const [token, setToken] = useState('');
   const [authType, setAuthType] = useState<'Bearer' | 'Basic'>('Bearer');
@@ -18,7 +14,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh }: any) => {
   const [loading, setLoading] = useState(false);
 
   const handleSync = async (direction: 'up' | 'down') => {
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (!url.startsWith('https://')) {
       Alert.alert(t('cloud.error'), t('cloud.err_url'));
       return;
     }
@@ -48,35 +44,35 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh }: any) => {
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={st.overlay}>
-        <View style={st.container}>
+        <View style={[st.container, { backgroundColor: C.bg }]}>
           <View style={st.header}>
-            <Text style={st.title}>{t('cloud.title')}</Text>
-            <TouchableOpacity onPress={onClose} disabled={loading}><Text style={st.closeBtn}>✕</Text></TouchableOpacity>
+            <Text style={[st.title, { color: C.navy }]}>{t('cloud.title')}</Text>
+            <TouchableOpacity onPress={onClose} disabled={loading}><Text style={[st.closeBtn, { color: C.muted }]}>✕</Text></TouchableOpacity>
           </View>
 
           <View style={st.content}>
-            <Text style={st.label}>{t('cloud.url_label')}</Text>
+            <Text style={[st.label, { color: C.muted }]}>{t('cloud.url_label')}</Text>
             <TextInput
-              style={st.input} value={url} onChangeText={setUrl}
+              style={[st.input, { backgroundColor: C.inputBg, color: C.navy, borderColor: C.cardBorder }]} value={url} onChangeText={setUrl}
               placeholder="https://nextcloud.example.com/remote.php/webdav/aegis.aegis"
               placeholderTextColor={C.muted} autoCapitalize="none"
             />
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 }}>
-              <Text style={st.label}>{t('cloud.token_label')}</Text>
+              <Text style={[st.label, { color: C.muted }]}>{t('cloud.token_label')}</Text>
               <TouchableOpacity onPress={() => setAuthType(authType === 'Bearer' ? 'Basic' : 'Bearer')}>
-                <Text style={st.toggleText}>{authType} 🔄</Text>
+                <Text style={[st.toggleText, { color: C.sage }]}>{authType} 🔄</Text>
               </TouchableOpacity>
             </View>
             <TextInput
-              style={st.input} value={token} onChangeText={setToken}
+              style={[st.input, { backgroundColor: C.inputBg, color: C.navy, borderColor: C.cardBorder }]} value={token} onChangeText={setToken}
               placeholder={authType === 'Bearer' ? 'API Token' : 'username:password (base64 optional)'}
               placeholderTextColor={C.muted} secureTextEntry autoCapitalize="none"
             />
 
-            <Text style={st.label}>{t('cloud.pw_label')}</Text>
+            <Text style={[st.label, { color: C.muted }]}>{t('cloud.pw_label')}</Text>
             <TextInput
-              style={st.input} value={password} onChangeText={setPassword}
+              style={[st.input, { backgroundColor: C.inputBg, color: C.navy, borderColor: C.cardBorder }]} value={password} onChangeText={setPassword}
               placeholder={t('cloud.pw_ph')} placeholderTextColor={C.muted} secureTextEntry
             />
 
@@ -111,21 +107,21 @@ const st = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', padding: 20,
   },
   container: {
-    backgroundColor: '#F0EEE9', width: '100%', borderRadius: 24, overflow: 'hidden',
+    width: '100%', borderRadius: 24, overflow: 'hidden',
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     padding: 20, paddingBottom: 10,
   },
-  title: { fontSize: 18, fontWeight: '800', color: C.navy },
-  closeBtn: { fontSize: 24, color: C.muted, padding: 4 },
+  title: { fontSize: 18, fontWeight: '800' },
+  closeBtn: { fontSize: 24, padding: 4 },
   content: { padding: 20, paddingTop: 10 },
-  label: { fontSize: 13, fontWeight: '700', color: C.muted, marginBottom: 6, marginTop: 14 },
+  label: { fontSize: 13, fontWeight: '700', marginBottom: 6, marginTop: 14 },
   input: {
-    backgroundColor: C.inputBg, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
-    fontSize: 14, color: C.navy, borderWidth: 1, borderColor: C.cardBorder, fontWeight: '500',
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+    fontSize: 14, borderWidth: 1, fontWeight: '500',
   },
-  toggleText: { fontSize: 12, fontWeight: '700', color: C.sage },
+  toggleText: { fontSize: 12, fontWeight: '700' },
   infoBox: {
     backgroundColor: 'rgba(114,136,111,0.12)', borderRadius: 14, padding: 14, marginTop: 20, marginBottom: 10,
   },

@@ -2,11 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LegalTexts } from '../locales/legal';
-
-const C = {
-  navy: '#101828', sage: '#72886f', muted: 'rgba(16,24,40,0.45)',
-  bg: '#F0EEE9', card: 'rgba(255,255,255,0.45)', border: 'rgba(255,255,255,0.55)'
-};
+import { useTheme } from '../ThemeContext';
 
 interface Props {
   visible: boolean;
@@ -16,6 +12,7 @@ interface Props {
 
 export const LegalModal = ({ visible, type, onClose }: Props) => {
   const { i18n, t } = useTranslation();
+  const { colors: C } = useTheme();
   
   if (!visible || !type) return null;
 
@@ -25,15 +22,15 @@ export const LegalModal = ({ visible, type, onClose }: Props) => {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={st.container}>
-        <View style={st.header}>
-          <Text style={st.title}>{title}</Text>
+      <SafeAreaView style={[st.container, { backgroundColor: C.bg }]}>
+        <View style={[st.header, { borderBottomColor: C.cardBorder }]}>
+          <Text style={[st.title, { color: C.navy }]}>{title}</Text>
           <TouchableOpacity onPress={onClose} style={st.closeBtn}>
-            <Text style={st.closeIcon}>✕</Text>
+            <Text style={[st.closeIcon, { color: C.muted }]}>✕</Text>
           </TouchableOpacity>
         </View>
         <ScrollView style={st.scroll} contentContainerStyle={st.scrollContent}>
-          <Text style={st.bodyText}>{textContent}</Text>
+          <Text style={[st.bodyText, { color: C.navy }]}>{textContent}</Text>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -41,15 +38,15 @@ export const LegalModal = ({ visible, type, onClose }: Props) => {
 };
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1 },
   header: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-    padding: 20, borderBottomWidth: 1, borderBottomColor: C.border 
+    padding: 20, borderBottomWidth: 1
   },
-  title: { fontSize: 20, fontWeight: '700', color: C.navy },
+  title: { fontSize: 20, fontWeight: '700' },
   closeBtn: { padding: 4 },
-  closeIcon: { fontSize: 24, color: C.muted },
+  closeIcon: { fontSize: 24 },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 60 },
-  bodyText: { fontSize: 14, lineHeight: 22, color: C.navy }
+  bodyText: { fontSize: 14, lineHeight: 22 }
 });
