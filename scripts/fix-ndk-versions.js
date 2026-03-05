@@ -70,15 +70,25 @@ if (fs.existsSync(opSqliteBuildGradlePath)) {
     console.log('✓ Fixed op-sqlite Groovy JsonSlurper dependency');
   }
   
-  // Also ensure ndkVersion in build.gradle ext block is correct
-  if (content.includes('ndkVersion')) {
+  // Ensure android { ndkVersion } is explicitly set
+  // This is critical for CMake to match the NDK version
+  if (!content.includes('ndkVersion')) {
+    // Add ndkVersion right after "android {"
     content = content.replace(
-      /ndkVersion\s*=\s*['"][\d.]+['"]/g,
-      `ndkVersion = "${NDK_VERSION}"`
+      /android \{\s*namespace/,
+      `android {\n  ndkVersion "${NDK_VERSION}"\n  namespace`
     );
     fs.writeFileSync(opSqliteBuildGradlePath, content, 'utf8');
-    console.log(`✓ Fixed op-sqlite build.gradle NDK version to ${NDK_VERSION}`);
+    console.log(`✓ Added explicit android.ndkVersion to op-sqlite build.gradle: ${NDK_VERSION}`);
+  } else {
+    // Update existing ndkVersion
+    content = content.replace(
+      /ndkVersion\s*=*\s*['"][\d.]+['"]/g,
+      `ndkVersion "${NDK_VERSION}"`
+    );
+    fs.writeFileSync(opSqliteBuildGradlePath, content, 'utf8');
+    console.log(`✓ Updated explicit android.ndkVersion in op-sqlite build.gradle: ${NDK_VERSION}`);
   }
 } else {
-  console.warn('⚠ op-sqlite build.gradle not found, skipping Groovy fix');
+  console.warn('⚠ op-sqlite build.gradle not found, skipping gradle updates');
 }
