@@ -4,6 +4,9 @@ License: MIT
 AuthorName: hafgit99
 SourceCode: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
 IssueTracker: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0/issues
+
+AutoName: Aegis Vault
+
 RepoType: git
 Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
 
@@ -13,8 +16,8 @@ Builds:
     commit: v0.1.1
     subdir: android
     sudo:
-      - apt-get update || true
-      - apt-get install -y nodejs npm
+      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      - apt-get install -y nodejs
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
