@@ -60,11 +60,18 @@ The NDK version must be synchronized across three configuration layers:
 
 The third layer is critical because CMake's native build configuration validation checks the explicit `android.ndkVersion` property value in the gradle DSL block, not just the properties file.
 
-1. **NPM Postinstall Hook**: When `npm install` or `npm ci` runs, it automatically executes `fix-ndk-versions.js`
-2. **Configuration Synchronization**: The script updates all three layers to ensure consistency
-3. **Cache Cleanup**: Old build artifacts cached with incorrect NDK versions are invalidated
+## Verification Status
 
-## Steps to Apply the Fix
+✅ **CXX1104 Error RESOLVED** (as of v0.1.1)
+
+The fix has been successfully tested in F-Droid CI/CD environment:
+- gradle clean completed successfully without CXX1104 NDK mismatch error
+- Postinstall hook confirmed message: `✓ Added explicit android.ndkVersion to op-sqlite build.gradle: 27.2.12479018`
+- Build progressed past gradle configuration phase
+
+This confirms that all three configuration layers are properly synchronized during the build process.
+
+## Build Flow
 
 ### For Linux/WSL (F-Droid Build)
 
