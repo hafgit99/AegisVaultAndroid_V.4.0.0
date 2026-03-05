@@ -22,9 +22,9 @@ Builds:
       - apt-get update || true
       - apt-get install -y nodejs npm
     build:
-      - npm install -g npm@latest
+      - $$npm$$ install -g npm@latest
       - cd ..
-      - npm ci
+      - $$npm$$ ci
       - cd android
 
 AutoUpdateMode: None
