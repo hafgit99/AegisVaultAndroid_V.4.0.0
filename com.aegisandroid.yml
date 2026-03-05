@@ -21,10 +21,7 @@ Builds:
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
-    build:
-      - pushd ..
-      - npm ci
-      - popd
+    prebuild: npm ci
     ndk: r27c
 
 AutoUpdateMode: Version
