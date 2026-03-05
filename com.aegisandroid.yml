@@ -7,26 +7,28 @@ Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0.git
 IssueTracker: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0/issues
 
 AutoName: Aegis Vault
-Description: |-
-  Aegis Vault is an offline, privacy-first password and authenticator (TOTP) manager designed with top-tier security. It relies on AES-256-GCM encryption to safely store all your credentials locally on your device without transmitting anything over the internet.
+Description: Aegis Vault is an offline, privacy-first password and authenticator (TOTP)
+  manager designed with top-tier security. It relies on AES-256-GCM encryption to
+  safely store all your credentials locally on your device without transmitting anything
+  over the internet.
 
 Builds:
   - versionName: 0.1.1
     versionCode: 11
     commit: v0.1.1
     subdir: android
-    gradle:
-      - yes
-    output: app/build/outputs/apk/release/app-release-unsigned.apk
-    ndk: r27c
     sudo:
       - apt-get update || true
       - apt-get install -y nodejs npm
+    gradle:
+      - yes
+    output: app/build/outputs/apk/release/app-release-unsigned.apk
     build:
       - $$npm$$ install -g npm@latest
       - cd ..
       - $$npm$$ ci
       - cd android
+    ndk: r27c
 
 AutoUpdateMode: None
 UpdateCheckMode: Tags
