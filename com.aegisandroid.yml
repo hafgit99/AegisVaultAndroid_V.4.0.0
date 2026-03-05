@@ -2,9 +2,8 @@ Categories:
   - Security
 License: MIT
 AuthorName: hafgit99
-Maintainer: hafgit99
-SourceCode: https://github.com/hafgit99/AegisAndroid
-IssueTracker: https://github.com/hafgit99/AegisAndroid/issues
+SourceCode: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
+IssueTracker: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0/issues
 
 AutoName: Aegis Vault
 Description: |-
@@ -14,7 +13,7 @@ Description: |-
   over the internet.
 
 RepoType: git
-Repo: https://github.com/hafgit99/AegisAndroid.git
+Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0.git
 
 Builds:
   - versionName: 0.1.1
