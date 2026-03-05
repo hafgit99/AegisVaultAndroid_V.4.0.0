@@ -22,10 +22,9 @@ Builds:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
     build:
-      - cd ..
-      - npm install -g npm@latest
+      - pushd ..
       - npm ci
-      - cd android
+      - popd
     ndk: r27c
 
 AutoUpdateMode: Version
