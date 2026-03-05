@@ -26,8 +26,8 @@ Builds:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
     build:
-      - $$npm$$ install -g npm@latest
       - cd ..
+      - $$npm$$ install -g npm@latest
       - $$npm$$ ci
       - cd android
     ndk: r27c
