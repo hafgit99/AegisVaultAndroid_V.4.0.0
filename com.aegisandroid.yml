@@ -16,8 +16,8 @@ Builds:
     commit: v0.1.1
     subdir: android
     sudo:
-      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-      - apt-get install -y nodejs
+      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash - || true
+      - apt-get install -y nodejs npm
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
