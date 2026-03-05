@@ -25,19 +25,19 @@ Builds:
     prebuild: |
       npm ci
       # Remove pre-built binaries from op-sqlite that F-Droid considers problematic
-      rm -rf node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec/ || true
-      rm -rf node_modules/@op-engineering/op-sqlite/android/src/main/jniLibs/ || true
-      rm -rf node_modules/@op-engineering/op-sqlite/android/src/main/libcrsqlite/ || true
-      rm -rf node_modules/@op-engineering/op-sqlite/ios/ || true
+      rm -rf ../node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec/ || true
+      rm -rf ../node_modules/@op-engineering/op-sqlite/android/src/main/jniLibs/ || true
+      rm -rf ../node_modules/@op-engineering/op-sqlite/android/src/main/libcrsqlite/ || true
+      rm -rf ../node_modules/@op-engineering/op-sqlite/ios/ || true
       # Remove pre-built binaries from other packages
-      rm -rf node_modules/hermes-compiler/hermesc/ || true
-      rm -rf node_modules/fb-dotslash/ || true
-      rm -rf node_modules/react-native/React/I18n/strings/ || true
+      rm -rf ../node_modules/hermes-compiler/hermesc/ || true
+      rm -rf ../node_modules/fb-dotslash/ || true
+      rm -rf ../node_modules/react-native/React/I18n/strings/ || true
       # Remove problematic gradle wrapper jars and compiled artifacts
-      find node_modules -name gradle-wrapper.jar -delete 2>/dev/null || true
-      find node_modules/@react-native -name "*.class" -delete 2>/dev/null || true
-      find node_modules/@react-native -name "*.jar" -delete 2>/dev/null || true
-      find node_modules/@react-native -path "*/build/*" -name "*.bin" -delete 2>/dev/null || true
+      find ../node_modules -name gradle-wrapper.jar -delete 2>/dev/null || true
+      find ../node_modules/@react-native -name "*.class" -delete 2>/dev/null || true
+      find ../node_modules/@react-native -name "*.jar" -delete 2>/dev/null || true
+      find ../node_modules/@react-native -path "*/build/*" -name "*.bin" -delete 2>/dev/null || true
     ndk: r27c
 
 AutoUpdateMode: Version
