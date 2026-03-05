@@ -22,7 +22,23 @@ Builds:
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release-unsigned.apk
-    prebuild: npm ci
+    prebuild: |
+      npm ci
+      # Remove pre-built binaries from op-sqlite that F-Droid considers problematic
+      rm -rf node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec/
+      rm -rf node_modules/@op-engineering/op-sqlite/android/src/main/jniLibs/
+      rm -rf node_modules/@op-engineering/op-sqlite/android/src/main/libcrsqlite/
+      rm -rf node_modules/@op-engineering/op-sqlite/ios/
+      # Remove pre-built binaries from other packages
+      rm -rf node_modules/hermes-compiler/hermesc/
+      rm -rf node_modules/fb-dotslash/
+      rm -rf node_modules/react-native/React/I18n/strings/
+      # Remove problematic gradle wrapper jars
+      find node_modules -name gradle-wrapper.jar -delete
+      # Remove compiled build artifacts
+      find node_modules/@react-native -name "*.class" -delete
+      find node_modules/@react-native -name "*.jar" -delete
+      find node_modules/@react-native -path "*/build/*" -name "*.bin" -delete
     ndk: r27c
 
 AutoUpdateMode: Version
