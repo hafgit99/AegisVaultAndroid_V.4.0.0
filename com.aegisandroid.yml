@@ -4,16 +4,8 @@ License: MIT
 AuthorName: hafgit99
 SourceCode: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
 IssueTracker: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0/issues
-
-AutoName: Aegis Vault
-Description: |-
-  Aegis Vault is an offline, privacy-first password and authenticator (TOTP)
-  manager designed with top-tier security. It relies on AES-256-GCM encryption to
-  safely store all your credentials locally on your device without transmitting anything
-  over the internet.
-
 RepoType: git
-Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0.git
+Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
 
 Builds:
   - versionName: 0.1.1
@@ -33,7 +25,7 @@ Builds:
       - cd android
     ndk: r27c
 
-AutoUpdateMode: None
+AutoUpdateMode: Version
 UpdateCheckMode: Tags
 CurrentVersion: 0.1.1
 CurrentVersionCode: 11
