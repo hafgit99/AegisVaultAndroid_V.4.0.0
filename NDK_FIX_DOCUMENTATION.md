@@ -25,18 +25,43 @@ This mismatch prevented the Android build system from properly configuring the C
    - Added `"ndkVersion": "27.2.12479018"` to the `op-sqlite` configuration
    - This ensures the NDK version is explicitly specified in the project configuration
 
-2. **scripts/fix-ndk-versions.js**
+2. **scripts/fix-ndk-versions.js** 
    - Enhanced to update package.json with the correct NDK version
+   - Updates op-sqlite's gradle.properties with matching NDK version
+   - **NEW**: Explicitly sets `ndkVersion` in op-sqlite's `android { }` block in build.gradle
    - Ensures consistency across all configuration sources
    - Runs as postinstall hook to maintain synchronization
+   - Critical for CMake native build configuration which validates the explicit gradle DSL setting
 
 ### How the Fix Works
 
+The NDK version must be synchronized across three configuration layers:
+
+1. **package.json** (Project level)
+   ```json
+   "op-sqlite": {
+     "sqlcipher": true,
+     "ndkVersion": "27.2.12479018"
+   }
+   ```
+
+2. **gradle.properties** (Library level)
+   ```properties
+   android.ndkVersion=27.2.12479018
+   ```
+
+3. **build.gradle android DSL** (Library level - CRITICAL for CMake)
+   ```gradle
+   android {
+     ndkVersion "27.2.12479018"
+     // ... other config
+   }
+   ```
+
+The third layer is critical because CMake's native build configuration validation checks the explicit `android.ndkVersion` property value in the gradle DSL block, not just the properties file.
+
 1. **NPM Postinstall Hook**: When `npm install` or `npm ci` runs, it automatically executes `fix-ndk-versions.js`
-2. **Configuration Synchronization**: The script updates:
-   - `package.json` op-sqlite.ndkVersion
-   - `node_modules/@op-engineering/op-sqlite/android/gradle.properties`
-   - `node_modules/@op-engineering/op-sqlite/android/build.gradle`
+2. **Configuration Synchronization**: The script updates all three layers to ensure consistency
 3. **Cache Cleanup**: Old build artifacts cached with incorrect NDK versions are invalidated
 
 ## Steps to Apply the Fix
