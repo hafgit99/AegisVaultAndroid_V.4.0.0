@@ -1,0 +1,11 @@
+Aegis Vault, üstün güvenlik standartlarıyla tasarlanmış, çevrimdışı ve gizlilik odaklı bir şifre ve kimlik doğrulayıcı (TOTP) yöneticisidir. Tüm kimlik bilgilerinizi internet üzerinden iletmeden cihazınızda yerel olarak güvenle saklamak için AES-256-GCM şifrelemesi kullanır.
+
+Özellikler:
+- Tam gizlilik için tamamen çevrimdışı ve açık kaynaklıdır.
+- Endüstri standardı AES-256-GCM şifreleme altyapısı.
+- Dahili Kimlik Doğrulayıcı (TOTP) yeteneği.
+- Biyometrik giriş (Parmak izi / Yüz tanıma) desteği.
+- Diğer uygulamalarda ve tarayıcılarda hızlı oturum açmak için otomatik doldurma (Autofill) servisi.
+- Şifreli dışa aktarma (export) ve içe aktarma (import) özelliği.
+
+Aegis Vault ile dijital kimliğinizin kontrolünü elinize alın.
