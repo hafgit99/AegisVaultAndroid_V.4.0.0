@@ -52,6 +52,7 @@
     "node": ">= 22.11.0"
   },
   "op-sqlite": {
-    "sqlcipher": true
+    "sqlcipher": true,
+    "ndkVersion": "27.2.12479018"
   }
 }

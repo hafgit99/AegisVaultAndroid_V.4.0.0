@@ -3,7 +3,21 @@
 const fs = require('fs');
 const path = require('path');
 
-// Update op-sqlite NDK version to match the project's NDK version (27.2.12479018)
+const NDK_VERSION = '27.2.12479018';
+
+// Update package.json op-sqlite config with NDK version
+const packageJsonPath = path.join(__dirname, '../package.json');
+if (fs.existsSync(packageJsonPath)) {
+  let packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  
+  if (packageJson['op-sqlite']) {
+    packageJson['op-sqlite'].ndkVersion = NDK_VERSION;
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
+    console.log(`✓ Updated package.json op-sqlite config with NDK version ${NDK_VERSION}`);
+  }
+}
+
+// Update op-sqlite NDK version to match the project's NDK version
 const opSqliteGradlePropsPath = path.join(
   __dirname,
   '../node_modules/@op-engineering/op-sqlite/android/gradle.properties'
@@ -12,26 +26,26 @@ const opSqliteGradlePropsPath = path.join(
 if (fs.existsSync(opSqliteGradlePropsPath)) {
   let content = fs.readFileSync(opSqliteGradlePropsPath, 'utf8');
   
-  // Replace ANY NDK version with the correct r27c version (27.2.12479018)
+  // Replace ANY NDK version with the correct r27c version
   // This catches various version formats that might be in the file
   content = content.replace(
     /OPSQLite_ndkVersion=[\d.]+/,
-    'OPSQLite_ndkVersion=27.2.12479018'
+    `OPSQLite_ndkVersion=${NDK_VERSION}`
   );
   
   // Also ensure android.ndkVersion is set correctly in case there are multiple NDK configs
   content = content.replace(
     /android\.ndkVersion=[\d.]+/,
-    'android.ndkVersion=27.2.12479018'
+    `android.ndkVersion=${NDK_VERSION}`
   );
   
   // If android.ndkVersion is not already set, add it
   if (!content.includes('android.ndkVersion=')) {
-    content += '\nandroid.ndkVersion=27.2.12479018';
+    content += `\nandroid.ndkVersion=${NDK_VERSION}`;
   }
   
   fs.writeFileSync(opSqliteGradlePropsPath, content, 'utf8');
-  console.log('✓ Fixed op-sqlite NDK version to 27.2.12479018');
+  console.log(`✓ Fixed op-sqlite gradle.properties NDK version to ${NDK_VERSION}`);
 } else {
   console.warn('⚠ op-sqlite gradle.properties not found, skipping NDK version fix');
 }
@@ -60,10 +74,10 @@ if (fs.existsSync(opSqliteBuildGradlePath)) {
   if (content.includes('ndkVersion')) {
     content = content.replace(
       /ndkVersion\s*=\s*['"][\d.]+['"]/g,
-      'ndkVersion = "27.2.12479018"'
+      `ndkVersion = "${NDK_VERSION}"`
     );
     fs.writeFileSync(opSqliteBuildGradlePath, content, 'utf8');
-    console.log('✓ Fixed op-sqlite build.gradle NDK version');
+    console.log(`✓ Fixed op-sqlite build.gradle NDK version to ${NDK_VERSION}`);
   }
 } else {
   console.warn('⚠ op-sqlite build.gradle not found, skipping Groovy fix');
