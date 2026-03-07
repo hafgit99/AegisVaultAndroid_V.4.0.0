@@ -81,3 +81,6 @@ yarn-error.log
 ! .env.example
 *.log
 
+# Hermes Windows binary (not needed for F-Droid builds)
+hermes-win.tar.gz
+
