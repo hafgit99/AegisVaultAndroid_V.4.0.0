@@ -121,6 +121,11 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
+    dependenciesInfo {
+        // Disable dependency metadata in APK - required for F-Droid
+        includeInApk = false
+        includeInBundle = false
+    }
     packagingOptions {
         pickFirst '**/libcrypto.so'
         pickFirst '**/libssl.so'
