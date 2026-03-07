@@ -47,6 +47,8 @@ Builds:
       - node_modules/react-native-svg/android/build.gradle
       - node_modules/react-native/ReactAndroid/publish.gradle
       - node_modules/@react-native/gradle-plugin/
+    scandelete:
+      - hermes-win.tar.gz
     ndk: r27c
 
 AutoUpdateMode: Version
