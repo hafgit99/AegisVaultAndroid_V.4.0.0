@@ -46,7 +46,6 @@ Builds:
       - node_modules/react-native-biometrics/android/build.gradle
       - node_modules/react-native-svg/android/build.gradle
       - node_modules/react-native/ReactAndroid/publish.gradle
-    scandelete:
       - node_modules/@react-native/gradle-plugin/
     ndk: r27c
 
