@@ -22,8 +22,7 @@ Builds:
     gradle:
       - yes
     output: build/outputs/apk/release/app-release.apk
-    prebuild:
-      - npm ci
+    prebuild: npm ci
     scanignore:
       - node_modules/react-native-safe-area-context/android/build.gradle
       - node_modules/react-native-biometrics/android/build.gradle
