@@ -14,32 +14,16 @@ Builds:
   - versionName: 0.1.1
     versionCode: 11
     commit: v0.1.1
-    subdir: android
+    subdir: android/app
     sudo:
-      - apt-get remove -y npm || true
-      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash - || true
-      - apt-get install -y nodejs
+      - echo "deb https://deb.debian.org/debian forky main" > /etc/apt/sources.list.d/forky.list
+      - apt-get update
+      - apt-get install -y -t forky npm
     gradle:
       - yes
-    output: app/build/outputs/apk/release/app-release.apk
+    output: build/outputs/apk/release/app-release.apk
     prebuild:
       - npm ci
-      - rm -rf ../node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec/
-        || true
-      - rm -rf ../node_modules/@op-engineering/op-sqlite/android/src/main/jniLibs/
-        || true
-      - rm -rf ../node_modules/@op-engineering/op-sqlite/android/src/main/libcrsqlite/
-        || true
-      - rm -rf ../node_modules/@op-engineering/op-sqlite/ios/ || true
-      - rm -rf ../node_modules/hermes-compiler/hermesc/ || true
-      - rm -rf ../node_modules/fb-dotslash/ || true
-      - rm -rf ../node_modules/react-native/React/I18n/strings/ || true
-      - find ../node_modules -name gradle-wrapper.jar -delete 2>/dev/null || true
-      - find ../node_modules/@react-native -name "*.class" -delete 2>/dev/null ||
-        true
-      - find ../node_modules/@react-native -name "*.jar" -delete 2>/dev/null || true
-      - find ../node_modules/@react-native -path "*/build/*" -name "*.bin" -delete
-        2>/dev/null || true
     scanignore:
       - node_modules/react-native-safe-area-context/android/build.gradle
       - node_modules/react-native-biometrics/android/build.gradle
@@ -54,6 +38,13 @@ Builds:
       - node_modules/react-native-quick-crypto/deps/blake3/tools/compiler_version/Cargo.toml
     scandelete:
       - hermes-win.tar.gz
+      - node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec
+      - node_modules/@op-engineering/op-sqlite/android/src/main/jniLibs
+      - node_modules/@op-engineering/op-sqlite/android/src/main/libcrsqlite
+      - node_modules/@op-engineering/op-sqlite/ios
+      - node_modules/hermes-compiler/hermesc
+      - node_modules/fb-dotslash
+      - node_modules/react-native/React/I18n/strings
     ndk: r27c
 
 AutoUpdateMode: Version
