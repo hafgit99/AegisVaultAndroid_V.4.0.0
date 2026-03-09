@@ -18,10 +18,7 @@ Builds:
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release.apk
-    prebuild:
-      - apt-get update
-      - apt-get install -y npm
-      - npm ci
+    prebuild: apt-get update && apt-get install -y npm && npm ci
     scanignore:
       - node_modules/react-native-safe-area-context/android/build.gradle
       - node_modules/react-native-biometrics/android/build.gradle
