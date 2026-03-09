@@ -70,9 +70,10 @@
    npx react-native run-android --mode release
    ```
 
-### Secure Release Signing (Required)
+### Secure Release Signing (Optional for local builds)
 
-Release builds are blocked unless signing credentials are provided.
+If release signing credentials are not provided, the project falls back to debug signing for local and CI release builds.
+To strictly enforce release signing, pass `-PrequireReleaseSigning=true` to Gradle.
 
 Set these environment variables before building release:
 
@@ -96,7 +97,7 @@ Then build:
 
 ```bash
 cd android
-./gradlew assembleRelease
+./gradlew assembleRelease -PrequireReleaseSigning=true
 ```
 
 ### Cloud Sync TLS Certificate Pinning

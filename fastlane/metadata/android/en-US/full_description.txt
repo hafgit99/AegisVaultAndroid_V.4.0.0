@@ -1,0 +1,13 @@
+Aegis Vault is an open source password manager focused on local-first privacy and strong device security.
+
+Your vault stays on your phone by default. Data is encrypted at rest using SQLCipher (AES-256-GCM) with keys derived from your credentials, and can be protected with biometrics.
+
+Key features:
+- Local encrypted vault with no ads and no trackers
+- Password entries with attachments and categories
+- Built-in TOTP for two-factor authentication
+- Breach check integration via Have I Been Pwned
+- Backup and restore tools for safe migration
+- Autofill support for compatible Android apps
+
+The project is distributed under the MIT license.

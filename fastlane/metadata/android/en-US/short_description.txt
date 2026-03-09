@@ -1,0 +1,1 @@
+Open source, offline password vault with strong local encryption.

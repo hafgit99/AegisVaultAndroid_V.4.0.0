@@ -46,7 +46,9 @@ react {
     /* Hermes Commands */
     //   The hermes compiler command to run. By default it is 'hermesc'
     // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
-    hermesCommand = "$rootDir/../hermesc.bat"
+    if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+        hermesCommand = "$rootDir/../hermesc.bat"
+    }
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]
@@ -67,9 +69,7 @@ def releaseKeyPassword = project.findProperty('RELEASE_KEY_PASSWORD') ?: System.
 def debugKeystoreFile = file('debug.keystore')
 def hasReleaseSigning =
     releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
-def isReleaseTaskRequested = gradle.startParameter.taskNames.any {
-    it.toLowerCase().contains('release')
-}
+def requireReleaseSigning = (project.findProperty('requireReleaseSigning') ?: "false").toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -123,7 +123,7 @@ android {
             }
         }
         release {
-            if (isReleaseTaskRequested && !hasReleaseSigning) {
+            if (requireReleaseSigning && !hasReleaseSigning) {
                 throw new GradleException('Release signing credentials are missing. Configure RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD.')
             }
             signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug

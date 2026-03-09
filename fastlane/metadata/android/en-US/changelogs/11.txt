@@ -1,0 +1,1 @@
+Initial F-Droid ready metadata and Android release build compatibility improvements.
