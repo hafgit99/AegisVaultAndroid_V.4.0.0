@@ -48,6 +48,22 @@
 
 ## 🚀 Installation & Build
 
+## 📦 F-Droid
+
+- F-Droid metadata file: `com.aegisandroid.yml`
+- The F-Droid build uses `subdir: android` and Gradle release APK output at `app/build/outputs/apk/release/app-release.apk`.
+- In F-Droid CI, system package installation must run under `sudo:` (root stage), while dependency installation runs in `prebuild:`.
+
+Example build flow used by metadata:
+
+```yaml
+sudo:
+  - apt-get update
+  - apt-get install -y npm
+prebuild:
+  - npm ci
+```
+
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (LTS)
