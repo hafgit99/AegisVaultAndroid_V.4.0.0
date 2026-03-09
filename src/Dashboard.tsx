@@ -14,7 +14,6 @@ import {
   AppStateStatus,
   KeyboardAvoidingView,
   Platform,
-  Switch,
 } from 'react-native';
 import ReactNativeBiometrics from 'react-native-biometrics';
 import {
@@ -131,7 +130,7 @@ export const Dashboard = () => {
   const [legalType, setLegalType] = useState<'terms' | 'privacy' | null>(null);
   const glow = useRef(new Animated.Value(0.4)).current;
 
-  const [isPickingFile, setIsPickingFile] = useState(false);
+  const [_isPickingFile, _setIsPickingFile] = useState(false);
   const backgroundTimeRef = useRef<number | null>(null);
   const settingsRef = useRef(settings);
   const unlockedRef = useRef(unlocked);
@@ -216,7 +215,7 @@ export const Dashboard = () => {
       },
     );
     return () => sub.remove();
-  }, []);
+  }, [glow, t]);
 
   const load = useCallback(async () => {
     setItems(await SecurityModule.getItems(search, selCat));
@@ -248,7 +247,7 @@ export const Dashboard = () => {
     if (unlocked && settings.autoLockSeconds > 0)
       SecurityModule.startAutoLockTimer(settings.autoLockSeconds, autoLockCb);
     return () => SecurityModule.clearAutoLockTimer();
-  }, [unlocked, settings.autoLockSeconds]);
+  }, [unlocked, settings.autoLockSeconds, autoLockCb]);
   const resetTimer = () => {
     if (unlocked && settings.autoLockSeconds > 0)
       SecurityModule.resetAutoLockTimer(settings.autoLockSeconds, autoLockCb);
@@ -325,7 +324,7 @@ export const Dashboard = () => {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [lockoutRemaining]);
+  }, [lockoutRemaining, t]);
 
   // Check lockout on mount
   useEffect(() => {
@@ -645,6 +644,7 @@ export const Dashboard = () => {
       <DetailModal
         visible={showDetail}
         item={editItem}
+        theme={palette}
         onClose={() => setShowDetail(false)}
         onEdit={() => {
           setShowDetail(false);
@@ -1849,8 +1849,11 @@ const DetailModal = ({
   onDelete,
   onFav,
   clipClear,
+  theme,
 }: any) => {
   const { t } = useTranslation();
+  const cc = { ...C, ...(theme || {}) };
+  const isDark = String(cc.bg || '').toLowerCase() === '#0b1220';
   const [showPw, setShowPw] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1894,7 +1897,7 @@ const DetailModal = ({
           style={{
             fontSize: 11,
             fontWeight: '700',
-            color: C.muted,
+            color: cc.muted,
             textTransform: 'uppercase',
             marginBottom: 4,
           }}
@@ -1909,8 +1912,14 @@ const DetailModal = ({
           }}
         >
           <Text
-            style={{ fontSize: 15, fontWeight: '600', color: C.navy, flex: 1 }}
-            numberOfLines={1}
+            style={{
+              fontSize: 15,
+              fontWeight: '600',
+              color: cc.navy,
+              flex: 1,
+              flexShrink: 1,
+              lineHeight: 21,
+            }}
           >
             {display}
           </Text>
@@ -1924,7 +1933,7 @@ const DetailModal = ({
               <Text
                 style={{
                   fontSize: 14,
-                  color: copied === copyKey ? C.green : C.sage,
+                  color: copied === copyKey ? cc.green : cc.sage,
                 }}
               >
                 {copied === copyKey ? '✓' : '📋'}
@@ -1936,7 +1945,9 @@ const DetailModal = ({
         {secret && (label.includes('Şifre') || label.includes('Password')) && (
           <View style={{ marginTop: 8 }}>
             {checking ? (
-              <Text style={{ fontSize: 12, color: C.muted, fontWeight: '600' }}>
+              <Text
+                style={{ fontSize: 12, color: cc.muted, fontWeight: '600' }}
+              >
                 {t('breach.checking')}
               </Text>
             ) : breachCount === null ? (
@@ -1945,7 +1956,9 @@ const DetailModal = ({
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: 'rgba(114,136,111,0.1)',
+                  backgroundColor: isDark
+                    ? 'rgba(52,211,153,0.16)'
+                    : 'rgba(114,136,111,0.1)',
                   alignSelf: 'flex-start',
                   paddingHorizontal: 12,
                   paddingVertical: 8,
@@ -1953,7 +1966,7 @@ const DetailModal = ({
                 }}
               >
                 <Text
-                  style={{ fontSize: 12, color: C.sage, fontWeight: '700' }}
+                  style={{ fontSize: 12, color: cc.sage, fontWeight: '700' }}
                 >
                   {t('breach.check')}
                 </Text>
@@ -1961,21 +1974,9 @@ const DetailModal = ({
             ) : breachCount > 0 ? (
               <View
                 style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  alignSelf: 'flex-start',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 10,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: C.red, fontWeight: '700' }}>
-                  {t('breach.compromised', { count: breachCount })}
-                </Text>
-              </View>
-            ) : (
-              <View
-                style={{
-                  backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                  backgroundColor: isDark
+                    ? 'rgba(248,113,113,0.2)'
+                    : 'rgba(239, 68, 68, 0.1)',
                   alignSelf: 'flex-start',
                   paddingHorizontal: 12,
                   paddingVertical: 8,
@@ -1983,7 +1984,25 @@ const DetailModal = ({
                 }}
               >
                 <Text
-                  style={{ fontSize: 12, color: C.green, fontWeight: '700' }}
+                  style={{ fontSize: 12, color: cc.red, fontWeight: '700' }}
+                >
+                  {t('breach.compromised', { count: breachCount })}
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={{
+                  backgroundColor: isDark
+                    ? 'rgba(34,197,94,0.2)'
+                    : 'rgba(34, 197, 94, 0.1)',
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 10,
+                }}
+              >
+                <Text
+                  style={{ fontSize: 12, color: cc.green, fontWeight: '700' }}
                 >
                   {t('breach.safe')}
                 </Text>
@@ -2123,16 +2142,21 @@ const DetailModal = ({
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={s.mdOv}>
-        <View style={s.mdC}>
+        <View
+          style={[
+            s.mdC,
+            { backgroundColor: cc.bg, borderColor: cc.cardBorder },
+          ]}
+        >
           <View style={s.mdH}>
             <View
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
             >
               <Text style={{ fontSize: 22 }}>{getCatIcon(item.category)}</Text>
-              <Text style={s.mdT}>{item.title}</Text>
+              <Text style={[s.mdT, { color: cc.navy }]}>{item.title}</Text>
             </View>
             <TouchableOpacity onPress={onClose}>
-              <Text style={s.mdX}>✕</Text>
+              <Text style={[s.mdX, { color: cc.muted }]}>✕</Text>
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
@@ -2143,14 +2167,14 @@ const DetailModal = ({
                   style={{
                     fontSize: 11,
                     fontWeight: '700',
-                    color: C.muted,
+                    color: cc.muted,
                     textTransform: 'uppercase',
                     marginBottom: 4,
                   }}
                 >
                   {t('vault.notes')}
                 </Text>
-                <Text style={{ fontSize: 14, color: C.navy, lineHeight: 20 }}>
+                <Text style={{ fontSize: 14, color: cc.navy, lineHeight: 21 }}>
                   {item.notes}
                 </Text>
               </View>
@@ -2169,21 +2193,21 @@ const DetailModal = ({
           </ScrollView>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
             <TouchableOpacity
-              style={[s.actBtn, { backgroundColor: C.sageLight }]}
+              style={[s.actBtn, { backgroundColor: cc.sageLight }]}
               onPress={onFav}
             >
               <Text style={s.actBtnT}>{item.favorite === 1 ? '⭐' : '☆'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.actBtn, { backgroundColor: C.sageLight, flex: 1 }]}
+              style={[s.actBtn, { backgroundColor: cc.sageLight, flex: 1 }]}
               onPress={onEdit}
             >
-              <Text style={[s.actBtnT, { color: C.sage }]}>
+              <Text style={[s.actBtnT, { color: cc.sage }]}>
                 ✏️ {t('vault.edit')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.actBtn, { backgroundColor: C.redBg }]}
+              style={[s.actBtn, { backgroundColor: cc.redBg }]}
               onPress={() =>
                 Alert.alert(t('vault.delete'), t('vault.delete_confirm'), [
                   { text: t('vault.cancel'), style: 'cancel' },
@@ -2195,7 +2219,7 @@ const DetailModal = ({
                 ])
               }
             >
-              <Text style={[s.actBtnT, { color: C.red }]}>🗑️</Text>
+              <Text style={[s.actBtnT, { color: cc.red }]}>🗑️</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2442,6 +2466,7 @@ const s = StyleSheet.create({
     borderTopRightRadius: 28,
     padding: 24,
     maxHeight: '92%',
+    borderWidth: 1,
   },
   mdH: {
     flexDirection: 'row',
