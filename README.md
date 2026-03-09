@@ -42,9 +42,9 @@
 
 ## 📸 Screenshots
 
-|                        Login Experience                        |                          Secure Vault                          |                          Security Audit                           |
-| :------------------------------------------------------------: | :------------------------------------------------------------: | :---------------------------------------------------------------: |
-| ![Screen 1](https://via.placeholder.com/200x400?text=Login+UI) | ![Screen 2](https://via.placeholder.com/200x400?text=Vault+UI) | ![Screen 3](https://via.placeholder.com/200x400?text=Security+UI) |
+|                    Login Experience                    |                    Secure Vault                    |                     Security Center                      |
+| :----------------------------------------------------: | :------------------------------------------------: | :------------------------------------------------------: |
+| ![Login Experience](docs/screenshots/mobile-login.png) | ![Secure Vault](docs/screenshots/mobile-vault.png) | ![Security Center](docs/screenshots/mobile-security.png) |
 
 ## 🚀 Installation & Build
 
