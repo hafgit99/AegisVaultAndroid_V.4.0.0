@@ -29,12 +29,6 @@ Builds:
       - node_modules/react-native-svg/android/build.gradle
       - node_modules/react-native/ReactAndroid/publish.gradle
       - node_modules/@react-native/gradle-plugin/
-      - node_modules/react-native-quick-crypto/deps/blake3/Cargo.toml
-      - node_modules/react-native-quick-crypto/deps/blake3/c/blake3_c_rust_bindings/Cargo.toml
-      - node_modules/react-native-quick-crypto/deps/blake3/reference_impl/Cargo.toml
-      - node_modules/react-native-quick-crypto/deps/blake3/test_vectors/Cargo.toml
-      - node_modules/react-native-quick-crypto/deps/blake3/tools/instruction_set_support/Cargo.toml
-      - node_modules/react-native-quick-crypto/deps/blake3/tools/compiler_version/Cargo.toml
     scandelete:
       - hermes-win.tar.gz
       - node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec
