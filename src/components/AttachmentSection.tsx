@@ -3,7 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } fr
 import { pick } from '@react-native-documents/picker';
 import { SecurityModule, Attachment } from '../SecurityModule';
 import { useTranslation } from 'react-i18next';
-import { useTheme } from '../ThemeContext';
+
+const C = {
+  navy: '#101828', sage: '#72886f', sageLight: 'rgba(114,136,111,0.12)',
+  muted: 'rgba(16,24,40,0.45)', card: 'rgba(255,255,255,0.45)',
+  cardBorder: 'rgba(255,255,255,0.55)', red: '#ef4444', redBg: 'rgba(239,68,68,0.08)',
+  green: '#22c55e', greenBg: 'rgba(34,197,94,0.08)',
+};
 
 const formatSize = (bytes: number) => {
   if (bytes < 1024) return bytes + ' B';
@@ -33,7 +39,6 @@ interface Props {
 
 export const AttachmentSection = ({ itemId, attachments, onRefresh, pendingFiles, setPendingFiles }: Props) => {
   const { t } = useTranslation();
-  const { colors: C } = useTheme();
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
 
@@ -101,45 +106,45 @@ export const AttachmentSection = ({ itemId, attachments, onRefresh, pendingFiles
   return (
     <View style={st.container}>
       <View style={st.headerRow}>
-        <Text style={[st.sectionLabel, { color: C.muted }]}>📎 {t('att.hdr').toUpperCase()}</Text>
-        <Text style={[st.limit, { color: C.muted }]}>{t('att.max_size')}</Text>
+        <Text style={st.sectionLabel}>📎 {t('att.hdr').toUpperCase()}</Text>
+        <Text style={st.limit}>Maks. 50 MB</Text>
       </View>
 
       {/* Existing attachments */}
       {attachments.map(att => (
-        <View key={att.id} style={[st.fileCard, { backgroundColor: C.card, borderColor: C.cardBorder }]}>
+        <View key={att.id} style={st.fileCard}>
           <Text style={st.fileIcon}>{getFileIcon(att.mime_type)}</Text>
           <View style={st.fileInfo}>
-            <Text style={[st.fileName, { color: C.navy }]} numberOfLines={1}>{att.filename}</Text>
-            <Text style={[st.fileMeta, { color: C.muted }]}>{formatSize(att.size)}</Text>
+            <Text style={st.fileName} numberOfLines={1}>{att.filename}</Text>
+            <Text style={st.fileMeta}>{formatSize(att.size)}</Text>
           </View>
           <TouchableOpacity onPress={() => handleDownload(att)} style={st.dlBtn} disabled={downloading === att.id}>
             {downloading === att.id ? <ActivityIndicator size="small" color={C.sage} /> : <Text style={st.dlText}>⬇️</Text>}
           </TouchableOpacity>
           <TouchableOpacity onPress={() => handleDelete(att)} style={st.delBtn}>
-            <Text style={[st.delText, { color: C.red }]}>🗑️</Text>
+            <Text style={st.delText}>🗑️</Text>
           </TouchableOpacity>
         </View>
       ))}
 
       {/* Pending files (for new items not yet saved) */}
       {pendingFiles.map((f, i) => (
-        <View key={`p-${i}`} style={[st.fileCard, { backgroundColor: C.card, borderColor: C.greenBg }]}>
+        <View key={`p-${i}`} style={[st.fileCard, { borderColor: C.greenBg }]}>
           <Text style={st.fileIcon}>{getFileIcon(f.type)}</Text>
           <View style={st.fileInfo}>
-            <Text style={[st.fileName, { color: C.navy }]} numberOfLines={1}>{f.name}</Text>
+            <Text style={st.fileName} numberOfLines={1}>{f.name}</Text>
             <Text style={[st.fileMeta, { color: C.green }]}>• {formatSize(f.size)}</Text>
           </View>
           <TouchableOpacity onPress={() => setPendingFiles(pendingFiles.filter((_, j) => j !== i))} style={st.delBtn}>
-            <Text style={[st.delText, { color: C.red }]}>✖</Text>
+            <Text style={st.delText}>✖</Text>
           </TouchableOpacity>
         </View>
       ))}
 
       {/* Add button */}
-      <TouchableOpacity style={[st.addBtn, { borderColor: C.sage }]} onPress={pickFile} activeOpacity={0.7} disabled={loading}>
+      <TouchableOpacity style={st.addBtn} onPress={pickFile} activeOpacity={0.7} disabled={loading}>
         {loading ? <ActivityIndicator size="small" color={C.sage} /> : (
-          <Text style={[st.addText, { color: C.sage }]}>+ {t('att.btn_add')}</Text>
+          <Text style={st.addText}>+ {t('att.btn_add')}</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -149,19 +154,19 @@ export const AttachmentSection = ({ itemId, attachments, onRefresh, pendingFiles
 const st = StyleSheet.create({
   container: { marginTop: 8, marginBottom: 8 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  limit: { fontSize: 10 },
-  fileCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 14,
-    padding: 12, marginBottom: 8, borderWidth: 1 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  limit: { fontSize: 10, color: C.muted },
+  fileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 14,
+    padding: 12, marginBottom: 8, borderWidth: 1, borderColor: C.cardBorder },
   fileIcon: { fontSize: 24, marginRight: 12 },
   fileInfo: { flex: 1 },
-  fileName: { fontSize: 13, fontWeight: '600' },
-  fileMeta: { fontSize: 11, marginTop: 2 },
+  fileName: { fontSize: 13, fontWeight: '600', color: C.navy },
+  fileMeta: { fontSize: 11, color: C.muted, marginTop: 2 },
   dlBtn: { padding: 8 },
   dlText: { fontSize: 18 },
   delBtn: { padding: 8 },
-  delText: { fontSize: 14 },
-  addBtn: { borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 14,
+  delText: { fontSize: 14, color: C.red },
+  addBtn: { borderWidth: 1.5, borderColor: C.sage, borderStyle: 'dashed', borderRadius: 14,
     padding: 14, alignItems: 'center', marginTop: 4 },
-  addText: { fontSize: 13, fontWeight: '700' },
+  addText: { fontSize: 13, fontWeight: '700', color: C.sage },
 });

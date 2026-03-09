@@ -1,19 +1,36 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LegalTexts } from '../locales/legal';
-import { useTheme } from '../ThemeContext';
+
+const C = {
+  navy: '#101828',
+  sage: '#72886f',
+  muted: 'rgba(16,24,40,0.45)',
+  bg: '#F0EEE9',
+  card: 'rgba(255,255,255,0.45)',
+  border: 'rgba(255,255,255,0.55)',
+};
 
 interface Props {
   visible: boolean;
   type: 'terms' | 'privacy' | null;
   onClose: () => void;
+  theme?: any;
 }
 
-export const LegalModal = ({ visible, type, onClose }: Props) => {
+export const LegalModal = ({ visible, type, onClose, theme }: Props) => {
   const { i18n, t } = useTranslation();
-  const { colors: C } = useTheme();
-  
+  const cc = theme || C;
+
   if (!visible || !type) return null;
 
   const lang = i18n.language === 'tr' ? 'tr' : 'en';
@@ -21,16 +38,26 @@ export const LegalModal = ({ visible, type, onClose }: Props) => {
   const title = type === 'terms' ? t('legal.terms') : t('legal.privacy');
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={[st.container, { backgroundColor: C.bg }]}>
-        <View style={[st.header, { borderBottomColor: C.cardBorder }]}>
-          <Text style={[st.title, { color: C.navy }]}>{title}</Text>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={[st.container, { backgroundColor: cc.bg }]}>
+        <View
+          style={[
+            st.header,
+            { borderBottomColor: cc.border || cc.cardBorder || C.border },
+          ]}
+        >
+          <Text style={[st.title, { color: cc.navy }]}>{title}</Text>
           <TouchableOpacity onPress={onClose} style={st.closeBtn}>
-            <Text style={[st.closeIcon, { color: C.muted }]}>✕</Text>
+            <Text style={[st.closeIcon, { color: cc.muted }]}>✕</Text>
           </TouchableOpacity>
         </View>
         <ScrollView style={st.scroll} contentContainerStyle={st.scrollContent}>
-          <Text style={[st.bodyText, { color: C.navy }]}>{textContent}</Text>
+          <Text style={[st.bodyText, { color: cc.navy }]}>{textContent}</Text>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -38,15 +65,19 @@ export const LegalModal = ({ visible, type, onClose }: Props) => {
 };
 
 const st = StyleSheet.create({
-  container: { flex: 1 },
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-    padding: 20, borderBottomWidth: 1
+  container: { flex: 1, backgroundColor: C.bg },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
-  title: { fontSize: 20, fontWeight: '700' },
+  title: { fontSize: 20, fontWeight: '700', color: C.navy },
   closeBtn: { padding: 4 },
-  closeIcon: { fontSize: 24 },
+  closeIcon: { fontSize: 24, color: C.muted },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 60 },
-  bodyText: { fontSize: 14, lineHeight: 22 }
+  bodyText: { fontSize: 14, lineHeight: 22, color: C.navy },
 });

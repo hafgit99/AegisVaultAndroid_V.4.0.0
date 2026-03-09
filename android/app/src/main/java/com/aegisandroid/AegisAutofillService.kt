@@ -94,8 +94,7 @@ class AegisAutofillService : AutofillService() {
             val fields = parseStructure(structure)
             android.util.Log.d(
                 TAG,
-                "Parsed fields: user=${fields.usernameId}, pass=${fields.passwordId}, " +
-                "domain='${fields.webDomain}', allDomains=${fields.allWebDomains}"
+                "Parsed fields: user=${fields.usernameId != null}, pass=${fields.passwordId != null}, domains=${fields.allWebDomains.size}"
             )
 
             if (fields.usernameId == null && fields.passwordId == null) {
@@ -132,10 +131,10 @@ class AegisAutofillService : AutofillService() {
             // Chrome'da asıl web domain'i bulmak için tüm toplanan domain'lerden
             // en iyi eşleşeni seçiyoruz
             val bestDomain = chooseBestDomain(fields.allWebDomains, fields.webDomain)
-            android.util.Log.d(TAG, "Best domain selected: '$bestDomain' from ${fields.allWebDomains}")
+            android.util.Log.d(TAG, "Best domain selected for matching")
 
             val matches = findMatchingEntries(targetPackageName, bestDomain)
-            android.util.Log.d(TAG, "Found ${matches.size} matches for pkg=$targetPackageName, domain=$bestDomain")
+            android.util.Log.d(TAG, "Found ${matches.size} matching entries")
 
             if (matches.isEmpty()) {
                 android.util.Log.d(TAG, "No matches found, total entries in memory: ${vaultEntries.size}")

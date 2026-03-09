@@ -1,44 +1,52 @@
 import React, { useEffect, useState } from 'react';
-import { StatusBar, ActivityIndicator, View } from 'react-native';
+import {
+  StatusBar,
+  useColorScheme,
+  ActivityIndicator,
+  View,
+} from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Dashboard } from './src/Dashboard';
 import { initI18n } from './src/i18n';
-import { ThemeProvider, useTheme } from './src/ThemeContext';
+import { SecurityModule } from './src/SecurityModule';
 
-function AppContent(): React.JSX.Element {
-  const { colors, isDark } = useTheme();
+function App(): React.JSX.Element {
+  const isDarkMode = useColorScheme() === 'dark';
   const [i18nLoaded, setI18nLoaded] = useState(false);
+  const [darkModeSetting, setDarkModeSetting] = useState<boolean>(false);
 
   useEffect(() => {
-    initI18n().then(() => setI18nLoaded(true));
+    (async () => {
+      await initI18n();
+      try {
+        const darkMode = await SecurityModule.getSetting('darkMode');
+        setDarkModeSetting(darkMode === 'true');
+      } catch {}
+      setI18nLoaded(true);
+    })();
   }, []);
+
+  const useDark = darkModeSetting || isDarkMode;
+  const bg = useDark ? '#0b1220' : '#F0EEE9';
 
   if (!i18nLoaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={colors.sage} />
+      <View style={{ flex: 1, backgroundColor: bg, justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#72886f" />
       </View>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
         <StatusBar
-          barStyle={colors.statusBarStyle}
-          backgroundColor={colors.statusBarBg}
+          barStyle={useDark ? 'light-content' : 'dark-content'}
+          backgroundColor={bg}
         />
         <Dashboard />
       </SafeAreaView>
     </SafeAreaProvider>
-  );
-}
-
-function App(): React.JSX.Element {
-  return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
   );
 }
 

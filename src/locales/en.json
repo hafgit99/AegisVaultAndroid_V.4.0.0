@@ -8,7 +8,7 @@
     "bio_btn": "🔐 Biometric Unlock",
     "choose_lang": "Language / Dil Seç",
     "biometric_prompt": "Unlock Aegis Vault",
-    "biometric_fallback": "Use PIN",
+    "biometric_fallback": "Use device PIN/pattern/password",
     "locked": "Vault Locked",
     "unlocked": "Vault Unlocked",
     "auto_locked": "Auto-Locked",
@@ -18,11 +18,7 @@
     "error": "Error occurred",
     "retry": "You can try again",
     "failed_attempts": "Failed: {{count}} • wait {{seconds}}s",
-    "bio_not_found": "Biometrics not found",
-    "master_pw_placeholder": "Enter master password...",
-    "master_pw_btn": "🔑 Unlock with Password",
-    "master_pw_wrong": "Incorrect master password",
-    "master_pw_min": "Master password must be at least 8 characters"
+    "bio_not_found": "Biometrics not found"
   },
   "nav": {
     "vault": "Vault",
@@ -91,13 +87,6 @@
     "title": "TOTP Verification Code",
     "invalid": "⚠️ Invalid TOTP secret"
   },
-  "pw_strength": {
-    "none": "None",
-    "weak": "Weak",
-    "medium": "Medium",
-    "strong": "Strong",
-    "very_strong": "Very Strong"
-  },
   "generator": {
     "title": "Generate Strong Passwords",
     "subtitle": "Cryptographically secure & on-device PRNG",
@@ -118,6 +107,7 @@
     "subtitle": "Vault security configurations",
     "security": "🔐 Security",
     "bio_login": "Biometric Login",
+    "dark_mode": "🌙 Dark Mode",
     "auto_lock": "⏱️ Auto-Lock",
     "auto_lock_desc": "Lock vault after inactivity",
     "clipboard_clear": "📋 Clipboard Clear",
@@ -128,20 +118,13 @@
     "import_export": "Import / Export",
     "import_export_desc": "Bitwarden, 1Password, CSV, JSON and encrypted vaults",
     "cloud": "☁️ Cloud Synchronization",
-    "cloud_desc": "Encrypted remote WebDAV / HTTPS API storage",
+    "cloud_desc": "Encrypted remote WebDAV / HTTP API storage",
     "about": "ℹ️ About",
     "about_desc": "Aegis Vault Android v1.0.0\nSQLCipher + JSI + Argon2id",
     "lock_vault": "🔒 Lock Vault",
     "off": "Off",
     "sec": "sec",
     "min": "min",
-    "theme": {
-      "title": "🌓 Theme",
-      "light": "Light",
-      "dark": "Dark",
-      "system": "System",
-      "desc": "Choose the app appearance"
-    },
     "autofill": {
       "title": "🔑 Autofill (Auto-Fill)",
       "enable": "🔑 Enable Autofill Service",
@@ -149,20 +132,6 @@
       "support": "Android 8.0+ supported",
       "how_to": "📋 How to Use?",
       "steps": "1. Click the button above → select \"Aegis Vault\"\n2. Unlock the vault with biometrics (syncs automatically)\n3. Tap any password field in any app or browser\n4. Select the Aegis suggestion"
-    },
-    "master_pw": {
-      "title": "🔑 Master Password",
-      "set": "Set Master Password",
-      "set_desc": "Alternative login method alongside biometrics",
-      "remove": "Remove Master Password",
-      "set_placeholder": "New master password (min. 8 chars)",
-      "set_confirm": "Confirm master password",
-      "set_success": "Master password set successfully",
-      "set_error": "Failed to set master password",
-      "remove_confirm": "Are you sure you want to remove the master password?",
-      "removed": "Master password removed",
-      "mismatch": "Passwords do not match",
-      "too_short": "Password must be at least 8 characters"
     }
   },
   "cloud": {
@@ -174,7 +143,7 @@
     "info": "💡 Your vault is encrypted independently from the device database using AES-256-GCM before uploading. Following the Zero-Knowledge principle, nobody can read the data on the server.",
     "btn_up": "↑ Upload",
     "btn_down": "↓ Download",
-    "err_url": "Please enter a valid HTTPS URL. Plain HTTP connections are not allowed for security reasons.",
+    "err_url": "Please enter a valid URL (http:// or https://)",
     "err_len": "Cloud sync password must be at least 6 characters.",
     "success_up": "Vault has been securely uploaded to the cloud.",
     "success_down": "Vault synchronized. {{imported}} items imported, {{skipped}} skipped.",
@@ -240,8 +209,7 @@
     "cancel": "Cancel",
     "hdr": "Attachments",
     "hdr_sub": "{{count}} files",
-    "btn_add": "Add File",
-    "max_size": "Max. 50 MB"
+    "btn_add": "Add File"
   },
   "legal": {
     "terms": "Terms of Use",
@@ -289,36 +257,5 @@
     "factory_confirm": "CRITICAL: This will permanently delete everything and reset the app to its initial state. Are you absolutely sure?",
     "success": "Reset successful",
     "factory_success": "App has been factory reset. It will now restart."
-  },
-  "a11y": {
-    "lock_screen_logo": "Aegis Vault logo",
-    "bio_unlock_btn": "Biometric unlock button",
-    "bio_unlock_hint": "Double tap to unlock your vault with fingerprint or face recognition",
-    "master_pw_input": "Master password input field",
-    "master_pw_toggle": "Toggle master password visibility",
-    "master_pw_submit": "Sign in with master password button",
-    "lang_tr": "Switch language to Turkish",
-    "lang_en": "Switch language to English",
-    "vault_lock_btn": "Lock vault button",
-    "vault_trash_btn": "Recycle bin button",
-    "vault_donate_btn": "Donation button",
-    "search_clear": "Clear search",
-    "search_input": "Search through vault entries",
-    "category_filter": "Filter by {{category}} category",
-    "vault_item": "Entry named {{title}}, {{category}} category",
-    "add_new_btn": "Add new entry button",
-    "nav_tab": "Switch to {{label}} tab",
-    "gen_refresh": "Generate new password button",
-    "gen_copy": "Copy password to clipboard button",
-    "gen_length_dec": "Decrease password length",
-    "gen_length_inc": "Increase password length",
-    "detail_fav": "Toggle favorite status",
-    "detail_edit": "Edit entry button",
-    "detail_delete": "Delete entry button",
-    "modal_close": "Close dialog",
-    "pw_toggle": "Toggle password visibility",
-    "pw_copy": "Copy password",
-    "setting_toggle": "Toggle {{label}} setting",
-    "theme_option": "Select {{theme}} theme"
   }
 }

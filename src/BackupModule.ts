@@ -1,6 +1,4 @@
 import RNFS from 'react-native-fs';
-import pbkdf2 from 'react-native-quick-crypto';
-import { Buffer } from '@craftzdog/react-native-buffer';
 import { SecurityModule, VaultItem } from './SecurityModule';
 
 // ═══════════════════════════════════════════════════════════════
@@ -11,9 +9,18 @@ import { SecurityModule, VaultItem } from './SecurityModule';
 // ═══════════════════════════════════════════════════════════════
 
 export type ImportSource =
-  | 'bitwarden' | '1password' | 'lastpass' | 'keepass'
-  | 'chrome' | 'dashlane' | 'enpass' | 'firefox'
-  | 'aegis_auth' | 'aegis_vault' | 'generic_csv' | 'generic_json';
+  | 'bitwarden'
+  | '1password'
+  | 'lastpass'
+  | 'keepass'
+  | 'chrome'
+  | 'dashlane'
+  | 'enpass'
+  | 'firefox'
+  | 'aegis_auth'
+  | 'aegis_vault'
+  | 'generic_csv'
+  | 'generic_json';
 
 export interface ImportResult {
   total: number;
@@ -31,24 +38,86 @@ export interface ExportFormat {
 }
 
 export const getExportFormats = (t: any): ExportFormat[] => [
-  { id: 'csv', label: 'CSV', icon: '📊', description: t('backup.fmt_csv_desc') },
-  { id: 'json', label: 'JSON', icon: '📋', description: t('backup.fmt_json_desc') },
-  { id: 'aegis_encrypted', label: t('backup.fmt_aegis_lbl'), icon: '🔐', description: t('backup.fmt_aegis_desc') },
+  {
+    id: 'csv',
+    label: 'CSV',
+    icon: '📊',
+    description: t('backup.fmt_csv_desc'),
+  },
+  {
+    id: 'json',
+    label: 'JSON',
+    icon: '📋',
+    description: t('backup.fmt_json_desc'),
+  },
+  {
+    id: 'aegis_encrypted',
+    label: t('backup.fmt_aegis_lbl'),
+    icon: '🔐',
+    description: t('backup.fmt_aegis_desc'),
+  },
 ];
 
-export const getImportSources = (t: any): { id: ImportSource; label: string; icon: string; extensions: string[] }[] => [
-  { id: 'bitwarden', label: 'Bitwarden', icon: '🔷', extensions: ['.json', '.csv'] },
-  { id: '1password', label: '1Password', icon: '🔑', extensions: ['.csv', '.1pux', '.1pif'] },
+export const getImportSources = (
+  t: any,
+): {
+  id: ImportSource;
+  label: string;
+  icon: string;
+  extensions: string[];
+}[] => [
+  {
+    id: 'bitwarden',
+    label: 'Bitwarden',
+    icon: '🔷',
+    extensions: ['.json', '.csv'],
+  },
+  {
+    id: '1password',
+    label: '1Password',
+    icon: '🔑',
+    extensions: ['.csv', '.1pux', '.1pif'],
+  },
   { id: 'lastpass', label: 'LastPass', icon: '🔴', extensions: ['.csv'] },
   { id: 'keepass', label: 'KeePass', icon: '🟢', extensions: ['.csv', '.xml'] },
-  { id: 'chrome', label: t('backup.src_chrome'), icon: '🌐', extensions: ['.csv'] },
-  { id: 'dashlane', label: 'Dashlane', icon: '🟦', extensions: ['.csv', '.json'] },
+  {
+    id: 'chrome',
+    label: t('backup.src_chrome'),
+    icon: '🌐',
+    extensions: ['.csv'],
+  },
+  {
+    id: 'dashlane',
+    label: 'Dashlane',
+    icon: '🟦',
+    extensions: ['.csv', '.json'],
+  },
   { id: 'enpass', label: 'Enpass', icon: '🟣', extensions: ['.csv', '.json'] },
   { id: 'firefox', label: 'Firefox', icon: '🦊', extensions: ['.csv'] },
-  { id: 'aegis_auth', label: 'Aegis Authenticator', icon: '🛡️', extensions: ['.json'] },
-  { id: 'aegis_vault', label: t('backup.src_aegis'), icon: '🏛️', extensions: ['.json', '.aegis'] },
-  { id: 'generic_csv', label: t('backup.src_gn_csv'), icon: '📄', extensions: ['.csv'] },
-  { id: 'generic_json', label: t('backup.src_gn_json'), icon: '📃', extensions: ['.json'] },
+  {
+    id: 'aegis_auth',
+    label: 'Aegis Authenticator',
+    icon: '🛡️',
+    extensions: ['.json'],
+  },
+  {
+    id: 'aegis_vault',
+    label: t('backup.src_aegis'),
+    icon: '🏛️',
+    extensions: ['.json', '.aegis'],
+  },
+  {
+    id: 'generic_csv',
+    label: t('backup.src_gn_csv'),
+    icon: '📄',
+    extensions: ['.csv'],
+  },
+  {
+    id: 'generic_json',
+    label: t('backup.src_gn_json'),
+    icon: '📃',
+    extensions: ['.json'],
+  },
 ];
 
 // ─── CSV Parser (handles quoted fields, commas in values, newlines) ──────────
@@ -64,7 +133,8 @@ function parseCSV(text: string): string[][] {
 
     if (inQuotes) {
       if (ch === '"' && next === '"') {
-        current += '"'; i++;
+        current += '"';
+        i++;
       } else if (ch === '"') {
         inQuotes = false;
       } else {
@@ -74,9 +144,11 @@ function parseCSV(text: string): string[][] {
       if (ch === '"') {
         inQuotes = true;
       } else if (ch === ',') {
-        row.push(current.trim()); current = '';
+        row.push(current.trim());
+        current = '';
       } else if (ch === '\n' || (ch === '\r' && next === '\n')) {
-        row.push(current.trim()); current = '';
+        row.push(current.trim());
+        current = '';
         if (row.some(c => c !== '')) rows.push(row);
         row = [];
         if (ch === '\r') i++;
@@ -119,30 +191,77 @@ function getVal(row: string[], idx: number): string {
 // ═══════════════════════════════════════════════════════════════
 
 export class BackupModule {
-
   // ── Main import entry ──────────────────────────────────────
-  static async importFromFile(filePath: string, source: ImportSource): Promise<ImportResult> {
-    const result: ImportResult = { total: 0, imported: 0, skipped: 0, errors: [], source };
+  static async importFromFile(
+    filePath: string,
+    source: ImportSource,
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      total: 0,
+      imported: 0,
+      skipped: 0,
+      errors: [],
+      source,
+    };
     try {
       const content = await RNFS.readFile(filePath, 'utf8');
-      if (!content.trim()) { result.errors.push('Dosya boş.'); return result; }
+      if (!content.trim()) {
+        result.errors.push('Dosya boş.');
+        return result;
+      }
 
       const ext = filePath.toLowerCase().split('.').pop() || '';
       let items: Partial<VaultItem>[] = [];
 
       switch (source) {
-        case 'bitwarden':    items = ext === 'csv' ? this.parseBitwardenCSV(content) : this.parseBitwardenJSON(content); break;
-        case '1password':    items = this.parse1Password(content, ext); break;
-        case 'lastpass':     items = this.parseLastPassCSV(content); break;
-        case 'keepass':      items = ext === 'xml' ? this.parseKeePassXML(content) : this.parseKeePassCSV(content); break;
-        case 'chrome':       items = this.parseChromeCSV(content); break;
-        case 'dashlane':     items = ext === 'csv' ? this.parseDashlaneCSV(content) : this.parseDashlaneJSON(content); break;
-        case 'enpass':       items = ext === 'csv' ? this.parseEnpassCSV(content) : this.parseEnpassJSON(content); break;
-        case 'firefox':      items = this.parseFirefoxCSV(content); break;
-        case 'aegis_auth':   items = this.parseAegisAuthJSON(content); break;
-        case 'aegis_vault':  items = this.parseAegisVaultJSON(content); break;
-        case 'generic_csv':  items = this.parseGenericCSV(content); break;
-        case 'generic_json': items = this.parseGenericJSON(content); break;
+        case 'bitwarden':
+          items =
+            ext === 'csv'
+              ? this.parseBitwardenCSV(content)
+              : this.parseBitwardenJSON(content);
+          break;
+        case '1password':
+          items = this.parse1Password(content, ext);
+          break;
+        case 'lastpass':
+          items = this.parseLastPassCSV(content);
+          break;
+        case 'keepass':
+          items =
+            ext === 'xml'
+              ? this.parseKeePassXML(content)
+              : this.parseKeePassCSV(content);
+          break;
+        case 'chrome':
+          items = this.parseChromeCSV(content);
+          break;
+        case 'dashlane':
+          items =
+            ext === 'csv'
+              ? this.parseDashlaneCSV(content)
+              : this.parseDashlaneJSON(content);
+          break;
+        case 'enpass':
+          items =
+            ext === 'csv'
+              ? this.parseEnpassCSV(content)
+              : this.parseEnpassJSON(content);
+          break;
+        case 'firefox':
+          items = this.parseFirefoxCSV(content);
+          break;
+        case 'aegis_auth':
+          items = this.parseAegisAuthJSON(content);
+          break;
+        case 'aegis_vault':
+          items = this.parseAegisVaultJSON(content);
+          break;
+        case 'generic_csv':
+          items = this.parseGenericCSV(content);
+          break;
+        case 'generic_json':
+          items = this.parseGenericJSON(content);
+          break;
       }
 
       result.total = items.length;
@@ -156,7 +275,9 @@ export class BackupModule {
           result.imported++;
         } catch (e: any) {
           result.skipped++;
-          result.errors.push(`"${item.title}": ${e?.message || 'Bilinmeyen hata'}`);
+          result.errors.push(
+            `"${item.title}": ${e?.message || 'Bilinmeyen hata'}`,
+          );
         }
       }
     } catch (e: any) {
@@ -189,7 +310,8 @@ export class BackupModule {
       let category = 'login';
       if (type === 'card' || type === '3') category = 'card';
       else if (type === 'identity' || type === '4') category = 'identity';
-      else if (type === 'note' || type === 'securenote' || type === '2') category = 'note';
+      else if (type === 'note' || type === 'securenote' || type === '2')
+        category = 'note';
 
       const data: any = {};
       if (getVal(r, ci.totp)) data.totp_secret = getVal(r, ci.totp);
@@ -210,7 +332,6 @@ export class BackupModule {
   // ── Bitwarden JSON ─────────────────────────────────────────
   private static parseBitwardenJSON(content: string): Partial<VaultItem>[] {
     const json = JSON.parse(content);
-    const items = json.items || json.encrypted ? [] : (json.items || []);
     if (json.encrypted) return [];
 
     return (json.items || []).map((item: any) => {
@@ -238,7 +359,16 @@ export class BackupModule {
         data.email = id.email || '';
         data.phone = id.phone || '';
         data.company = id.company || '';
-        data.address = [id.address1, id.address2, id.city, id.state, id.postalCode, id.country].filter(Boolean).join(', ');
+        data.address = [
+          id.address1,
+          id.address2,
+          id.city,
+          id.state,
+          id.postalCode,
+          id.country,
+        ]
+          .filter(Boolean)
+          .join(', ');
       }
 
       if (item.type === 2) {
@@ -250,7 +380,7 @@ export class BackupModule {
         username: login.username || '',
         password: login.password || '',
         url: login.uris?.[0]?.uri || '',
-        notes: item.type !== 2 ? (item.notes || '') : '',
+        notes: item.type !== 2 ? item.notes || '' : '',
         category,
         favorite: item.favorite ? 1 : 0,
         data: JSON.stringify(data),
@@ -259,12 +389,18 @@ export class BackupModule {
   }
 
   // ── 1Password ──────────────────────────────────────────────
-  private static parse1Password(content: string, ext: string): Partial<VaultItem>[] {
+  private static parse1Password(
+    content: string,
+    ext: string,
+  ): Partial<VaultItem>[] {
     if (ext === 'csv') return this.parse1PasswordCSV(content);
     if (ext === '1pux' || ext === '1pif') {
       // 1pux is a zip; 1pif is line-delimited JSON — both are JSON-based
-      try { return this.parse1PasswordJSON(content); }
-      catch { return this.parseGenericJSON(content); }
+      try {
+        return this.parse1PasswordJSON(content);
+      } catch {
+        return this.parseGenericJSON(content);
+      }
     }
     return [];
   }
@@ -296,22 +432,34 @@ export class BackupModule {
   private static parse1PasswordJSON(content: string): Partial<VaultItem>[] {
     // Handle both raw 1pif and exported JSON
     const lines = content.split('\n').filter(l => l.trim().startsWith('{'));
-    return lines.map(line => {
-      try {
-        const item = JSON.parse(line);
-        const fields = item.secureContents || item.details || {};
-        return {
-          title: item.title || item.name || '',
-          username: fields.username || fields.fields?.find?.((f: any) => f.designation === 'username')?.value || '',
-          password: fields.password || fields.fields?.find?.((f: any) => f.designation === 'password')?.value || '',
-          url: item.location || fields.URLs?.[0]?.url || '',
-          notes: fields.notesPlain || item.notes || '',
-          category: 'login',
-          favorite: item.faveIndex ? 1 : 0,
-          data: '{}',
-        };
-      } catch { return null; }
-    }).filter(Boolean) as Partial<VaultItem>[];
+    return lines
+      .map(line => {
+        try {
+          const item = JSON.parse(line);
+          const fields = item.secureContents || item.details || {};
+          return {
+            title: item.title || item.name || '',
+            username:
+              fields.username ||
+              fields.fields?.find?.((f: any) => f.designation === 'username')
+                ?.value ||
+              '',
+            password:
+              fields.password ||
+              fields.fields?.find?.((f: any) => f.designation === 'password')
+                ?.value ||
+              '',
+            url: item.location || fields.URLs?.[0]?.url || '',
+            notes: fields.notesPlain || item.notes || '',
+            category: 'login',
+            favorite: item.faveIndex ? 1 : 0,
+            data: '{}',
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean) as Partial<VaultItem>[];
   }
 
   // ── LastPass CSV ───────────────────────────────────────────
@@ -334,7 +482,8 @@ export class BackupModule {
       if (getVal(r, ci.totp)) data.totp_secret = getVal(r, ci.totp);
       const url = getVal(r, ci.url);
       return {
-        title: getVal(r, ci.name) || (url !== 'http://sn' ? url : 'Güvenli Not'),
+        title:
+          getVal(r, ci.name) || (url !== 'http://sn' ? url : 'Güvenli Not'),
         username: getVal(r, ci.user),
         password: getVal(r, ci.pass),
         url: url === 'http://sn' ? '' : url,
@@ -379,7 +528,10 @@ export class BackupModule {
     while ((match = entryRegex.exec(content)) !== null) {
       const entry = match[1];
       const getString = (key: string): string => {
-        const regex = new RegExp(`<String>\\s*<Key>${key}</Key>\\s*<Value[^>]*>([^<]*)</Value>\\s*</String>`, 'i');
+        const regex = new RegExp(
+          `<String>\\s*<Key>${key}</Key>\\s*<Value[^>]*>([^<]*)</Value>\\s*</String>`,
+          'i',
+        );
         const m = entry.match(regex);
         return m ? m[1] : '';
       };
@@ -413,11 +565,21 @@ export class BackupModule {
       const url = getVal(r, ci.url);
       let title = getVal(r, ci.name);
       if (!title && url) {
-        try { title = new URL(url).hostname; } catch { title = url; }
+        try {
+          title = new URL(url).hostname;
+        } catch {
+          title = url;
+        }
       }
       return {
-        title, username: getVal(r, ci.user), password: getVal(r, ci.pass),
-        url, notes: getVal(r, ci.note), category: 'login', favorite: 0, data: '{}',
+        title,
+        username: getVal(r, ci.user),
+        password: getVal(r, ci.pass),
+        url,
+        notes: getVal(r, ci.note),
+        category: 'login',
+        favorite: 0,
+        data: '{}',
       };
     });
   }
@@ -437,9 +599,13 @@ export class BackupModule {
     };
     return rows.slice(1).map(r => ({
       title: getVal(r, ci.title) || getVal(r, ci.url),
-      username: getVal(r, ci.user), password: getVal(r, ci.pass),
-      url: getVal(r, ci.url), notes: getVal(r, ci.notes),
-      category: 'login', favorite: 0, data: '{}',
+      username: getVal(r, ci.user),
+      password: getVal(r, ci.pass),
+      url: getVal(r, ci.url),
+      notes: getVal(r, ci.notes),
+      category: 'login',
+      favorite: 0,
+      data: '{}',
     }));
   }
 
@@ -453,7 +619,9 @@ export class BackupModule {
       password: item.password || '',
       url: item.domain || item.url || '',
       notes: item.note || '',
-      category: 'login', favorite: item.favorite ? 1 : 0, data: '{}',
+      category: 'login',
+      favorite: item.favorite ? 1 : 0,
+      data: '{}',
     }));
   }
 
@@ -471,25 +639,39 @@ export class BackupModule {
       cat: findCol(h, ['category', 'type']),
     };
     return rows.slice(1).map(r => ({
-      title: getVal(r, ci.title), username: getVal(r, ci.user),
-      password: getVal(r, ci.pass), url: getVal(r, ci.url),
-      notes: getVal(r, ci.notes), category: 'login', favorite: 0, data: '{}',
+      title: getVal(r, ci.title),
+      username: getVal(r, ci.user),
+      password: getVal(r, ci.pass),
+      url: getVal(r, ci.url),
+      notes: getVal(r, ci.notes),
+      category: 'login',
+      favorite: 0,
+      data: '{}',
     }));
   }
 
   // ── Enpass JSON ────────────────────────────────────────────
   private static parseEnpassJSON(content: string): Partial<VaultItem>[] {
     const json = JSON.parse(content);
-    const items = json.items || json.folders?.flatMap?.((f: any) => f.items || []) || [];
+    const items =
+      json.items || json.folders?.flatMap?.((f: any) => f.items || []) || [];
     return items.map((item: any) => {
       const fields = item.fields || [];
-      const getField = (label: string) => fields.find((f: any) =>
-        f.label?.toLowerCase().includes(label) || f.type?.toLowerCase().includes(label)
-      )?.value || '';
+      const getField = (label: string) =>
+        fields.find(
+          (f: any) =>
+            f.label?.toLowerCase().includes(label) ||
+            f.type?.toLowerCase().includes(label),
+        )?.value || '';
       return {
-        title: item.title || '', username: getField('username') || getField('email'),
-        password: getField('password'), url: getField('url') || getField('website'),
-        notes: item.note || '', category: 'login', favorite: item.favorite ? 1 : 0, data: '{}',
+        title: item.title || '',
+        username: getField('username') || getField('email'),
+        password: getField('password'),
+        url: getField('url') || getField('website'),
+        notes: item.note || '',
+        category: 'login',
+        favorite: item.favorite ? 1 : 0,
+        data: '{}',
       };
     });
   }
@@ -509,10 +691,20 @@ export class BackupModule {
     return rows.slice(1).map(r => {
       const url = getVal(r, ci.url);
       let title = '';
-      try { title = new URL(url).hostname; } catch { title = url; }
+      try {
+        title = new URL(url).hostname;
+      } catch {
+        title = url;
+      }
       return {
-        title, username: getVal(r, ci.user), password: getVal(r, ci.pass),
-        url, notes: '', category: 'login', favorite: 0, data: '{}',
+        title,
+        username: getVal(r, ci.user),
+        password: getVal(r, ci.pass),
+        url,
+        notes: '',
+        category: 'login',
+        favorite: 0,
+        data: '{}',
       };
     });
   }
@@ -529,7 +721,11 @@ export class BackupModule {
         username: entry.name || '',
         password: '',
         url: '',
-        notes: `OTP Type: ${entry.type || 'TOTP'}\nAlgorithm: ${entry.info?.algo || 'SHA1'}\nDigits: ${entry.info?.digits || 6}\nPeriod: ${entry.info?.period || 30}`,
+        notes: `OTP Type: ${entry.type || 'TOTP'}\nAlgorithm: ${
+          entry.info?.algo || 'SHA1'
+        }\nDigits: ${entry.info?.digits || 6}\nPeriod: ${
+          entry.info?.period || 30
+        }`,
         category: 'login',
         favorite: entry.favorite ? 1 : 0,
         data: JSON.stringify(data),
@@ -567,11 +763,44 @@ export class BackupModule {
     if (rows.length < 2) return [];
     const h = rows[0];
     const ci = {
-      title: findCol(h, ['title', 'name', 'site', 'service', 'account', 'entry', 'label']),
-      user: findCol(h, ['username', 'user', 'login', 'email', 'e-mail', 'mail', 'account']),
+      title: findCol(h, [
+        'title',
+        'name',
+        'site',
+        'service',
+        'account',
+        'entry',
+        'label',
+      ]),
+      user: findCol(h, [
+        'username',
+        'user',
+        'login',
+        'email',
+        'e-mail',
+        'mail',
+        'account',
+      ]),
       pass: findCol(h, ['password', 'pass', 'secret', 'pwd']),
-      url: findCol(h, ['url', 'website', 'site', 'domain', 'uri', 'web', 'link', 'address']),
-      notes: findCol(h, ['notes', 'note', 'comments', 'comment', 'description', 'extra', 'memo']),
+      url: findCol(h, [
+        'url',
+        'website',
+        'site',
+        'domain',
+        'uri',
+        'web',
+        'link',
+        'address',
+      ]),
+      notes: findCol(h, [
+        'notes',
+        'note',
+        'comments',
+        'comment',
+        'description',
+        'extra',
+        'memo',
+      ]),
       cat: findCol(h, ['category', 'type', 'group', 'folder', 'tag']),
     };
     // If no recognizable columns, treat first cols as title,user,pass,url,notes
@@ -584,24 +813,42 @@ export class BackupModule {
     }
     return rows.slice(1).map(r => ({
       title: getVal(r, ci.title) || getVal(r, ci.url) || 'İçe Aktarılan',
-      username: getVal(r, ci.user), password: getVal(r, ci.pass),
-      url: getVal(r, ci.url), notes: getVal(r, ci.notes),
+      username: getVal(r, ci.user),
+      password: getVal(r, ci.pass),
+      url: getVal(r, ci.url),
+      notes: getVal(r, ci.notes),
       category: this.mapCategory(getVal(r, ci.cat)),
-      favorite: 0, data: '{}',
+      favorite: 0,
+      data: '{}',
     }));
   }
 
   // ── Generic JSON ───────────────────────────────────────────
   private static parseGenericJSON(content: string): Partial<VaultItem>[] {
     const json = JSON.parse(content);
-    const items = Array.isArray(json) ? json : (json.items || json.entries || json.passwords || json.data || json.logins || []);
+    const items = Array.isArray(json)
+      ? json
+      : json.items ||
+        json.entries ||
+        json.passwords ||
+        json.data ||
+        json.logins ||
+        [];
     return items.map((item: any) => ({
-      title: item.title || item.name || item.site || item.service || item.label || '',
+      title:
+        item.title ||
+        item.name ||
+        item.site ||
+        item.service ||
+        item.label ||
+        '',
       username: item.username || item.user || item.login || item.email || '',
       password: item.password || item.pass || item.secret || '',
       url: item.url || item.website || item.domain || item.uri || '',
       notes: item.notes || item.note || item.description || item.comments || '',
-      category: this.mapCategory(item.category || item.type || item.group || ''),
+      category: this.mapCategory(
+        item.category || item.type || item.group || '',
+      ),
       favorite: item.favorite || item.fav ? 1 : 0,
       data: item.data || '{}',
     }));
@@ -610,18 +857,31 @@ export class BackupModule {
   private static mapCategory(cat: string): string {
     if (!cat) return 'login';
     const l = cat.toLowerCase();
-    if (l.includes('card') || l.includes('payment') || l.includes('credit')) return 'card';
-    if (l.includes('identity') || l.includes('id') || l.includes('personal')) return 'identity';
-    if (l.includes('note') || l.includes('secure') || l.includes('memo')) return 'note';
-    if (l.includes('wifi') || l.includes('wireless') || l.includes('network')) return 'wifi';
+    if (l.includes('card') || l.includes('payment') || l.includes('credit'))
+      return 'card';
+    if (l.includes('identity') || l.includes('id') || l.includes('personal'))
+      return 'identity';
+    if (l.includes('note') || l.includes('secure') || l.includes('memo'))
+      return 'note';
+    if (l.includes('wifi') || l.includes('wireless') || l.includes('network'))
+      return 'wifi';
     return 'login';
   }
 
   // ═══════════════════════════════════════════════════════════════
   // IMPORT ENCRYPTED AEGIS (AES-256-GCM)
   // ═══════════════════════════════════════════════════════════════
-  static async importEncryptedAegis(filePath: string, password: string): Promise<ImportResult> {
-    const result: ImportResult = { total: 0, imported: 0, skipped: 0, errors: [], source: 'aegis_vault' };
+  static async importEncryptedAegis(
+    filePath: string,
+    password: string,
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      total: 0,
+      imported: 0,
+      skipped: 0,
+      errors: [],
+      source: 'aegis_vault',
+    };
     try {
       const content = await RNFS.readFile(filePath, 'utf8');
       const json = JSON.parse(content);
@@ -633,25 +893,20 @@ export class BackupModule {
 
       let plaintext: string;
 
-      if (json.algorithm === 'AES-256-GCM' && json.authTag) {
-        // New AES-256-GCM format
-        plaintext = await SecurityModule.decryptAES256GCM(
-          json.data, password, json.salt, json.iv, json.authTag
+      if (json.algorithm !== 'AES-256-GCM' || !json.authTag) {
+        result.errors.push(
+          'Eski veya guvensiz sifreleme formati desteklenmiyor.',
         );
-      } else {
-        // Legacy XOR format fallback (for old backups)
-        const keyBuf = await new Promise<Buffer>((resolve, reject) => {
-          pbkdf2.pbkdf2(password, json.salt, json.iterations || 310000, 32, 'sha256',
-            (e: any, k: any) => e ? reject(e) : resolve(k));
-        });
-        const encData = Buffer.from(json.data, 'base64');
-        const decrypted: number[] = [];
-        for (let i = 0; i < encData.length; i++) {
-          decrypted.push(encData[i] ^ keyBuf[i % keyBuf.length]);
-        }
-        plaintext = Buffer.from(decrypted).toString('utf8');
-        for (let i = 0; i < keyBuf.length; i++) (keyBuf as any)[i] = 0;
+        return result;
       }
+
+      plaintext = await SecurityModule.decryptAES256GCM(
+        json.data,
+        password,
+        json.salt,
+        json.iv,
+        json.authTag,
+      );
 
       const items = JSON.parse(plaintext);
       result.total = items.length;
@@ -665,7 +920,11 @@ export class BackupModule {
         }
       }
     } catch (e: any) {
-      result.errors.push(`Şifre çözme hatası: ${e?.message || 'Geçersiz şifre veya bozuk dosya'}`);
+      result.errors.push(
+        `Şifre çözme hatası: ${
+          e?.message || 'Geçersiz şifre veya bozuk dosya'
+        }`,
+      );
     }
     return result;
   }
@@ -678,13 +937,22 @@ export class BackupModule {
     const items = await SecurityModule.getItems();
     const header = 'title,username,password,url,notes,category,favorite,data';
     const rows = items.map(item =>
-      [item.title, item.username, item.password, item.url, item.notes, item.category, item.favorite, item.data]
+      [
+        item.title,
+        item.username,
+        item.password,
+        item.url,
+        item.notes,
+        item.category,
+        item.favorite,
+        item.data,
+      ]
         .map(v => escapeCSV(String(v ?? '')))
-        .join(',')
+        .join(','),
     );
     const csv = [header, ...rows].join('\n');
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = `${RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath}/aegis_vault_export_${ts}.csv`;
+    const path = `${RNFS.DocumentDirectoryPath}/aegis_vault_export_${ts}.csv`;
     await RNFS.writeFile(path, csv, 'utf8');
     return path;
   }
@@ -696,22 +964,23 @@ export class BackupModule {
       app: 'Aegis Vault Android',
       exported_at: new Date().toISOString(),
       count: items.length,
-      items: items.map(({ id, ...rest }) => rest),
+      items: items.map(({ id: _id, ...rest }) => rest),
     };
     const json = JSON.stringify(exportData, null, 2);
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = `${RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath}/aegis_vault_export_${ts}.json`;
+    const path = `${RNFS.DocumentDirectoryPath}/aegis_vault_export_${ts}.json`;
     await RNFS.writeFile(path, json, 'utf8');
     return path;
   }
 
   static async exportEncrypted(password: string): Promise<string> {
     const items = await SecurityModule.getItems();
-    const plainItems = items.map(({ id, ...rest }) => rest);
+    const plainItems = items.map(({ id: _id, ...rest }) => rest);
     const plaintext = JSON.stringify(plainItems);
 
     // AES-256-GCM encryption (proper authenticated encryption)
-    const { salt, iv, authTag, ciphertext } = await SecurityModule.encryptAES256GCM(plaintext, password);
+    const { salt, iv, authTag, ciphertext } =
+      await SecurityModule.encryptAES256GCM(plaintext, password);
 
     const exportData = {
       version: '2.0.0',
@@ -729,7 +998,7 @@ export class BackupModule {
     };
 
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = `${RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath}/aegis_vault_encrypted_${ts}.aegis`;
+    const path = `${RNFS.DocumentDirectoryPath}/aegis_vault_encrypted_${ts}.aegis`;
     await RNFS.writeFile(path, JSON.stringify(exportData, null, 2), 'utf8');
 
     return path;
@@ -744,8 +1013,10 @@ export class BackupModule {
     try {
       if (ext === 'json') {
         const json = JSON.parse(content.substring(0, 5000));
-        if (json.db?.entries && (json.header || json.version)) return 'aegis_auth';
-        if (json.app === 'Aegis Vault Android' || json.encrypted) return 'aegis_vault';
+        if (json.db?.entries && (json.header || json.version))
+          return 'aegis_auth';
+        if (json.app === 'Aegis Vault Android' || json.encrypted)
+          return 'aegis_vault';
         if (json.items && json.folders !== undefined) return 'bitwarden';
         if (json.AUTHENTIFIANT || json.credentials) return 'dashlane';
         if (json.items?.[0]?.fields) return 'enpass';
@@ -760,13 +1031,31 @@ export class BackupModule {
     // CSV header detection
     if (ext === 'csv') {
       const firstLine = content.split('\n')[0].toLowerCase();
-      if (firstLine.includes('login_uri') || firstLine.includes('login_username')) return 'bitwarden';
-      if (firstLine.includes('grouping') && firstLine.includes('fav')) return 'lastpass';
-      if (firstLine.includes('origin_url') || (firstLine.includes('name') && firstLine.includes('url') && firstLine.includes('password') && !firstLine.includes('notes'))) return 'chrome';
-      if (firstLine.includes('httprealm') || firstLine.includes('formactionorigin')) return 'firefox';
-      if (firstLine.includes('cardholder') || firstLine.includes('login_name')) return 'dashlane';
+      if (
+        firstLine.includes('login_uri') ||
+        firstLine.includes('login_username')
+      )
+        return 'bitwarden';
+      if (firstLine.includes('grouping') && firstLine.includes('fav'))
+        return 'lastpass';
+      if (
+        firstLine.includes('origin_url') ||
+        (firstLine.includes('name') &&
+          firstLine.includes('url') &&
+          firstLine.includes('password') &&
+          !firstLine.includes('notes'))
+      )
+        return 'chrome';
+      if (
+        firstLine.includes('httprealm') ||
+        firstLine.includes('formactionorigin')
+      )
+        return 'firefox';
+      if (firstLine.includes('cardholder') || firstLine.includes('login_name'))
+        return 'dashlane';
       // KeePass: "Account","Login Name","Password","Web Site","Comments"
-      if (firstLine.includes('account') && firstLine.includes('web site')) return 'keepass';
+      if (firstLine.includes('account') && firstLine.includes('web site'))
+        return 'keepass';
       return 'generic_csv';
     }
 

@@ -9,23 +9,19 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
 
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    window.setFlags(
+      WindowManager.LayoutParams.FLAG_SECURE,
+      WindowManager.LayoutParams.FLAG_SECURE,
+    )
+  }
+
   /**
    * Returns the name of the main component registered from JavaScript. This is used to schedule
    * rendering of the component.
    */
   override fun getMainComponentName(): String = "AegisAndroid"
-
-  /**
-   * FLAG_SECURE — Prevent screenshots, screen recording, and app switcher previews.
-   * Critical security measure for a password manager.
-   */
-  override fun onCreate(savedInstanceState: Bundle?) {
-      super.onCreate(savedInstanceState)
-      window.setFlags(
-          WindowManager.LayoutParams.FLAG_SECURE,
-          WindowManager.LayoutParams.FLAG_SECURE
-      )
-  }
 
   /**
    * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
