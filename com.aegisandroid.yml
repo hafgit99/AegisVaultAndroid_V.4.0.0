@@ -21,14 +21,14 @@ Builds:
     gradle:
       - yes
     output: app/build/outputs/apk/release/app-release.apk
-    prebuild:
-      - npm ci
+    prebuild: npm --prefix .. ci
     scanignore:
       - node_modules/react-native-safe-area-context/android/build.gradle
       - node_modules/react-native-biometrics/android/build.gradle
       - node_modules/react-native-svg/android/build.gradle
       - node_modules/react-native/ReactAndroid/publish.gradle
       - node_modules/@react-native/gradle-plugin/
+      - node_modules/react-native-quick-crypto/deps/blake3/
     scandelete:
       - hermes-win.tar.gz
       - node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec
@@ -39,6 +39,9 @@ Builds:
       - node_modules/fb-dotslash
       - node_modules/react-native/React/I18n/strings
     ndk: r27c
+    gradleprops:
+      - org.gradle.java.installations.auto-detect=true
+      - org.gradle.java.installations.auto-download=true
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags

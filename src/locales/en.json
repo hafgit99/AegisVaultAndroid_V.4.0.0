@@ -18,7 +18,9 @@
     "error": "Error occurred",
     "retry": "You can try again",
     "failed_attempts": "Failed: {{count}} • wait {{seconds}}s",
-    "bio_not_found": "Biometrics not found"
+    "bio_not_found": "Biometrics not found",
+    "integrity_warning_title": "⚠️ Device integrity risk detected",
+    "integrity_warning_desc": "Risk level: {{level}} • Trust score: {{score}}/100"
   },
   "nav": {
     "vault": "Vault",
@@ -40,6 +42,7 @@
     "categories": {
       "all": "All",
       "login": "Logins",
+      "passkey": "Passkeys",
       "card": "Cards",
       "identity": "Identities",
       "note": "Notes",
@@ -72,6 +75,11 @@
     "ssid": "Network Name (SSID)",
     "wifi_password": "Network Password",
     "security": "Security Type",
+    "passkey_rp_id": "RP ID (Domain)",
+    "passkey_credential_id": "Credential ID",
+    "passkey_user_handle": "User Handle",
+    "passkey_display_name": "Passkey Name",
+    "passkey_transport": "Transport",
     "copied": "Copied",
     "copy": "Copy",
     "copied_symbol": "✓",
@@ -132,6 +140,59 @@
       "support": "Android 8.0+ supported",
       "how_to": "📋 How to Use?",
       "steps": "1. Click the button above → select \"Aegis Vault\"\n2. Unlock the vault with biometrics (syncs automatically)\n3. Tap any password field in any app or browser\n4. Select the Aegis suggestion"
+    },
+    "integrity": {
+      "title": "🛡️ Device Integrity",
+      "checking": "Checking device integrity signals...",
+      "status": "Risk: {{level}} • Score: {{score}}/100",
+      "level_low": "Low",
+      "level_medium": "Medium",
+      "level_high": "High",
+      "level_critical": "Critical",
+      "yes": "Yes",
+      "no": "No",
+      "on": "On",
+      "off": "Off",
+      "rooted": "Root/Magisk traces",
+      "test_keys": "Test-keys build",
+      "adb": "ADB debug",
+      "debug": "Debug build",
+      "emulator": "Emulator",
+      "reasons": "Signals",
+      "reason_root_artifacts_detected": "Root artifacts detected",
+      "reason_test_keys_build": "Test-keys build",
+      "reason_debug_build": "Debug build",
+      "reason_adb_enabled": "ADB enabled",
+      "reason_emulator_environment": "Emulator environment"
+    },
+    "audit": {
+      "title": "📜 Security Audit Log",
+      "loading": "Loading logs...",
+      "count": "Recent events: {{count}}",
+      "empty": "No security events yet.",
+      "clear_title": "Clear Audit Logs",
+      "clear_confirm": "Clear all security audit events?",
+      "clear_btn": "Clear",
+      "status": {
+        "success": "Success",
+        "failed": "Failed",
+        "blocked": "Blocked",
+        "info": "Info"
+      },
+      "events": {
+        "vault_unlock": "Vault unlock",
+        "biometric_reset": "Biometric reset",
+        "factory_reset": "Factory reset",
+        "critical_setting_changed": "Critical setting changed",
+        "backup_export_csv": "CSV export",
+        "backup_export_json": "JSON export",
+        "backup_export_encrypted": "Encrypted export",
+        "backup_import": "Import from file",
+        "backup_import_encrypted": "Encrypted import",
+        "cloud_sync_upload": "Cloud upload",
+        "cloud_sync_download": "Cloud download",
+        "audit_log_cleared": "Audit logs cleared"
+      }
     }
   },
   "cloud": {
@@ -140,6 +201,9 @@
     "token_label": "Auth Token",
     "pw_label": "Vault Encryption/Decryption Password",
     "pw_ph": "Cloud backup password",
+    "pin_label": "TLS Certificate Pin",
+    "pin_required": "Certificate pin is required.",
+    "pin_format": "Format: sha256/<base64>",
     "info": "💡 Your vault is encrypted independently from the device database using AES-256-GCM before uploading. Following the Zero-Knowledge principle, nobody can read the data on the server.",
     "btn_up": "↑ Upload",
     "btn_down": "↓ Download",
@@ -247,6 +311,16 @@
     "empty_confirm": "Are you sure you want to permanently delete all items in the bin?",
     "delete_perm_confirm": "This item will be permanently deleted. This action cannot be undone.",
     "restored": "Item restored"
+  },
+  "history": {
+    "title": "Password History",
+    "loading": "Loading password history...",
+    "empty": "No password history for this entry.",
+    "restore_title": "Restore From History",
+    "restore_confirm": "Restore the selected historical value as the current secret?",
+    "restore_btn": "Restore",
+    "restore_success": "Historical password restored.",
+    "restore_failed": "Failed to restore from password history."
   },
   "reset": {
     "vault_title": "Reset Vault",

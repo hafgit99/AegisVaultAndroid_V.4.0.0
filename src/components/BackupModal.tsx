@@ -29,8 +29,8 @@ const C = {
   sage: '#72886f',
   sageLight: 'rgba(114,136,111,0.12)',
   sageMid: 'rgba(114,136,111,0.25)',
-  card: 'rgba(255,255,255,0.45)',
-  cardBorder: 'rgba(255,255,255,0.55)',
+  card: 'rgba(255,255,255,0.98)',
+  cardBorder: 'rgba(16,24,40,0.12)',
   red: '#ef4444',
   redBg: 'rgba(239,68,68,0.08)',
   green: '#22c55e',
@@ -38,8 +38,8 @@ const C = {
   cyan: '#06b6d4',
   white: '#fff',
   muted: 'rgba(16,24,40,0.45)',
-  divider: 'rgba(16,24,40,0.06)',
-  inputBg: 'rgba(255,255,255,0.7)',
+  divider: 'rgba(16,24,40,0.08)',
+  inputBg: 'rgba(255,255,255,0.95)',
   amber: '#f59e0b',
   amberBg: 'rgba(245,158,11,0.08)',
 };
@@ -66,27 +66,39 @@ export const BackupModal = ({
   const [exportPath, setExportPath] = useState<string | null>(null);
 
   // Import states
-  const [selectedSource, setSelectedSource] = useState<ImportSource | null>(
-    null,
-  );
-  const [showSourcePicker, setShowSourcePicker] = useState(false);
 
   // Encrypted export states
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [encryptPassword, setEncryptPassword] = useState('');
   const [encryptConfirm, setEncryptConfirm] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const [showEncryptPw, setShowEncryptPw] = useState(false);
+  const [showEncryptConfirmPw, setShowEncryptConfirmPw] = useState(false);
 
   // Encrypted import states
   const [showDecryptModal, setShowDecryptModal] = useState(false);
   const [decryptPassword, setDecryptPassword] = useState('');
+  const [showDecryptPw, setShowDecryptPw] = useState(false);
   const [pendingFilePath, setPendingFilePath] = useState('');
+
+  const normalizeFilePath = (uri: string): string => {
+    const trimmed = (uri || '').trim();
+    if (trimmed.startsWith('file://')) {
+      return decodeURIComponent(trimmed.replace('file://', ''));
+    }
+    return trimmed;
+  };
+
+  const resolvePickedFilePath = (file: any): string => {
+    const candidate = file?.fileCopyUri || file?.uri || '';
+    const path = normalizeFilePath(candidate);
+    if (!path) throw new Error(t('backup.msg_sel_err'));
+    return path;
+  };
 
   useEffect(() => {
     if (visible) {
       setResult(null);
       setExportPath(null);
-      setSelectedSource(null);
     }
   }, [visible]);
 
@@ -96,6 +108,8 @@ export const BackupModal = ({
       setShowEncryptModal(true);
       setEncryptPassword('');
       setEncryptConfirm('');
+      setShowEncryptPw(false);
+      setShowEncryptConfirmPw(false);
       return;
     }
 
@@ -107,7 +121,7 @@ export const BackupModal = ({
       else path = await BackupModule.exportToJSON();
       SecurityModule.isPickingFileFlag = false;
       setExportPath(path);
-      Alert.alert(t('backup.msg_exp_ok'), `t('backup.msg_saved', { path })`);
+      Alert.alert(t('backup.msg_exp_ok'), t('backup.msg_saved', { path }));
     } catch (e: any) {
       SecurityModule.isPickingFileFlag = false;
       Alert.alert(t('backup.msg_err'), e?.message || 'Export failed.');
@@ -131,12 +145,12 @@ export const BackupModal = ({
       const path = await BackupModule.exportEncrypted(encryptPassword);
       SecurityModule.isPickingFileFlag = false;
       setExportPath(path);
-      Alert.alert(
-        t('backup.msg_enc_exp_ok'),
-        `t('backup.msg_saved', { path })`,
-      );
+      Alert.alert(t('backup.msg_enc_exp_ok'), t('backup.msg_saved', { path }));
     } catch (e: any) {
       SecurityModule.isPickingFileFlag = false;
+      console.error('[ENC-EXPORT-ERROR] Full error:', e);
+      console.error('[ENC-EXPORT-ERROR] Message:', e?.message);
+      console.error('[ENC-EXPORT-ERROR] Stack:', e?.stack);
       Alert.alert(
         t('backup.msg_err'),
         e?.message || 'Encrypted export failed.',
@@ -145,20 +159,24 @@ export const BackupModal = ({
     setLoading(false);
     setEncryptPassword('');
     setEncryptConfirm('');
+    setShowEncryptPw(false);
+    setShowEncryptConfirmPw(false);
   };
 
   // ── Import Handlers ─────────────────────────────────────
   const handleImport = async (source: ImportSource) => {
-    setSelectedSource(source);
     try {
       SecurityModule.isPickingFileFlag = true;
-      const res = await pick({ allowMultiSelection: false });
+      const res = await pick({
+        allowMultiSelection: false,
+        copyTo: 'cachesDirectory',
+      });
       SecurityModule.isPickingFileFlag = false;
 
       if (!res || res.length === 0) return;
 
       const file = res[0];
-      const filePath = file.uri;
+      const filePath = resolvePickedFilePath(file);
       const fileName = file.name || '';
 
       // Check if encrypted Aegis file
@@ -227,6 +245,7 @@ export const BackupModal = ({
     }
     setLoading(false);
     setDecryptPassword('');
+    setShowDecryptPw(false);
   };
 
   // ── Render ──────────────────────────────────────────────
@@ -627,33 +646,49 @@ export const BackupModal = ({
                 ]}
                 placeholder={t('backup.pw_ph')}
                 placeholderTextColor={cc.muted}
-                secureTextEntry={!showPw}
+                secureTextEntry={!showEncryptPw}
+                autoCapitalize="none"
+                autoCorrect={false}
                 value={encryptPassword}
                 onChangeText={setEncryptPassword}
               />
               <TouchableOpacity
-                onPress={() => setShowPw(!showPw)}
+                onPress={() => setShowEncryptPw(!showEncryptPw)}
                 style={st.pwEye}
               >
-                <Text style={{ fontSize: 16 }}>{showPw ? '🙈' : '👁️'}</Text>
+                <Text style={{ fontSize: 16 }}>
+                  {showEncryptPw ? '🙈' : '👁️'}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={[
-                st.pwInput,
-                {
-                  backgroundColor: cc.inputBg,
-                  borderColor: cc.cardBorder,
-                  color: cc.navy,
-                },
-              ]}
-              placeholder={t('backup.pw_conf_ph')}
-              placeholderTextColor={cc.muted}
-              secureTextEntry={!showPw}
-              value={encryptConfirm}
-              onChangeText={setEncryptConfirm}
-            />
+            <View style={st.pwInputRow}>
+              <TextInput
+                style={[
+                  st.pwInput,
+                  {
+                    backgroundColor: cc.inputBg,
+                    borderColor: cc.cardBorder,
+                    color: cc.navy,
+                  },
+                ]}
+                placeholder={t('backup.pw_conf_ph')}
+                placeholderTextColor={cc.muted}
+                secureTextEntry={!showEncryptConfirmPw}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={encryptConfirm}
+                onChangeText={setEncryptConfirm}
+              />
+              <TouchableOpacity
+                onPress={() => setShowEncryptConfirmPw(!showEncryptConfirmPw)}
+                style={st.pwEye}
+              >
+                <Text style={{ fontSize: 16 }}>
+                  {showEncryptConfirmPw ? '🙈' : '👁️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {encryptPassword.length > 0 && encryptPassword.length < 8 && (
               <Text style={{ fontSize: 11, color: cc.red, marginTop: 4 }}>
@@ -674,6 +709,8 @@ export const BackupModal = ({
                   setShowEncryptModal(false);
                   setEncryptPassword('');
                   setEncryptConfirm('');
+                  setShowEncryptPw(false);
+                  setShowEncryptConfirmPw(false);
                 }}
               >
                 <Text style={{ color: cc.navy, fontWeight: '700' }}>
@@ -721,15 +758,19 @@ export const BackupModal = ({
                 ]}
                 placeholder={t('backup.dec_pw_ph')}
                 placeholderTextColor={cc.muted}
-                secureTextEntry={!showPw}
+                secureTextEntry={!showDecryptPw}
+                autoCapitalize="none"
+                autoCorrect={false}
                 value={decryptPassword}
                 onChangeText={setDecryptPassword}
               />
               <TouchableOpacity
-                onPress={() => setShowPw(!showPw)}
+                onPress={() => setShowDecryptPw(!showDecryptPw)}
                 style={st.pwEye}
               >
-                <Text style={{ fontSize: 16 }}>{showPw ? '🙈' : '👁️'}</Text>
+                <Text style={{ fontSize: 16 }}>
+                  {showDecryptPw ? '🙈' : '👁️'}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -739,6 +780,7 @@ export const BackupModal = ({
                 onPress={() => {
                   setShowDecryptModal(false);
                   setDecryptPassword('');
+                  setShowDecryptPw(false);
                 }}
               >
                 <Text style={{ color: cc.navy, fontWeight: '700' }}>

@@ -358,6 +358,7 @@ class AegisAutofillService : AutofillService() {
                 // (kategori boş olanlar, "web", "social" vs. olanlar da dahil edilmeli)
                 val cat = entry.category.lowercase()
                 cat.isEmpty() || cat == "login" || cat == "all" ||
+                cat == "passkey" ||
                 cat == "web" || cat == "social" || cat == "banking" ||
                 cat == "email" || cat == "shopping" || cat == "other"
                 // Not: Sadece "note" gibi şifre içermeyen kategoriler hariç tutulabilir
@@ -451,8 +452,12 @@ class AegisAutofillService : AutofillService() {
     // ── Dataset Builder ──────────────────────────────────────────────────────
 
     private fun buildDataset(entry: VaultEntry, fields: ParsedFields): Dataset? {
+        val isPasskey = entry.category.equals("passkey", ignoreCase = true)
         val presentation = RemoteViews(packageName, android.R.layout.simple_list_item_1).apply {
-            setTextViewText(android.R.id.text1, "🛡️ ${entry.title}")
+            setTextViewText(
+                android.R.id.text1,
+                if (isPasskey) "🔐 ${entry.title}" else "🛡️ ${entry.title}"
+            )
         }
 
         val datasetBuilder = Dataset.Builder(presentation)

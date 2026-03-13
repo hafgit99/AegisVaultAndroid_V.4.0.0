@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView } from 'react-native';
+import { View } from 'react-native';
 import { Field, PasswordField, SelectChips } from './FormFields';
 import { SecurityModule } from '../SecurityModule';
 
@@ -9,16 +9,24 @@ const SECURITY_TYPES = [
   { id: 'WEP', label: 'WEP' },
   { id: 'open', label: 'Açık' },
 ];
-const getCardBrands = (t: any) => [
+const getCardBrands = (_t: any) => [
   { id: 'visa', label: 'Visa', icon: '💳' },
   { id: 'mastercard', label: 'MC', icon: '💳' },
   { id: 'amex', label: 'Amex', icon: '💳' },
   { id: 'other', label: 'Other', icon: '💳' },
 ];
-const getGenders = (t: any) => [
+const getGenders = (_t: any) => [
   { id: 'male', label: 'Male' },
   { id: 'female', label: 'Female' },
   { id: 'other', label: 'Other' },
+];
+
+const PASSKEY_TRANSPORTS = [
+  { id: 'internal', label: 'Internal (Platform)' },
+  { id: 'hybrid', label: 'Hybrid' },
+  { id: 'usb', label: 'USB' },
+  { id: 'nfc', label: 'NFC' },
+  { id: 'ble', label: 'BLE' },
 ];
 
 // ── Login Form ──
@@ -88,7 +96,7 @@ export const CardForm = ({
   form,
   setForm,
   showPw,
-  setShowPw,
+  setShowPw: _setShowPw,
   t,
   theme,
 }: any) => (
@@ -367,6 +375,82 @@ export const WifiForm = ({
   );
 };
 
+// ── Passkey Form ──
+export const PasskeyForm = ({ form, setForm, t, theme }: any) => (
+  <View>
+    <Field
+      label={t('fields.username')}
+      value={form.username}
+      onChange={(v: string) => setForm({ ...form, username: v })}
+      placeholder="user@example.com"
+      keyboardType="email-address"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.url')}
+      value={form.url}
+      onChange={(v: string) => setForm({ ...form, url: v })}
+      placeholder="https://example.com"
+      keyboardType="url"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.passkey_rp_id')}
+      value={form.data?.rp_id}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, rp_id: v } })
+      }
+      placeholder="example.com"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.passkey_credential_id')}
+      value={form.data?.credential_id}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, credential_id: v } })
+      }
+      placeholder="Base64URL credential id"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.passkey_user_handle')}
+      value={form.data?.user_handle}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, user_handle: v } })
+      }
+      placeholder="Optional"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.passkey_display_name')}
+      value={form.data?.display_name}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, display_name: v } })
+      }
+      placeholder="Device passkey"
+      theme={theme}
+    />
+    <SelectChips
+      label={t('fields.passkey_transport')}
+      options={PASSKEY_TRANSPORTS}
+      value={form.data?.transport || 'internal'}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, transport: v } })
+      }
+      theme={theme}
+    />
+    <Field
+      label={t('vault.notes')}
+      value={form.notes}
+      onChange={(v: string) => setForm({ ...form, notes: v })}
+      placeholder="..."
+      multiline
+      lines={3}
+      theme={theme}
+    />
+  </View>
+);
+
 // ── Form Router ──
 export const CategoryForm = ({
   category,
@@ -405,6 +489,8 @@ export const CategoryForm = ({
           theme={theme}
         />
       );
+    case 'passkey':
+      return <PasskeyForm form={form} setForm={setForm} t={t} theme={theme} />;
     default:
       return (
         <LoginForm

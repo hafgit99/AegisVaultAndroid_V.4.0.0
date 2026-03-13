@@ -7,6 +7,141 @@ import { AutofillService } from './AutofillService';
 import Argon2 from 'react-native-argon2';
 import i18n from './i18n';
 
+// ── Pure JS Helper for robustness to replace buggy React Native Buffer ──
+const _b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function __bufToBase64(buf: any): string {
+  let bytes: Uint8Array;
+  if (buf instanceof Uint8Array) {
+    bytes = buf;
+  } else if (buf instanceof ArrayBuffer) {
+    bytes = new Uint8Array(buf);
+  } else if (buf && buf.buffer instanceof ArrayBuffer) {
+    bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } else {
+    bytes = new Uint8Array(buf);
+  }
+  let result = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 3) {
+    result += _b64chars[bytes[i] >> 2];
+    result += _b64chars[((bytes[i] & 3) << 4) | (bytes[i + 1] >> 4)];
+    result += _b64chars[((bytes[i + 1] & 15) << 2) | (bytes[i + 2] >> 6)];
+    result += _b64chars[bytes[i + 2] & 63];
+  }
+  if (len % 3 === 2) {
+    result = result.substring(0, result.length - 1) + '=';
+  } else if (len % 3 === 1) {
+    result = result.substring(0, result.length - 2) + '==';
+  }
+  return result;
+}
+
+function __bufToUtf8(buf: any): string {
+  const bytes = new Uint8Array(buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) {
+    str += String.fromCharCode(bytes[i]);
+  }
+  try {
+    return decodeURIComponent(escape(str));
+  } catch {
+    return str; // fallback if decodeURIComponent fails
+  }
+}
+
+function __base64ToBuf(b64: string): Uint8Array {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+
+  let validLen = b64.length;
+  if (b64[validLen - 1] === '=') validLen--;
+  if (b64[validLen - 1] === '=') validLen--;
+
+  const bytes = new Uint8Array(Math.floor((validLen * 3) / 4));
+  let p = 0;
+  for (let i = 0; i < b64.length; i += 4) {
+    const enc1 = lookup[b64.charCodeAt(i)];
+    const enc2 = lookup[b64.charCodeAt(i + 1)];
+    const enc3 = lookup[b64.charCodeAt(i + 2)] || 0;
+    const enc4 = lookup[b64.charCodeAt(i + 3)] || 0;
+
+    bytes[p++] = (enc1 << 2) | (enc2 >> 4);
+    if (p < bytes.length) bytes[p++] = ((enc2 & 15) << 4) | (enc3 >> 2);
+    if (p < bytes.length) bytes[p++] = ((enc3 & 3) << 6) | (enc4 & 63);
+  }
+  return bytes;
+}
+
+function __hexToBuf(hex: string): Uint8Array {
+  const bytes = new Uint8Array(Math.floor(hex.length / 2));
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function __bufToHex(buf: any): string {
+  const bytes = new Uint8Array(buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) {
+    str += bytes[i].toString(16).padStart(2, '0');
+  }
+  return str;
+}
+
+const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
+const Argon2Fn: any = (Argon2 as any)?.default ?? (Argon2 as any);
+
+const getCryptoImpl = (): any => {
+  const g: any = global as any;
+  const candidates = [QC, QuickCrypto as any, g?.crypto];
+  return (
+    candidates.find(
+      c =>
+        c &&
+        typeof c.randomBytes === 'function' &&
+        typeof c.createCipheriv === 'function' &&
+        typeof c.createDecipheriv === 'function',
+    ) || null
+  );
+};
+
+const randomBytesSafe = (size: number): Buffer => {
+  const crypto = getCryptoImpl();
+  if (!crypto?.randomBytes) {
+    throw new Error('Crypto randomBytes is not available on this build.');
+  }
+  return Buffer.from(crypto.randomBytes(size));
+};
+
+const deriveKeyPBKDF2 = async (
+  password: string,
+  saltHex: string,
+  iterations: number,
+  keyLen: number,
+): Promise<Buffer> => {
+  const crypto = getCryptoImpl();
+  if (typeof crypto?.pbkdf2 === 'function') {
+    return new Promise<Buffer>((resolve, reject) => {
+      crypto.pbkdf2(
+        password,
+        saltHex,
+        iterations,
+        keyLen,
+        'sha256',
+        (err: any, key: any) => (err ? reject(err) : resolve(Buffer.from(key))),
+      );
+    });
+  }
+  if (typeof crypto?.pbkdf2Sync === 'function') {
+    return Buffer.from(
+      crypto.pbkdf2Sync(password, saltHex, iterations, keyLen, 'sha256'),
+    );
+  }
+  throw new Error('Crypto PBKDF2 is not available on this build.');
+};
+
 // ── Types ───────────────────────────────────────────
 
 export interface VaultItem {
@@ -76,6 +211,51 @@ export interface VaultSettings {
   darkMode: boolean;
 }
 
+type PasswordFieldType = 'password' | 'wifi_password' | 'pin' | 'cvv';
+
+export interface PasswordHealthIssue {
+  itemId: number;
+  title: string;
+  category: string;
+  field: PasswordFieldType;
+  severity: 'critical' | 'high' | 'medium';
+  type: 'weak' | 'reused' | 'similar' | 'empty';
+  message: string;
+}
+
+export interface PasswordHealthReport {
+  score: number;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low';
+  generatedAt: string;
+  summary: {
+    totalItems: number;
+    checkedSecrets: number;
+    weakCount: number;
+    reusedCount: number;
+    similarCount: number;
+    emptyOrIncompleteCount: number;
+  };
+  actions: string[];
+  issues: PasswordHealthIssue[];
+}
+
+export interface PasswordHistoryEntry {
+  id: number;
+  item_id: number;
+  field: 'password' | 'wifi_password' | 'pin' | 'cvv' | 'credential_id';
+  value: string;
+  source: string;
+  changed_at: string;
+}
+
+export interface AuditEvent {
+  id: number;
+  event_type: string;
+  event_status: 'success' | 'failed' | 'blocked' | 'info';
+  details: string;
+  created_at: string;
+}
+
 const DEFAULT_SETTINGS: VaultSettings = {
   autoLockSeconds: 60,
   biometricEnabled: true,
@@ -94,6 +274,15 @@ interface BruteForceState {
 // ── Device Salt File Path ───────────────────────────
 const SALT_FILE = `${RNFS.DocumentDirectoryPath}/aegis_device_salt.bin`;
 const BRUTE_FORCE_FILE = `${RNFS.DocumentDirectoryPath}/aegis_bf_state.json`;
+const AUDIT_BUFFER_FILE = `${RNFS.DocumentDirectoryPath}/aegis_audit_buffer.json`;
+const BACKUP_PBKDF2_FALLBACK_ITERATIONS = 310000;
+const BACKUP_KDF_DEFAULT = {
+  algorithm: 'Argon2id',
+  memory: 32768,
+  iterations: 4,
+  parallelism: 2,
+  hashLength: 32,
+} as const;
 
 // ═══════════════════════════════════════════════════
 export class SecurityModule {
@@ -129,7 +318,7 @@ export class SecurityModule {
     } catch {}
 
     // Generate new 32-byte cryptographic random salt
-    const salt = Buffer.from(QuickCrypto.randomBytes(32));
+    const salt = randomBytesSafe(32);
     await RNFS.writeFile(SALT_FILE, salt.toString('hex'), 'utf8');
     this.deviceSalt = salt;
     console.log('[Security] Generated new device salt');
@@ -227,14 +416,14 @@ export class SecurityModule {
    * │       └─ publicKey (exported once, stored locally)   │
    * └─────────────────────────────────────────────────────┘
    *         ↓
-   * PBKDF2-SHA256(publicKey, deviceSalt, 310000 iterations, 32 bytes)
+   * Argon2id(publicKey, deviceSalt, 32MB, 4 iterations, 2 lanes)
    *         ↓
    * 256-bit vault encryption key (always the same)
    *
    * Security properties:
    * - Public key is hardware-bound (tied to Android Keystore)
    * - Device salt is unique per installation (32 bytes CSPRNG)
-   * - PBKDF2 with 310k iterations provides key stretching
+   * - Argon2id with memory-hard parameters provides GPU resistance
    * - Biometric verification required before key derivation
    * - Key material zeroed after use
    */
@@ -284,7 +473,7 @@ export class SecurityModule {
       // Step 3: Derive deterministic vault key
       // Argon2id(publicKey, deviceSalt, 32MB, 4 iter, 2 threads)
       const salt = await this.getDeviceSalt();
-      const argon2Result = await Argon2(publicKey!, salt.toString('hex'), {
+      const argon2Result = await Argon2Fn(publicKey!, salt.toString('hex'), {
         mode: 'argon2id',
         memory: 32768,
         iterations: 4,
@@ -319,8 +508,12 @@ export class SecurityModule {
       await rnBiometrics.deleteKeys();
       const kmPath = `${RNFS.DocumentDirectoryPath}/aegis_km.dat`;
       await RNFS.unlink(kmPath).catch(() => {});
+      await this.logSecurityEvent('biometric_reset', 'success', {});
       console.log('[Security] Biometric keys reset');
     } catch (e) {
+      await this.logSecurityEvent('biometric_reset', 'failed', {
+        reason: e instanceof Error ? e.message : String(e),
+      });
       console.error('[Security] Error resetting biometric keys:', e);
     }
   }
@@ -358,13 +551,17 @@ export class SecurityModule {
       const remaining = await this.getRemainingLockout();
       if (remaining > 0) {
         console.error(`[Security] Locked out for ${remaining} more seconds`);
+        await this.logSecurityEvent('vault_unlock', 'blocked', {
+          reason: 'lockout_active',
+          remainingSeconds: remaining,
+        });
         return false;
       }
 
       const salt = await this.getDeviceSalt();
 
       // GPU-resistant Argon2id KDF derivation
-      const argon2Result = await Argon2(password, salt.toString('hex'), {
+      const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
         mode: 'argon2id',
         memory: 32768,
         iterations: 4,
@@ -407,6 +604,34 @@ export class SecurityModule {
       this.db.executeSync(
         `CREATE TABLE IF NOT EXISTS vault_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
       );
+      this.db.executeSync(`
+        CREATE TABLE IF NOT EXISTS vault_audit_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_type TEXT NOT NULL,
+          event_status TEXT NOT NULL,
+          details TEXT DEFAULT '{}',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      this.db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_audit_time ON vault_audit_log(created_at DESC);`,
+      );
+      this.db.executeSync(`
+        CREATE TABLE IF NOT EXISTS vault_password_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          item_id INTEGER NOT NULL,
+          field TEXT NOT NULL,
+          value TEXT NOT NULL,
+          source TEXT DEFAULT 'update',
+          changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (item_id) REFERENCES vault_items(id) ON DELETE CASCADE
+        );
+      `);
+      this.db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_pw_history_item_time ON vault_password_history(item_id, changed_at DESC);`,
+      );
+
+      await this.flushBufferedAuditEvents();
 
       // Migration: add missing columns if updating
       try {
@@ -430,6 +655,9 @@ export class SecurityModule {
 
       // Record successful attempt (reset brute force counter)
       await this.recordSuccessfulAttempt();
+      await this.logSecurityEvent('vault_unlock', 'success', {
+        method: 'biometric_derived_key',
+      });
 
       AutofillService.setUnlocked(true);
       await this.syncAutofill();
@@ -439,6 +667,9 @@ export class SecurityModule {
     } catch (e) {
       // Record failed attempt
       await this.recordFailedAttempt();
+      await this.logSecurityEvent('vault_unlock', 'failed', {
+        reason: e instanceof Error ? e.message : String(e),
+      });
       console.error('Unlock failed:', e);
       return false;
     }
@@ -448,9 +679,9 @@ export class SecurityModule {
   private static async syncAutofill() {
     if (!this.db) return;
     try {
-      // Send all login items to native autofill service
+      // Send login + passkey items to native autofill service
       const items = (this.db.executeSync(
-        "SELECT id, title, username, password, url, category FROM vault_items WHERE category='login' COLLATE NOCASE",
+        "SELECT id, title, username, password, url, category FROM vault_items WHERE LOWER(category) IN ('login','passkey')",
       ).rows || []) as any[];
       AutofillService.updateEntries(items);
     } catch (e) {
@@ -459,6 +690,197 @@ export class SecurityModule {
   }
 
   // ── Items CRUD ────────────────────────────────────
+  private static async appendAuditBuffer(
+    eventType: string,
+    eventStatus: AuditEvent['event_status'],
+    details?: Record<string, any>,
+  ): Promise<void> {
+    try {
+      let events: Array<{
+        event_type: string;
+        event_status: AuditEvent['event_status'];
+        details: string;
+        created_at: string;
+      }> = [];
+
+      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
+      if (exists) {
+        const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
+        events = raw ? JSON.parse(raw) : [];
+      }
+
+      events.push({
+        event_type: eventType,
+        event_status: eventStatus,
+        details: JSON.stringify(details || {}),
+        created_at: new Date().toISOString(),
+      });
+
+      if (events.length > 200) {
+        events = events.slice(events.length - 200);
+      }
+
+      await RNFS.writeFile(AUDIT_BUFFER_FILE, JSON.stringify(events), 'utf8');
+    } catch (e) {
+      console.error('appendAuditBuffer:', e);
+    }
+  }
+
+  private static async flushBufferedAuditEvents(): Promise<void> {
+    if (!this.db) return;
+    try {
+      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
+      if (!exists) return;
+
+      const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
+      const events = (raw ? JSON.parse(raw) : []) as Array<{
+        event_type: string;
+        event_status: AuditEvent['event_status'];
+        details: string;
+        created_at: string;
+      }>;
+
+      for (const ev of events) {
+        this.db.executeSync(
+          'INSERT INTO vault_audit_log (event_type, event_status, details, created_at) VALUES (?,?,?,?)',
+          [ev.event_type, ev.event_status, ev.details || '{}', ev.created_at],
+        );
+      }
+
+      await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
+    } catch (e) {
+      console.error('flushBufferedAuditEvents:', e);
+    }
+  }
+
+  static async logSecurityEvent(
+    eventType: string,
+    eventStatus: AuditEvent['event_status'] = 'info',
+    details?: Record<string, any>,
+  ): Promise<void> {
+    if (!this.db) {
+      await this.appendAuditBuffer(eventType, eventStatus, details);
+      return;
+    }
+    try {
+      this.db.executeSync(
+        'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
+        [eventType, eventStatus, JSON.stringify(details || {})],
+      );
+    } catch (e) {
+      console.error('logSecurityEvent:', e);
+    }
+  }
+
+  static async getAuditEvents(limit: number = 100): Promise<AuditEvent[]> {
+    if (!this.db) return [];
+    try {
+      const safeLimit = Math.max(1, Math.min(500, limit));
+      return (this.db.executeSync(
+        `SELECT id, event_type, event_status, details, created_at
+         FROM vault_audit_log
+         ORDER BY created_at DESC
+         LIMIT ${safeLimit}`,
+      ).rows || []) as AuditEvent[];
+    } catch (e) {
+      console.error('getAuditEvents:', e);
+      return [];
+    }
+  }
+
+  static async clearAuditEvents(): Promise<boolean> {
+    if (!this.db) return false;
+    try {
+      this.db.executeSync('DELETE FROM vault_audit_log');
+      await this.logSecurityEvent('audit_log_cleared', 'info', {});
+      return true;
+    } catch (e) {
+      console.error('clearAuditEvents:', e);
+      return false;
+    }
+  }
+
+  private static parseDataJson(raw?: string): any {
+    try {
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private static extractHistorySecretsFromItem(
+    item: Partial<VaultItem>,
+  ): Array<{
+    field: PasswordHistoryEntry['field'];
+    value: string;
+  }> {
+    const category = (item.category || 'login').toLowerCase();
+    const data = this.parseDataJson(item.data);
+
+    const out: Array<{
+      field: PasswordHistoryEntry['field'];
+      value: string;
+    }> = [];
+
+    if (category === 'login') {
+      const v = (item.password || '').trim();
+      if (v) out.push({ field: 'password', value: v });
+    }
+
+    if (category === 'wifi') {
+      const v = (data?.wifi_password || '').trim();
+      if (v) out.push({ field: 'wifi_password', value: v });
+    }
+
+    if (category === 'card') {
+      const pin = (data?.pin || '').trim();
+      const cvv = (data?.cvv || '').trim();
+      if (pin) out.push({ field: 'pin', value: pin });
+      if (cvv) out.push({ field: 'cvv', value: cvv });
+    }
+
+    if (category === 'passkey') {
+      const credentialId = (data?.credential_id || '').trim();
+      if (credentialId)
+        out.push({ field: 'credential_id', value: credentialId });
+    }
+
+    return out;
+  }
+
+  private static async appendPasswordHistoryEntries(
+    itemId: number,
+    oldSecrets: Array<{ field: PasswordHistoryEntry['field']; value: string }>,
+    source: 'update' | 'restore' = 'update',
+  ): Promise<void> {
+    if (!this.db || oldSecrets.length === 0) return;
+
+    try {
+      for (const s of oldSecrets) {
+        this.db.executeSync(
+          'INSERT INTO vault_password_history (item_id, field, value, source) VALUES (?,?,?,?)',
+          [itemId, s.field, s.value, source],
+        );
+      }
+    } catch (e) {
+      console.error('appendPasswordHistoryEntries:', e);
+    }
+  }
+
+  static async getItemById(id: number): Promise<VaultItem | null> {
+    if (!this.db) return null;
+    try {
+      const row = this.db.executeSync(
+        'SELECT * FROM vault_items WHERE id = ?',
+        [id],
+      ).rows?.[0] as VaultItem | undefined;
+      return row || null;
+    } catch (e) {
+      console.error('getItemById:', e);
+      return null;
+    }
+  }
+
   static async getItems(
     search?: string,
     category?: string,
@@ -533,6 +955,25 @@ export class SecurityModule {
   ): Promise<boolean> {
     if (!this.db) return false;
     try {
+      const existing = this.db.executeSync(
+        'SELECT * FROM vault_items WHERE id = ?',
+        [id],
+      ).rows?.[0] as VaultItem | undefined;
+      if (!existing) return false;
+
+      const merged: Partial<VaultItem> = {
+        ...existing,
+        ...item,
+        data: item.data !== undefined ? item.data : existing.data,
+      };
+
+      const oldSecrets = this.extractHistorySecretsFromItem(existing);
+      const newSecrets = this.extractHistorySecretsFromItem(merged);
+      const changedOldSecrets = oldSecrets.filter(oldSecret => {
+        const next = newSecrets.find(x => x.field === oldSecret.field);
+        return !next || next.value !== oldSecret.value;
+      });
+
       const fields: string[] = [],
         params: any[] = [];
       for (const [k, v] of Object.entries(item)) {
@@ -547,6 +988,8 @@ export class SecurityModule {
         `UPDATE vault_items SET ${fields.join(',')} WHERE id=?`,
         params,
       );
+
+      await this.appendPasswordHistoryEntries(id, changedOldSecrets, 'update');
       await this.syncAutofill();
       return true;
     } catch (e) {
@@ -567,6 +1010,73 @@ export class SecurityModule {
       return true;
     } catch (e) {
       console.error('deleteItem:', e);
+      return false;
+    }
+  }
+
+  static async getPasswordHistory(
+    itemId: number,
+    limit: number = 25,
+  ): Promise<PasswordHistoryEntry[]> {
+    if (!this.db) return [];
+    try {
+      const safeLimit = Math.max(1, Math.min(100, limit));
+      return (this.db.executeSync(
+        `SELECT id, item_id, field, value, source, changed_at
+         FROM vault_password_history
+         WHERE item_id = ?
+         ORDER BY changed_at DESC
+         LIMIT ${safeLimit}`,
+        [itemId],
+      ).rows || []) as PasswordHistoryEntry[];
+    } catch (e) {
+      console.error('getPasswordHistory:', e);
+      return [];
+    }
+  }
+
+  static async restorePasswordFromHistory(
+    itemId: number,
+    historyId: number,
+  ): Promise<boolean> {
+    if (!this.db) return false;
+    try {
+      const row = this.db.executeSync(
+        'SELECT id, item_id, field, value FROM vault_password_history WHERE id = ? AND item_id = ?',
+        [historyId, itemId],
+      ).rows?.[0] as PasswordHistoryEntry | undefined;
+      if (!row) return false;
+
+      const item = await this.getItemById(itemId);
+      if (!item) return false;
+
+      const data = this.parseDataJson(item.data);
+      const updates: Partial<VaultItem> = {};
+
+      if (row.field === 'password') {
+        updates.password = row.value;
+      } else if (row.field === 'wifi_password') {
+        updates.data = JSON.stringify({ ...data, wifi_password: row.value });
+      } else if (row.field === 'pin') {
+        updates.data = JSON.stringify({ ...data, pin: row.value });
+      } else if (row.field === 'cvv') {
+        updates.data = JSON.stringify({ ...data, cvv: row.value });
+      } else if (row.field === 'credential_id') {
+        updates.data = JSON.stringify({ ...data, credential_id: row.value });
+      } else {
+        return false;
+      }
+
+      const ok = await this.updateItem(itemId, updates);
+      if (!ok) return false;
+
+      this.db.executeSync(
+        'UPDATE vault_password_history SET source = ? WHERE id = ?',
+        ['restore', historyId],
+      );
+      return true;
+    } catch (e) {
+      console.error('restorePasswordFromHistory:', e);
       return false;
     }
   }
@@ -592,6 +1102,10 @@ export class SecurityModule {
       this.db.executeSync('DELETE FROM vault_attachments WHERE item_id = ?', [
         id,
       ]);
+      this.db.executeSync(
+        'DELETE FROM vault_password_history WHERE item_id = ?',
+        [id],
+      );
       this.db.executeSync('DELETE FROM vault_items WHERE id = ?', [id]);
       return true;
     } catch (e) {
@@ -605,6 +1119,9 @@ export class SecurityModule {
     try {
       this.db.executeSync(
         'DELETE FROM vault_attachments WHERE item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1)',
+      );
+      this.db.executeSync(
+        'DELETE FROM vault_password_history WHERE item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1)',
       );
       this.db.executeSync('DELETE FROM vault_items WHERE is_deleted = 1');
       return true;
@@ -627,6 +1144,14 @@ export class SecurityModule {
         )
       `);
       this.db.executeSync(`
+        DELETE FROM vault_password_history
+        WHERE item_id IN (
+          SELECT id FROM vault_items
+          WHERE is_deleted = 1
+          AND deleted_at < datetime('now', '-30 days')
+        )
+      `);
+      this.db.executeSync(`
         DELETE FROM vault_items 
         WHERE is_deleted = 1 
         AND deleted_at < datetime('now', '-30 days')
@@ -641,6 +1166,7 @@ export class SecurityModule {
     if (!this.db) return false;
     try {
       this.db.executeSync('DELETE FROM vault_attachments');
+      this.db.executeSync('DELETE FROM vault_password_history');
       this.db.executeSync('DELETE FROM vault_items');
       await this.syncAutofill();
       return true;
@@ -664,9 +1190,13 @@ export class SecurityModule {
       await RNFS.unlink(SALT_FILE).catch(() => {});
       await RNFS.unlink(BRUTE_FORCE_FILE).catch(() => {});
 
+      await this.logSecurityEvent('factory_reset', 'success', {});
       console.log('[Security] Factory reset complete');
       return true;
     } catch (e) {
+      await this.logSecurityEvent('factory_reset', 'failed', {
+        reason: e instanceof Error ? e.message : String(e),
+      });
       console.error('[Security] Factory reset failed:', e);
       return false;
     }
@@ -901,10 +1431,24 @@ export class SecurityModule {
   static async setSetting(key: string, value: string) {
     if (!this.db) return;
     try {
+      const previous = await this.getSetting(key);
       this.db.executeSync(
         'INSERT OR REPLACE INTO vault_settings (key,value) VALUES (?,?)',
         [key, value],
       );
+
+      const criticalSettingKeys = [
+        'biometricEnabled',
+        'autoLockSeconds',
+        'clipboardClearSeconds',
+      ];
+      if (criticalSettingKeys.includes(key) && previous !== value) {
+        await this.logSecurityEvent('critical_setting_changed', 'info', {
+          key,
+          previous,
+          next: value,
+        });
+      }
     } catch {}
   }
   static async getAllSettings(): Promise<VaultSettings> {
@@ -949,7 +1493,7 @@ export class SecurityModule {
     if (!c) c = 'abcdefghijkmnopqrstuvwxyz';
 
     // Use CSPRNG instead of Math.random()
-    const randomBytes = QuickCrypto.randomBytes(len * 2);
+    const randomBytes = randomBytesSafe(len * 2);
     let pw = '';
     for (let i = 0; i < len; i++) {
       // Use 2 bytes per char to reduce modulo bias
@@ -980,12 +1524,319 @@ export class SecurityModule {
     return { score: sc, label: 'Çok Güçlü', color: '#06b6d4' };
   }
 
+  private static buildPasswordFields(item: VaultItem): Array<{
+    field: PasswordFieldType;
+    value: string;
+    isIncomplete: boolean;
+  }> {
+    let data: any = {};
+    try {
+      data = item.data ? JSON.parse(item.data || '{}') : {};
+    } catch {
+      data = {};
+    }
+
+    const fields: Array<{
+      field: PasswordFieldType;
+      value: string;
+      isIncomplete: boolean;
+    }> = [];
+
+    if (item.category === 'login') {
+      fields.push({
+        field: 'password',
+        value: (item.password || '').trim(),
+        isIncomplete:
+          !(item.title || '').trim() ||
+          !(item.username || '').trim() ||
+          !(item.password || '').trim(),
+      });
+    }
+
+    if (item.category === 'wifi') {
+      fields.push({
+        field: 'wifi_password',
+        value: (data?.wifi_password || '').trim(),
+        isIncomplete:
+          !(item.title || '').trim() ||
+          !(data?.ssid || '').trim() ||
+          !(data?.wifi_password || '').trim(),
+      });
+    }
+
+    if (item.category === 'card') {
+      if (data?.pin !== undefined) {
+        fields.push({
+          field: 'pin',
+          value: (data.pin || '').trim(),
+          isIncomplete: false,
+        });
+      }
+      if (data?.cvv !== undefined) {
+        fields.push({
+          field: 'cvv',
+          value: (data.cvv || '').trim(),
+          isIncomplete: false,
+        });
+      }
+    }
+
+    return fields;
+  }
+
+  private static normalizeForSimilarity(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/[-_.]/g, '')
+      .replace(/[^a-z]+$/g, '');
+  }
+
+  private static levenshteinDistance(a: string, b: string): number {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+
+    const matrix: number[][] = Array.from({ length: a.length + 1 }, () =>
+      Array(b.length + 1).fill(0),
+    );
+
+    for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+    for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost,
+        );
+      }
+    }
+
+    return matrix[a.length][b.length];
+  }
+
+  static async getPasswordHealthReport(): Promise<PasswordHealthReport> {
+    const items = await this.getItems();
+    const issues: PasswordHealthIssue[] = [];
+    const passwordMap = new Map<
+      string,
+      Array<{ item: VaultItem; field: PasswordFieldType }>
+    >();
+    const normalizedMap = new Map<
+      string,
+      Array<{ item: VaultItem; field: PasswordFieldType; raw: string }>
+    >();
+
+    let checkedSecrets = 0;
+    let weakCount = 0;
+    let reusedCount = 0;
+    let similarCount = 0;
+    let emptyOrIncompleteCount = 0;
+
+    for (const item of items) {
+      const fields = this.buildPasswordFields(item);
+
+      for (const fieldData of fields) {
+        const rawValue = fieldData.value;
+        const hasValue = rawValue.length > 0;
+
+        if (!hasValue || fieldData.isIncomplete) {
+          emptyOrIncompleteCount++;
+          issues.push({
+            itemId: item.id || 0,
+            title: item.title || 'Untitled',
+            category: item.category || 'login',
+            field: fieldData.field,
+            severity: 'high',
+            type: 'empty',
+            message: !hasValue
+              ? 'Secret value is empty and should be filled.'
+              : 'Entry has incomplete required fields (title/username/password or SSID).',
+          });
+          continue;
+        }
+
+        checkedSecrets++;
+
+        const strength = this.getPasswordStrength(rawValue).score;
+        const looksWeakPattern = /(1234|password|qwerty|admin|0000)/i.test(
+          rawValue,
+        );
+        if (strength <= 2 || looksWeakPattern || rawValue.length < 10) {
+          weakCount++;
+          issues.push({
+            itemId: item.id || 0,
+            title: item.title || 'Untitled',
+            category: item.category || 'login',
+            field: fieldData.field,
+            severity: 'high',
+            type: 'weak',
+            message:
+              'Secret value is weak (short length or predictable pattern). Use a unique random value.',
+          });
+        }
+
+        const existing = passwordMap.get(rawValue) || [];
+        existing.push({ item, field: fieldData.field });
+        passwordMap.set(rawValue, existing);
+
+        const normalized = this.normalizeForSimilarity(rawValue);
+        if (normalized.length >= 6) {
+          const existingNormalized = normalizedMap.get(normalized) || [];
+          existingNormalized.push({
+            item,
+            field: fieldData.field,
+            raw: rawValue,
+          });
+          normalizedMap.set(normalized, existingNormalized);
+        }
+      }
+    }
+
+    for (const refs of passwordMap.values()) {
+      if (refs.length < 2) continue;
+      reusedCount += refs.length;
+      for (const ref of refs) {
+        issues.push({
+          itemId: ref.item.id || 0,
+          title: ref.item.title || 'Untitled',
+          category: ref.item.category || 'login',
+          field: ref.field,
+          severity: 'critical',
+          type: 'reused',
+          message: `Secret value is reused in ${refs.length} entries. Rotate all duplicates immediately.`,
+        });
+      }
+    }
+
+    const normalizedKeys = Array.from(normalizedMap.keys());
+    const reportedPairs = new Set<string>();
+    for (let i = 0; i < normalizedKeys.length; i++) {
+      for (let j = i + 1; j < normalizedKeys.length; j++) {
+        const a = normalizedKeys[i];
+        const b = normalizedKeys[j];
+        const distance = this.levenshteinDistance(a, b);
+        const maxLen = Math.max(a.length, b.length);
+        const similar =
+          distance <= 2 ||
+          (distance <= 3 && maxLen >= 12) ||
+          a.startsWith(b) ||
+          b.startsWith(a);
+        if (!similar) continue;
+
+        const groupA = normalizedMap.get(a) || [];
+        const groupB = normalizedMap.get(b) || [];
+        for (const refA of groupA) {
+          for (const refB of groupB) {
+            if (
+              (refA.item.id || 0) === (refB.item.id || 0) &&
+              refA.field === refB.field
+            ) {
+              continue;
+            }
+            const pairKey = [
+              `${refA.item.id || 0}-${refA.field}`,
+              `${refB.item.id || 0}-${refB.field}`,
+            ]
+              .sort()
+              .join('|');
+            if (reportedPairs.has(pairKey)) continue;
+
+            reportedPairs.add(pairKey);
+            similarCount += 2;
+
+            issues.push({
+              itemId: refA.item.id || 0,
+              title: refA.item.title || 'Untitled',
+              category: refA.item.category || 'login',
+              field: refA.field,
+              severity: 'medium',
+              type: 'similar',
+              message:
+                'Secret value is too similar to another entry (small variation). Use fully unrelated random values.',
+            });
+            issues.push({
+              itemId: refB.item.id || 0,
+              title: refB.item.title || 'Untitled',
+              category: refB.item.category || 'login',
+              field: refB.field,
+              severity: 'medium',
+              type: 'similar',
+              message:
+                'Secret value is too similar to another entry (small variation). Use fully unrelated random values.',
+            });
+          }
+        }
+      }
+    }
+
+    const penalty =
+      weakCount * 7 +
+      reusedCount * 12 +
+      similarCount * 4 +
+      emptyOrIncompleteCount * 10;
+    const score = Math.max(0, 100 - penalty);
+
+    const riskLevel: PasswordHealthReport['riskLevel'] =
+      score < 45
+        ? 'critical'
+        : score < 65
+        ? 'high'
+        : score < 80
+        ? 'medium'
+        : 'low';
+
+    const actions: string[] = [];
+    if (reusedCount > 0) {
+      actions.push('Replace reused secrets with unique random values first.');
+    }
+    if (emptyOrIncompleteCount > 0) {
+      actions.push(
+        'Complete empty/incomplete entries to avoid lockout and recovery failures.',
+      );
+    }
+    if (weakCount > 0) {
+      actions.push(
+        'Increase secret length to at least 16 characters where possible.',
+      );
+    }
+    if (similarCount > 0) {
+      actions.push(
+        'Avoid small mutations (e.g. suffix changes); generate unrelated values.',
+      );
+    }
+    if (actions.length === 0) {
+      actions.push(
+        'No critical findings. Keep rotating high-value account secrets periodically.',
+      );
+    }
+
+    return {
+      score,
+      riskLevel,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        totalItems: items.length,
+        checkedSecrets,
+        weakCount,
+        reusedCount,
+        similarCount,
+        emptyOrIncompleteCount,
+      },
+      actions,
+      issues,
+    };
+  }
+
   // ══════════════════════════════════════════════════
   // 5. AES-256-GCM ENCRYPTION (for backup export)
   // ══════════════════════════════════════════════════
 
   /**
-   * Encrypt data using AES-256-GCM with PBKDF2 key derivation.
+   * Encrypt data using AES-256-GCM with Argon2id key derivation.
    * Returns: { salt, iv, authTag, ciphertext } all base64 encoded.
    */
   static async encryptAES256GCM(
@@ -996,39 +1847,122 @@ export class SecurityModule {
     iv: string;
     authTag: string;
     ciphertext: string;
+    kdf: 'Argon2id' | 'PBKDF2-SHA256';
+    memory?: number;
+    iterations: number;
+    parallelism?: number;
+    hashLength: number;
   }> {
-    // Generate 32-byte random salt and 12-byte IV
-    const salt = Buffer.from(QuickCrypto.randomBytes(32));
-    const iv = Buffer.from(QuickCrypto.randomBytes(12));
+    console.log('[ENC-DEBUG] Step 1: generating salt and iv');
+    const salt = randomBytesSafe(32);
+    const iv = randomBytesSafe(12);
+    console.log('[ENC-DEBUG] Step 1 OK: salt=', salt.length, 'iv=', iv.length);
 
-    // Derive 256-bit key using PBKDF2-SHA256
-    const keyBuf = await new Promise<Buffer>((resolve, reject) => {
-      QuickCrypto.pbkdf2(
+    let keyBuf: Buffer;
+    let kdfMeta:
+      | {
+          kdf: 'Argon2id';
+          memory: number;
+          iterations: number;
+          parallelism: number;
+          hashLength: number;
+        }
+      | {
+          kdf: 'PBKDF2-SHA256';
+          iterations: number;
+          hashLength: number;
+        };
+
+    console.log('[ENC-DEBUG] Step 2: Argon2Fn type=', typeof Argon2Fn, 'value=', Argon2Fn);
+    const hasArgon2 = typeof Argon2Fn === 'function';
+    console.log('[ENC-DEBUG] Step 2: hasArgon2=', hasArgon2);
+    if (hasArgon2) {
+      try {
+        console.log('[ENC-DEBUG] Step 2a: calling Argon2Fn...');
+        const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
+          mode: 'argon2id',
+          memory: BACKUP_KDF_DEFAULT.memory,
+          iterations: BACKUP_KDF_DEFAULT.iterations,
+          parallelism: BACKUP_KDF_DEFAULT.parallelism,
+          hashLength: BACKUP_KDF_DEFAULT.hashLength,
+          saltEncoding: 'hex',
+        });
+        console.log('[ENC-DEBUG] Step 2a OK: argon2Result keys=', Object.keys(argon2Result || {}));
+        keyBuf = Buffer.from(argon2Result.rawHash, 'hex');
+        kdfMeta = {
+          kdf: 'Argon2id',
+          memory: BACKUP_KDF_DEFAULT.memory,
+          iterations: BACKUP_KDF_DEFAULT.iterations,
+          parallelism: BACKUP_KDF_DEFAULT.parallelism,
+          hashLength: BACKUP_KDF_DEFAULT.hashLength,
+        };
+      } catch (e) {
+        console.warn(
+          '[ENC-DEBUG] Step 2a FAILED: Argon2 error, falling back to PBKDF2.',
+          e,
+        );
+        keyBuf = await deriveKeyPBKDF2(
+          password,
+          salt.toString('hex'),
+          BACKUP_PBKDF2_FALLBACK_ITERATIONS,
+          32,
+        );
+        kdfMeta = {
+          kdf: 'PBKDF2-SHA256',
+          iterations: BACKUP_PBKDF2_FALLBACK_ITERATIONS,
+          hashLength: 32,
+        };
+      }
+    } else {
+      console.log('[ENC-DEBUG] Step 2b: using PBKDF2 fallback...');
+      keyBuf = await deriveKeyPBKDF2(
         password,
         salt.toString('hex'),
-        310000,
+        BACKUP_PBKDF2_FALLBACK_ITERATIONS,
         32,
-        'sha256',
-        (e: any, k: any) => (e ? reject(e) : resolve(k)),
       );
-    });
+      kdfMeta = {
+        kdf: 'PBKDF2-SHA256',
+        iterations: BACKUP_PBKDF2_FALLBACK_ITERATIONS,
+        hashLength: 32,
+      };
+    }
+    console.log('[ENC-DEBUG] Step 2 DONE: keyBuf.length=', keyBuf!.length, 'kdf=', (kdfMeta as any).kdf);
 
-    // AES-256-GCM encryption
-    const cipher = QuickCrypto.createCipheriv('aes-256-gcm', keyBuf, iv);
-    const encrypted = Buffer.concat([
-      cipher.update(Buffer.from(plaintext, 'utf8')),
-      cipher.final(),
-    ]);
-    const authTag = cipher.getAuthTag();
+    console.log('[ENC-DEBUG] Step 3: getting crypto impl');
+    const crypto = getCryptoImpl();
+    console.log('[ENC-DEBUG] Step 3: crypto=', !!crypto, 'createCipheriv=', typeof crypto?.createCipheriv);
+    if (!crypto?.createCipheriv) {
+      throw new Error(
+        'Crypto AES-GCM encryption is not available on this build.',
+      );
+    }
+
+    console.log('[ENC-DEBUG] Step 4: createCipheriv');
+    const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+
+    const plaintextBuf = Buffer.from(plaintext, 'utf8');
+    const updateResult = cipher.update(plaintextBuf);
+    const finalResult = cipher.final();
+    
+    const updateBytes = new Uint8Array(updateResult as ArrayBuffer);
+    const finalBytes = new Uint8Array(finalResult as ArrayBuffer);
+    const encryptedBytes = new Uint8Array(updateBytes.length + finalBytes.length);
+    encryptedBytes.set(updateBytes, 0);
+    encryptedBytes.set(finalBytes, updateBytes.length);
+
+    const rawAuthTag = cipher.getAuthTag();
+    const tagBytes = new Uint8Array(rawAuthTag as ArrayBuffer);
 
     // Zero out key
     for (let i = 0; i < keyBuf.length; i++) (keyBuf as any)[i] = 0;
 
     return {
-      salt: salt.toString('base64'),
-      iv: iv.toString('base64'),
-      authTag: Buffer.from(authTag).toString('base64'),
-      ciphertext: encrypted.toString('base64'),
+      salt: __bufToBase64(salt),
+      iv: __bufToBase64(iv),
+      authTag: __bufToBase64(tagBytes),
+      ciphertext: __bufToBase64(encryptedBytes),
+      ...kdfMeta,
     };
   }
 
@@ -1041,36 +1975,69 @@ export class SecurityModule {
     saltB64: string,
     ivB64: string,
     authTagB64: string,
+    kdfMeta?: {
+      kdf?: string;
+      iterations?: number;
+      memory?: number;
+      parallelism?: number;
+      hashLength?: number;
+    },
   ): Promise<string> {
-    const salt = Buffer.from(saltB64, 'base64');
-    const iv = Buffer.from(ivB64, 'base64');
-    const authTag = Buffer.from(authTagB64, 'base64');
-    const encData = Buffer.from(ciphertext, 'base64');
+    const salt = __base64ToBuf(saltB64);
+    const iv = __base64ToBuf(ivB64);
+    const authTag = __base64ToBuf(authTagB64);
+    const encData = __base64ToBuf(ciphertext);
 
-    // Derive key
-    const keyBuf = await new Promise<Buffer>((resolve, reject) => {
-      QuickCrypto.pbkdf2(
+    // Derive key based on backup metadata (legacy PBKDF2 supported for migration)
+    const declaredKdf = (kdfMeta?.kdf || '').toUpperCase();
+    const useLegacyPBKDF2 = declaredKdf.includes('PBKDF2');
+
+    let keyBuf: Uint8Array;
+    if (useLegacyPBKDF2) {
+      const derivedKeyBuffer = await deriveKeyPBKDF2(
         password,
-        salt.toString('hex'),
-        310000,
+        __bufToHex(salt),
+        kdfMeta?.iterations || 310000,
         32,
-        'sha256',
-        (e: any, k: any) => (e ? reject(e) : resolve(k)),
       );
-    });
+      keyBuf = new Uint8Array(derivedKeyBuffer as ArrayBuffer);
+    } else {
+      const argon2Result = await Argon2Fn(password, __bufToHex(salt), {
+        mode: 'argon2id',
+        memory: kdfMeta?.memory || BACKUP_KDF_DEFAULT.memory,
+        iterations: kdfMeta?.iterations || BACKUP_KDF_DEFAULT.iterations,
+        parallelism: kdfMeta?.parallelism || BACKUP_KDF_DEFAULT.parallelism,
+        hashLength: kdfMeta?.hashLength || BACKUP_KDF_DEFAULT.hashLength,
+        saltEncoding: 'hex',
+      });
+      keyBuf = __hexToBuf(argon2Result.rawHash);
+    }
 
     // AES-256-GCM decryption
-    const decipher = QuickCrypto.createDecipheriv('aes-256-gcm', keyBuf, iv);
+    const cryptoDec = getCryptoImpl();
+    if (!cryptoDec?.createDecipheriv) {
+      throw new Error(
+        'Crypto AES-GCM decryption is not available on this build.',
+      );
+    }
+
+    const decipher = cryptoDec.createDecipheriv('aes-256-gcm', keyBuf, iv);
     decipher.setAuthTag(authTag);
-    const decrypted = Buffer.concat([
-      decipher.update(encData),
-      decipher.final(),
-    ]);
+    
+    // Similarly use Uint8Array to bypass string/Buffer incompatibilities
+    const decUpdateResult = new Uint8Array(decipher.update(encData) as ArrayBuffer);
+    const decFinalResult = new Uint8Array(decipher.final() as ArrayBuffer);
+    
+    const decryptedBytes = new Uint8Array(decUpdateResult.length + decFinalResult.length);
+    decryptedBytes.set(decUpdateResult, 0);
+    decryptedBytes.set(decFinalResult, decUpdateResult.length);
+    
+    const decryptedStr = __bufToUtf8(decryptedBytes);
 
     // Zero out key
     for (let i = 0; i < keyBuf.length; i++) (keyBuf as any)[i] = 0;
 
-    return decrypted.toString('utf8');
+    return decryptedStr;
   }
 
   // ── Lock ──────────────────────────────────────────

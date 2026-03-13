@@ -18,7 +18,9 @@
     "error": "Hata oluştu",
     "retry": "Tekrar deneyebilirsiniz",
     "failed_attempts": "{{count}}. başarısız deneme • {{seconds}} sn bekleniyor",
-    "bio_not_found": "Biyometri bulunamadı"
+    "bio_not_found": "Biyometri bulunamadı",
+    "integrity_warning_title": "⚠️ Cihaz bütünlük riski algılandı",
+    "integrity_warning_desc": "Risk seviyesi: {{level}} • Güven skoru: {{score}}/100"
   },
   "nav": {
     "vault": "Kasa",
@@ -40,6 +42,7 @@
     "categories": {
       "all": "Tümü",
       "login": "Girişler",
+      "passkey": "Passkey",
       "card": "Kartlar",
       "identity": "Kimlikler",
       "note": "Notlar",
@@ -72,6 +75,11 @@
     "ssid": "Ağ Adı (SSID)",
     "wifi_password": "Ağ Şifresi",
     "security": "Güvenlik Tipi",
+    "passkey_rp_id": "RP ID (Domain)",
+    "passkey_credential_id": "Credential ID",
+    "passkey_user_handle": "User Handle",
+    "passkey_display_name": "Passkey Adı",
+    "passkey_transport": "Taşıma Türü",
     "copied": "Kopyalandı",
     "copy": "Kopyala",
     "copied_symbol": "✓",
@@ -132,6 +140,59 @@
       "support": "Android 8.0+ destekleniyor",
       "how_to": "📋 Nasıl Kullanılır?",
       "steps": "1. Yukarıdaki butona tıklayın → \"Aegis Vault\" seçin\n2. Kasayı biyometri ile açın (otomatik senkronize olur)\n3. Herhangi bir uygulamada/tarayıcıda şifre kutusuna dokunun\n4. Klavyenin üstünde çıkan Aegis önerisini seçin"
+    },
+    "integrity": {
+      "title": "🛡️ Cihaz Bütünlüğü",
+      "checking": "Cihaz bütünlük sinyalleri kontrol ediliyor...",
+      "status": "Risk: {{level}} • Skor: {{score}}/100",
+      "level_low": "Düşük",
+      "level_medium": "Orta",
+      "level_high": "Yüksek",
+      "level_critical": "Kritik",
+      "yes": "Evet",
+      "no": "Hayır",
+      "on": "Açık",
+      "off": "Kapalı",
+      "rooted": "Root/Magisk izi",
+      "test_keys": "Test-keys derleme",
+      "adb": "ADB hata ayiklama",
+      "debug": "Debug derleme",
+      "emulator": "Emülatör",
+      "reasons": "Sinyaller",
+      "reason_root_artifacts_detected": "Root artefaktları bulundu",
+      "reason_test_keys_build": "Test-keys imzalı yapı",
+      "reason_debug_build": "Debug derleme",
+      "reason_adb_enabled": "ADB etkin",
+      "reason_emulator_environment": "Emülatör ortamı"
+    },
+    "audit": {
+      "title": "📜 Güvenlik Olay Kaydı",
+      "loading": "Kayıtlar yükleniyor...",
+      "count": "Son kayıtlar: {{count}}",
+      "empty": "Henüz güvenlik kaydı yok.",
+      "clear_title": "Kayıtları Temizle",
+      "clear_confirm": "Tüm güvenlik olay kayıtları silinsin mi?",
+      "clear_btn": "Temizle",
+      "status": {
+        "success": "Başarılı",
+        "failed": "Başarısız",
+        "blocked": "Engellendi",
+        "info": "Bilgi"
+      },
+      "events": {
+        "vault_unlock": "Kasa kilidi açma",
+        "biometric_reset": "Biyometrik anahtar sıfırlama",
+        "factory_reset": "Fabrika sıfırlama",
+        "critical_setting_changed": "Kritik ayar değişikliği",
+        "backup_export_csv": "CSV dışa aktarma",
+        "backup_export_json": "JSON dışa aktarma",
+        "backup_export_encrypted": "Şifreli dışa aktarma",
+        "backup_import": "Dosyadan içe aktarma",
+        "backup_import_encrypted": "Şifreli içe aktarma",
+        "cloud_sync_upload": "Buluta yükleme",
+        "cloud_sync_download": "Buluttan indirme",
+        "audit_log_cleared": "Audit kayıtları temizlendi"
+      }
     }
   },
   "cloud": {
@@ -140,6 +201,9 @@
     "token_label": "Auth Token",
     "pw_label": "Kasa Şifreleme/Çözme Parolası",
     "pw_ph": "Bulut yedek şifresi",
+    "pin_label": "TLS Sertifika Pin'i",
+    "pin_required": "Sertifika pin zorunludur.",
+    "pin_format": "Format: sha256/<base64>",
     "info": "💡 Kasanız buluta aktarılırken cihazdaki veritabanınızdan bağımsız AES-256-GCM ile şifrelenir. Sıfır-bilgi (Zero-Knowledge) prensibi gereği kimse sunucudaki datayı okuyamaz.",
     "btn_up": "↑ Gönder",
     "btn_down": "↓ İndir",
@@ -247,6 +311,16 @@
     "empty_confirm": "Çöp kutusundaki tüm kayıtları kalıcı olarak silmek istediğinize emin misiniz?",
     "delete_perm_confirm": "bu kayıt kalıcı olarak silinecek. Bu işlem geri alınamaz.",
     "restored": "Kayıt geri yüklendi"
+  },
+  "history": {
+    "title": "Parola Geçmişi",
+    "loading": "Parola geçmişi yükleniyor...",
+    "empty": "Bu kayıt için parola geçmişi yok.",
+    "restore_title": "Geçmişten Geri Yükle",
+    "restore_confirm": "Seçilen geçmiş değeri aktif sır olarak geri yüklensin mi?",
+    "restore_btn": "Geri Yükle",
+    "restore_success": "Geçmiş parola geri yüklendi.",
+    "restore_failed": "Parola geçmişinden geri yükleme başarısız oldu."
   },
   "reset": {
     "vault_title": "Kasayı Sıfırla",

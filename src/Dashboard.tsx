@@ -21,6 +21,7 @@ import {
   VaultItem,
   VaultSettings,
   Attachment,
+  PasswordHistoryEntry,
 } from './SecurityModule';
 import { SelectChips, ToggleRow } from './components/FormFields';
 import { CategoryForm } from './components/CategoryForms';
@@ -36,6 +37,7 @@ import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { switchLanguage } from './i18n';
 import { AutofillService } from './AutofillService';
+import { IntegrityModule, IntegritySignals } from './IntegrityModule';
 
 const rnBiometrics = new ReactNativeBiometrics({
   allowDeviceCredentials: true,
@@ -46,16 +48,16 @@ const C = {
   sage: '#72886f',
   sageLight: 'rgba(114,136,111,0.12)',
   sageMid: 'rgba(114,136,111,0.25)',
-  card: 'rgba(255,255,255,0.45)',
-  cardBorder: 'rgba(255,255,255,0.55)',
+  card: 'rgba(255,255,255,0.98)',
+  cardBorder: 'rgba(16,24,40,0.12)',
   red: '#ef4444',
   redBg: 'rgba(239,68,68,0.08)',
   green: '#22c55e',
   cyan: '#06b6d4',
   white: '#fff',
   muted: 'rgba(16,24,40,0.45)',
-  divider: 'rgba(16,24,40,0.06)',
-  inputBg: 'rgba(255,255,255,0.7)',
+  divider: 'rgba(16,24,40,0.08)',
+  inputBg: 'rgba(255,255,255,0.95)',
 };
 const CD = {
   bg: '#0b1220',
@@ -78,6 +80,7 @@ const getCatIcon = (c: string) =>
   ({
     all: '📋',
     login: '🔑',
+    passkey: '🔐',
     card: '💳',
     identity: '🪪',
     note: '📝',
@@ -86,6 +89,7 @@ const getCatIcon = (c: string) =>
 const getCatColor = (c: string) =>
   ({
     login: 'rgba(114,136,111,0.15)',
+    passkey: 'rgba(15,118,110,0.15)',
     card: 'rgba(6,182,212,0.15)',
     identity: 'rgba(245,158,11,0.15)',
     note: 'rgba(139,92,246,0.15)',
@@ -94,6 +98,7 @@ const getCatColor = (c: string) =>
 const getCats = (t: any) => [
   { id: 'all', label: t('vault.categories.all'), icon: '📋' },
   { id: 'login', label: t('vault.categories.login'), icon: '🔑' },
+  { id: 'passkey', label: t('vault.categories.passkey'), icon: '🔐' },
   { id: 'card', label: t('vault.categories.card'), icon: '💳' },
   { id: 'identity', label: t('vault.categories.identity'), icon: '🪪' },
   { id: 'note', label: t('vault.categories.note'), icon: '📝' },
@@ -128,6 +133,8 @@ export const Dashboard = () => {
   const [showDonation, setShowDonation] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [legalType, setLegalType] = useState<'terms' | 'privacy' | null>(null);
+  const [integrity, setIntegrity] = useState<IntegritySignals | null>(null);
+  const [integrityLoading, setIntegrityLoading] = useState(true);
   const glow = useRef(new Animated.Value(0.4)).current;
 
   const [_isPickingFile, _setIsPickingFile] = useState(false);
@@ -233,6 +240,15 @@ export const Dashboard = () => {
     }
   }, [unlocked, load, loadSettings]);
 
+  useEffect(() => {
+    (async () => {
+      setIntegrityLoading(true);
+      const signals = await IntegrityModule.getIntegritySignals();
+      setIntegrity(signals);
+      setIntegrityLoading(false);
+    })();
+  }, []);
+
   const lock = () => {
     SecurityModule.lockVault();
     setUnlocked(false);
@@ -273,7 +289,7 @@ export const Dashboard = () => {
       }
       setAuthStatus(t('lock_screen.verifying'));
 
-      // Deterministic biometric key derivation (Android Keystore + PBKDF2)
+      // Deterministic biometric key derivation (Android Keystore + Argon2id)
       const vaultKey = await SecurityModule.deriveKeyFromBiometric();
 
       if (!vaultKey) {
@@ -384,6 +400,62 @@ export const Dashboard = () => {
               {t('lock_screen.brute_force_desc', {
                 fails: failCount,
                 seconds: lockoutRemaining,
+              })}
+            </Text>
+          </View>
+        )}
+        {!!integrity && integrity.riskLevel !== 'low' && (
+          <View
+            style={{
+              backgroundColor:
+                integrity.riskLevel === 'critical'
+                  ? 'rgba(239,68,68,0.12)'
+                  : integrity.riskLevel === 'high'
+                  ? 'rgba(245,158,11,0.14)'
+                  : 'rgba(234,179,8,0.12)',
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                integrity.riskLevel === 'critical'
+                  ? 'rgba(239,68,68,0.35)'
+                  : integrity.riskLevel === 'high'
+                  ? 'rgba(245,158,11,0.38)'
+                  : 'rgba(234,179,8,0.35)',
+            }}
+          >
+            <Text
+              style={{
+                color:
+                  integrity.riskLevel === 'critical'
+                    ? '#ef4444'
+                    : integrity.riskLevel === 'high'
+                    ? '#f59e0b'
+                    : '#eab308',
+                fontWeight: '700',
+                fontSize: 13,
+                textAlign: 'center',
+              }}
+            >
+              {t('lock_screen.integrity_warning_title')}
+            </Text>
+            <Text
+              style={{
+                color:
+                  integrity.riskLevel === 'critical'
+                    ? '#ef4444'
+                    : integrity.riskLevel === 'high'
+                    ? '#f59e0b'
+                    : '#eab308',
+                fontSize: 12,
+                textAlign: 'center',
+                marginTop: 4,
+              }}
+            >
+              {t('lock_screen.integrity_warning_desc', {
+                level: t(`settings.integrity.level_${integrity.riskLevel}`),
+                score: integrity.score,
               })}
             </Text>
           </View>
@@ -558,6 +630,8 @@ export const Dashboard = () => {
       {tab === 'settings' && (
         <SettView
           theme={palette}
+          integrity={integrity}
+          integrityLoading={integrityLoading}
           settings={settings}
           setSettings={setSettings}
           onLock={lock}
@@ -645,6 +719,7 @@ export const Dashboard = () => {
         visible={showDetail}
         item={editItem}
         theme={palette}
+        onRefresh={load}
         onClose={() => setShowDetail(false)}
         onEdit={() => {
           setShowDetail(false);
@@ -1085,6 +1160,8 @@ const GenView = ({ theme, settings, insets }: any) => {
 // ── Settings ──
 const SettView = ({
   theme,
+  integrity,
+  integrityLoading,
   settings: st2,
   setSettings,
   onLock,
@@ -1097,10 +1174,45 @@ const SettView = ({
   onRefresh,
 }: any) => {
   const { t, i18n } = useTranslation();
+  const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const boolLabel = (value: boolean) =>
+    value ? t('settings.integrity.yes') : t('settings.integrity.no');
+  const adbLabel = (value: boolean) =>
+    value ? t('settings.integrity.on') : t('settings.integrity.off');
+
+  const integrityReasonLabel = (reason: string) => {
+    const key = `settings.integrity.reason_${reason}`;
+    return i18n.exists(key) ? t(key) : reason;
+  };
+
+  const auditEventLabel = (eventType: string) => {
+    const key = `settings.audit.events.${eventType}`;
+    return i18n.exists(key) ? t(key) : eventType;
+  };
+
+  const auditStatusLabel = (status: string) => {
+    const key = `settings.audit.status.${status}`;
+    return i18n.exists(key) ? t(key) : status;
+  };
+
+  const loadAudit = async () => {
+    setAuditLoading(true);
+    const events = await SecurityModule.getAuditEvents(30);
+    setAuditEvents(events);
+    setAuditLoading(false);
+  };
+
+  useEffect(() => {
+    loadAudit();
+  }, []);
+
   const upd = async (k: string, v: any) => {
     const n = { ...st2, [k]: v };
     setSettings(n);
     await SecurityModule.setSetting(k, String(v));
+    await loadAudit();
   };
   const ALO = [
     { l: t('settings.off'), v: 0 },
@@ -1280,6 +1392,197 @@ const SettView = ({
       <Text style={[s.sec, { color: theme.navy }]}>
         {t('settings.security')}
       </Text>
+      <View
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+      >
+        <Text style={[s.sLbl, { color: theme.navy, marginBottom: 6 }]}>
+          {t('settings.integrity.title')}
+        </Text>
+        <Text style={[s.sLbl, { color: theme.muted, marginBottom: 10 }]}>
+          {integrityLoading
+            ? t('settings.integrity.checking')
+            : t('settings.integrity.status', {
+                level: t(
+                  `settings.integrity.level_${integrity?.riskLevel || 'low'}`,
+                ),
+                score: integrity?.score ?? 100,
+              })}
+        </Text>
+        {!!integrity && !integrityLoading && (
+          <>
+            <Text style={[s.sLbl, { color: theme.navy }]}>
+              • {t('settings.integrity.rooted')}: {boolLabel(integrity.rooted)}
+            </Text>
+            <Text style={[s.sLbl, { color: theme.navy }]}>
+              • {t('settings.integrity.test_keys')}:{' '}
+              {boolLabel(integrity.testKeys)}
+            </Text>
+            <Text style={[s.sLbl, { color: theme.navy }]}>
+              • {t('settings.integrity.adb')}: {adbLabel(integrity.adbEnabled)}
+            </Text>
+            <Text style={[s.sLbl, { color: theme.navy }]}>
+              • {t('settings.integrity.debug')}:{' '}
+              {boolLabel(integrity.debugBuild)}
+            </Text>
+            <Text style={[s.sLbl, { color: theme.navy }]}>
+              • {t('settings.integrity.emulator')}:{' '}
+              {boolLabel(integrity.emulator)}
+            </Text>
+            {integrity.reasons?.length > 0 && (
+              <Text style={[s.sLbl, { color: theme.muted, marginTop: 8 }]}>
+                {t('settings.integrity.reasons')}:{' '}
+                {integrity.reasons.map(integrityReasonLabel).join(', ')}
+              </Text>
+            )}
+          </>
+        )}
+      </View>
+
+      <Text style={[s.sec, { color: theme.navy }]}>
+        {t('settings.audit.title')}
+      </Text>
+      <View
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[s.sLbl, { color: theme.muted }]}>
+            {auditLoading
+              ? t('settings.audit.loading')
+              : t('settings.audit.count', { count: auditEvents.length })}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[
+                s.oChip,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.cardBorder,
+                },
+              ]}
+              onPress={loadAudit}
+            >
+              <Text style={[s.oChipT, { color: theme.navy }]}>↻</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                s.oChip,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.cardBorder,
+                },
+              ]}
+              onPress={() =>
+                Alert.alert(
+                  t('settings.audit.clear_title'),
+                  t('settings.audit.clear_confirm'),
+                  [
+                    { text: t('vault.cancel'), style: 'cancel' },
+                    {
+                      text: t('settings.audit.clear_btn'),
+                      style: 'destructive',
+                      onPress: async () => {
+                        await SecurityModule.clearAuditEvents();
+                        await loadAudit();
+                      },
+                    },
+                  ],
+                )
+              }
+            >
+              <Text style={[s.oChipT, { color: theme.navy }]}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {auditEvents.length === 0 ? (
+          <Text style={[s.sLbl, { color: theme.muted }]}>
+            {t('settings.audit.empty')}
+          </Text>
+        ) : (
+          auditEvents.slice(0, 12).map(ev => {
+            let detailsText = '';
+            try {
+              const d = ev.details ? JSON.parse(ev.details) : {};
+              detailsText = Object.entries(d)
+                .slice(0, 2)
+                .map(([k, v]) => `${k}:${String(v)}`)
+                .join(' • ');
+            } catch {
+              detailsText = '';
+            }
+
+            const statusColor =
+              ev.event_status === 'success'
+                ? '#16a34a'
+                : ev.event_status === 'failed'
+                ? '#dc2626'
+                : ev.event_status === 'blocked'
+                ? '#d97706'
+                : '#64748b';
+
+            return (
+              <View
+                key={ev.id}
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: theme.cardBorder,
+                  paddingTop: 8,
+                  marginTop: 8,
+                }}
+              >
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      backgroundColor: statusColor,
+                    }}
+                  />
+                  <Text
+                    style={[s.sLbl, { color: theme.navy, fontWeight: '700' }]}
+                  >
+                    {auditEventLabel(ev.event_type)}
+                  </Text>
+                  <Text
+                    style={[s.sLbl, { color: statusColor, fontWeight: '700' }]}
+                  >
+                    {auditStatusLabel(ev.event_status)}
+                  </Text>
+                  <Text style={[s.sLbl, { color: theme.muted }]}>
+                    {new Date(ev.created_at).toLocaleString()}
+                  </Text>
+                </View>
+                {detailsText ? (
+                  <Text
+                    style={[
+                      s.sLbl,
+                      { color: theme.muted, marginTop: 4, lineHeight: 17 },
+                    ]}
+                  >
+                    {detailsText}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </View>
       <View
         style={[
           s.sCard,
@@ -1844,6 +2147,7 @@ const AddModal = ({ visible, item, onClose, onSave, settings, theme }: any) => {
 const DetailModal = ({
   visible,
   item,
+  onRefresh,
   onClose,
   onEdit,
   onDelete,
@@ -1857,15 +2161,32 @@ const DetailModal = ({
   const [showPw, setShowPw] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [history, setHistory] = useState<PasswordHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [breachCount, setBreachCount] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
 
+  const supportsHistory =
+    item?.category === 'login' ||
+    item?.category === 'wifi' ||
+    item?.category === 'card' ||
+    item?.category === 'passkey';
+
   useEffect(() => {
-    if (visible && item?.id)
+    if (visible && item?.id) {
       SecurityModule.getAttachments(item.id).then(setAttachments);
+      if (supportsHistory) {
+        setHistoryLoading(true);
+        SecurityModule.getPasswordHistory(item.id, 12)
+          .then(setHistory)
+          .finally(() => setHistoryLoading(false));
+      } else {
+        setHistory([]);
+      }
+    }
     setShowPw(false);
     setBreachCount(null);
-  }, [visible, item]);
+  }, [visible, item, supportsHistory]);
 
   const checkBreach = async (pw: string) => {
     setChecking(true);
@@ -2014,6 +2335,38 @@ const DetailModal = ({
     );
   };
 
+  const getHistoryFieldLabel = (field: PasswordHistoryEntry['field']) => {
+    if (field === 'password') return t('fields.password');
+    if (field === 'wifi_password') return t('fields.wifi_password');
+    if (field === 'pin') return t('fields.pin');
+    if (field === 'cvv') return t('fields.cvv');
+    if (field === 'credential_id') return t('fields.passkey_credential_id');
+    return field;
+  };
+
+  const restoreFromHistory = (entry: PasswordHistoryEntry) => {
+    Alert.alert(t('history.restore_title'), t('history.restore_confirm'), [
+      { text: t('vault.cancel'), style: 'cancel' },
+      {
+        text: t('history.restore_btn'),
+        style: 'destructive',
+        onPress: async () => {
+          const ok = await SecurityModule.restorePasswordFromHistory(
+            item.id,
+            entry.id,
+          );
+          if (!ok) {
+            Alert.alert(t('backup.msg_err'), t('history.restore_failed'));
+            return;
+          }
+          await onRefresh?.();
+          Alert.alert(t('backup.success'), t('history.restore_success'));
+          setHistory(await SecurityModule.getPasswordHistory(item.id, 12));
+        },
+      },
+    ]);
+  };
+
   const renderCatFields = () => {
     switch (item.category) {
       case 'card':
@@ -2116,6 +2469,48 @@ const DetailModal = ({
             })}
           </>
         );
+      case 'passkey':
+        return (
+          <>
+            {DField({
+              label: t('fields.username'),
+              value: item.username,
+              copyKey: 'pkus',
+            })}
+            {DField({
+              label: t('fields.url'),
+              value: item.url,
+              copyKey: 'pkurl',
+            })}
+            {DField({
+              label: t('fields.passkey_rp_id'),
+              value: data.rp_id,
+              copyKey: 'pkrp',
+            })}
+            {DField({
+              label: t('fields.passkey_credential_id'),
+              value: data.credential_id,
+              secret: true,
+              copyKey: 'pkcid',
+            })}
+            {DField({
+              label: t('fields.passkey_user_handle'),
+              value: data.user_handle,
+              secret: true,
+              copyKey: 'pkuh',
+            })}
+            {DField({
+              label: t('fields.passkey_display_name'),
+              value: data.display_name,
+              copyKey: 'pkdn',
+            })}
+            {DField({
+              label: t('fields.passkey_transport'),
+              value: data.transport,
+              copyKey: 'pktp',
+            })}
+          </>
+        );
       default:
         return (
           <>
@@ -2189,6 +2584,100 @@ const DetailModal = ({
                 pendingFiles={[]}
                 setPendingFiles={() => {}}
               />
+            )}
+            {supportsHistory && (
+              <View style={{ marginTop: 8, marginBottom: 8 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: cc.muted,
+                    textTransform: 'uppercase',
+                    marginBottom: 8,
+                  }}
+                >
+                  {t('history.title')}
+                </Text>
+                {historyLoading ? (
+                  <Text style={{ fontSize: 12, color: cc.muted }}>
+                    {t('history.loading')}
+                  </Text>
+                ) : history.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: cc.muted }}>
+                    {t('history.empty')}
+                  </Text>
+                ) : (
+                  history.map(h => (
+                    <View
+                      key={h.id}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: cc.cardBorder,
+                        backgroundColor: cc.card,
+                        borderRadius: 12,
+                        padding: 10,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: cc.navy,
+                          fontWeight: '700',
+                        }}
+                      >
+                        {getHistoryFieldLabel(h.field)}
+                      </Text>
+                      <Text
+                        style={{ fontSize: 11, color: cc.muted, marginTop: 2 }}
+                      >
+                        {new Date(h.changed_at).toLocaleString()}
+                      </Text>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginTop: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            color: cc.navy,
+                            fontWeight: '600',
+                            flex: 1,
+                            marginRight: 10,
+                          }}
+                        >
+                          {showPw ? h.value : '••••••••'}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => restoreFromHistory(h)}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: cc.sage,
+                            backgroundColor: cc.sageLight,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: cc.sage,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {t('history.restore_btn')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
             )}
           </ScrollView>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>

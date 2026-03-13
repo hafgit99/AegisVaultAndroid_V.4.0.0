@@ -120,6 +120,46 @@ export const getImportSources = (
   },
 ];
 
+const sanitizeExportFileName = (name: string) =>
+  name.replace(/[<>:"/\\|?*]+/g, '_');
+
+const joinPath = (dir: string, fileName: string) =>
+  `${dir.replace(/[\\/]+$/, '')}/${fileName}`;
+
+const getPreferredExportDirectory = async (): Promise<string> => {
+  const candidates = [
+    (RNFS as any).DownloadDirectoryPath,
+    (RNFS as any).ExternalDirectoryPath,
+    RNFS.DocumentDirectoryPath,
+  ].filter(Boolean) as string[];
+
+  for (const dir of candidates) {
+    try {
+      const exists = await RNFS.exists(dir);
+      if (!exists) continue;
+      const writableProbe = joinPath(dir, '.aegis_probe.tmp');
+      await RNFS.writeFile(writableProbe, 'ok', 'utf8');
+      await RNFS.unlink(writableProbe).catch(() => {});
+      return dir;
+    } catch {
+      continue;
+    }
+  }
+
+  return RNFS.DocumentDirectoryPath;
+};
+
+const writeExportFile = async (
+  fileName: string,
+  content: string,
+): Promise<string> => {
+  const safeName = sanitizeExportFileName(fileName);
+  const dir = await getPreferredExportDirectory();
+  const path = joinPath(dir, safeName);
+  await RNFS.writeFile(path, content, 'utf8');
+  return path;
+};
+
 // ─── CSV Parser (handles quoted fields, commas in values, newlines) ──────────
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
@@ -280,8 +320,19 @@ export class BackupModule {
           );
         }
       }
+
+      await SecurityModule.logSecurityEvent('backup_import', 'success', {
+        source,
+        total: result.total,
+        imported: result.imported,
+        skipped: result.skipped,
+      });
     } catch (e: any) {
       result.errors.push(`Dosya okunamadı: ${e?.message || 'Bilinmeyen hata'}`);
+      await SecurityModule.logSecurityEvent('backup_import', 'failed', {
+        source,
+        reason: e?.message || 'read_failed',
+      });
     }
     return result;
   }
@@ -869,7 +920,7 @@ export class BackupModule {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // IMPORT ENCRYPTED AEGIS (AES-256-GCM)
+  // IMPORT ENCRYPTED AEGIS (AES-256-GCM + KDF metadata)
   // ═══════════════════════════════════════════════════════════════
   static async importEncryptedAegis(
     filePath: string,
@@ -906,6 +957,13 @@ export class BackupModule {
         json.salt,
         json.iv,
         json.authTag,
+        {
+          kdf: json.kdf,
+          iterations: json.iterations,
+          memory: json.memory,
+          parallelism: json.parallelism,
+          hashLength: json.hashLength,
+        },
       );
 
       const items = JSON.parse(plaintext);
@@ -919,11 +977,28 @@ export class BackupModule {
           result.errors.push(`"${item.title}": ${e?.message || 'Error'}`);
         }
       }
+
+      await SecurityModule.logSecurityEvent(
+        'backup_import_encrypted',
+        'success',
+        {
+          total: result.total,
+          imported: result.imported,
+          skipped: result.skipped,
+        },
+      );
     } catch (e: any) {
       result.errors.push(
         `Şifre çözme hatası: ${
           e?.message || 'Geçersiz şifre veya bozuk dosya'
         }`,
+      );
+      await SecurityModule.logSecurityEvent(
+        'backup_import_encrypted',
+        'failed',
+        {
+          reason: e?.message || 'decrypt_failed',
+        },
       );
     }
     return result;
@@ -952,8 +1027,11 @@ export class BackupModule {
     );
     const csv = [header, ...rows].join('\n');
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = `${RNFS.DocumentDirectoryPath}/aegis_vault_export_${ts}.csv`;
-    await RNFS.writeFile(path, csv, 'utf8');
+    const path = await writeExportFile(`aegis_vault_export_${ts}.csv`, csv);
+    await SecurityModule.logSecurityEvent('backup_export_csv', 'success', {
+      itemCount: items.length,
+      output: path.split('/').pop(),
+    });
     return path;
   }
 
@@ -968,27 +1046,46 @@ export class BackupModule {
     };
     const json = JSON.stringify(exportData, null, 2);
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = `${RNFS.DocumentDirectoryPath}/aegis_vault_export_${ts}.json`;
-    await RNFS.writeFile(path, json, 'utf8');
+    const path = await writeExportFile(`aegis_vault_export_${ts}.json`, json);
+    await SecurityModule.logSecurityEvent('backup_export_json', 'success', {
+      itemCount: items.length,
+      output: path.split('/').pop(),
+    });
     return path;
   }
 
   static async exportEncrypted(password: string): Promise<string> {
+    console.log('[AEGIS-EXPORT] Step A: getItems');
     const items = await SecurityModule.getItems();
     const plainItems = items.map(({ id: _id, ...rest }) => rest);
     const plaintext = JSON.stringify(plainItems);
+    console.log('[AEGIS-EXPORT] Step A OK, plaintext length=', plaintext.length);
 
-    // AES-256-GCM encryption (proper authenticated encryption)
-    const { salt, iv, authTag, ciphertext } =
-      await SecurityModule.encryptAES256GCM(plaintext, password);
+    console.log('[AEGIS-EXPORT] Step B: encryptAES256GCM');
+    // AES-256-GCM encryption (authenticated encryption + Argon2id KDF)
+    const {
+      salt,
+      iv,
+      authTag,
+      ciphertext,
+      kdf,
+      memory,
+      iterations,
+      parallelism,
+      hashLength,
+    } = await SecurityModule.encryptAES256GCM(plaintext, password);
+    console.log('[AEGIS-EXPORT] Step B OK: kdf=', kdf, 'ciphertext len=', ciphertext.length);
 
     const exportData = {
       version: '2.0.0',
       app: 'Aegis Vault Android',
       encrypted: true,
       algorithm: 'AES-256-GCM',
-      kdf: 'PBKDF2-SHA256',
-      iterations: 310000,
+      kdf,
+      memory,
+      iterations,
+      parallelism,
+      hashLength,
       salt,
       iv,
       authTag,
@@ -996,10 +1093,28 @@ export class BackupModule {
       count: items.length,
       data: ciphertext,
     };
+    console.log('[AEGIS-EXPORT] Step C: prepare JSON size=', Object.keys(exportData).length);
 
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = `${RNFS.DocumentDirectoryPath}/aegis_vault_encrypted_${ts}.aegis`;
-    await RNFS.writeFile(path, JSON.stringify(exportData, null, 2), 'utf8');
+    console.log('[AEGIS-EXPORT] Step D: stringify JSON');
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    console.log('[AEGIS-EXPORT] Step E: write file');
+    const path = await writeExportFile(
+      `aegis_vault_encrypted_${ts}.aegis`,
+      jsonStr,
+    );
+    console.log('[AEGIS-EXPORT] Step F: log event');
+
+    await SecurityModule.logSecurityEvent(
+      'backup_export_encrypted',
+      'success',
+      {
+        itemCount: items.length,
+        kdf,
+        output: path ? path.split('/').pop() : 'unknown',
+      },
+    );
+    console.log('[AEGIS-EXPORT] Step G: return path');
 
     return path;
   }

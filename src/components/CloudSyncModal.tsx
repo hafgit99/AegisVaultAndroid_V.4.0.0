@@ -18,9 +18,9 @@ const C = {
   sage: '#72886f',
   sageLight: 'rgba(114,136,111,0.12)',
   muted: 'rgba(16,24,40,0.45)',
-  card: 'rgba(255,255,255,0.45)',
-  inputBg: 'rgba(255,255,255,0.6)',
-  cardBorder: 'rgba(255,255,255,0.55)',
+  card: 'rgba(255,255,255,0.98)',
+  inputBg: 'rgba(255,255,255,0.95)',
+  cardBorder: 'rgba(16,24,40,0.12)',
   green: '#22c55e',
   red: '#ef4444',
 };
@@ -51,7 +51,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
     if (!validPin) {
       Alert.alert(
         t('cloud.error'),
-        'Certificate pin zorunludur. Format: sha256/<base64>',
+        `${t('cloud.pin_required')} ${t('cloud.pin_format')}`,
       );
       return;
     }
@@ -186,7 +186,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
             />
 
             <Text style={[st.label, { color: cc.muted }]}>
-              TLS Certificate Pin
+              {t('cloud.pin_label')}
             </Text>
             <TextInput
               style={[

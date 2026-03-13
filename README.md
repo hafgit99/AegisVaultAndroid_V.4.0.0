@@ -25,20 +25,30 @@
 ## ✨ Key Features
 
 - **🔐 End-to-End Encryption:** Your data is encrypted locally using **AES-256-GCM**. No one else can access it.
+- **🛡️ Google Play Integrity:** Real-time hardware-backed device integrity monitoring to prevent unauthorized access on compromised devices.
 - **🆔 Biometric Security:** Instant access with Fingerprint or Face ID integration.
 - **🕒 TOTP Support:** Integrated 2FA authenticator for all your accounts.
 - **🔍 Leak Detection:** Powered by _Have I Been Pwned_ API to check if your credentials are compromised.
 - **☁️ Secure Cloud Sync:** Synchronize your vault across multiple devices with cloud encryption.
+- **📥 Professional Backup:** Seamless JSON and Encrypted Aegis export/import system with cross-platform compatibility.
 - **🗑️ Recycle Bin:** Advanced trash system with 30-day auto-cleanup.
 - **🌍 Multi-language:** Premium localization for **English** and **Turkish**.
 
+## 🛡️ Security Documentation
+
+Comprehensive security analysis and planning are available in the following documents:
+
+- **[Security Architecture](docs/SECURITY_ARCHITECTURE.md)**: Details on encryption, key derivation, and storage.
+- **[Threat Model](docs/THREAT_MODEL.md)**: Identification of potential threats and mitigation strategies.
+- **[Project Roadmap](docs/ONCELIKLI_YAPILACAKLAR_LISTESI.md)**: Current development focus and future security features.
+
 ## 🛠️ Tech Stack
 
-- **Frontend:** React Native 0.72+
-- **Security:** Argon2 (Key Derivation), AES-256 (Encryption)
-- **Networking:** Axios for secure API calls
-- **State:** React Hooks & Context API
-- **Design:** Modern Glassmorphism UI
+- **Frontend:** React Native 0.72+ (Hermes Optimized)
+- **Security Logic:** Pure JavaScript crypto-wrappers to bypass platform buffer inconsistencies.
+- **Encryption:** AES-256-GCM with Argon2id (Key Derivation).
+- **Integrity:** Android Play Integrity API integration.
+- **Design:** Premium Glassmorphism UI with high-opacity Light Mode accessibility.
 
 ## 📸 Screenshots
 
@@ -59,10 +69,12 @@ Example build flow used by metadata:
 ```yaml
 sudo:
   - apt-get update
-  - apt-get install -y npm
+  - apt-get install -y npm openjdk-17-jdk-headless
 prebuild:
   - npm ci
 ```
+
+The metadata also pins Gradle toolchain discovery to installed JDKs to avoid auto-download failures in CI (`org.gradle.java.installations.*` in `gradleprops`).
 
 ### Prerequisites
 

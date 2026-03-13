@@ -1,6 +1,7 @@
 import RNFS from 'react-native-fs';
 import { NativeModules, Platform } from 'react-native';
 import { BackupModule } from './BackupModule';
+import { SecurityModule } from './SecurityModule';
 
 const { CloudSyncSecure } = NativeModules;
 
@@ -94,12 +95,26 @@ export class CloudSyncModule {
 
       if (statusCode >= 200 && statusCode < 300) {
         console.log('[CloudSync] Successfully uploaded encrypted vault');
+        await SecurityModule.logSecurityEvent('cloud_sync_upload', 'success', {
+          statusCode,
+          endpoint: safeUrl,
+        });
         return true;
       } else {
+        await SecurityModule.logSecurityEvent('cloud_sync_upload', 'failed', {
+          statusCode,
+          endpoint: safeUrl,
+        });
         throw new Error(
           `Cloud server rejected upload: ${statusCode} HTTP error`,
         );
       }
+    } catch (e) {
+      await SecurityModule.logSecurityEvent('cloud_sync_upload', 'failed', {
+        endpoint: safeUrl,
+        reason: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     } finally {
       // 3. Clean up the local temporary backup to preserve zero-footprint pledge
       await RNFS.unlink(tempExportPath).catch(() => {});
@@ -137,6 +152,16 @@ export class CloudSyncModule {
           tempImportPath,
           password,
         );
+        await SecurityModule.logSecurityEvent(
+          'cloud_sync_download',
+          'success',
+          {
+            statusCode,
+            endpoint: safeUrl,
+            imported: importResult?.imported || 0,
+            skipped: importResult?.skipped || 0,
+          },
+        );
         console.log(
           '[CloudSync] Sync down completed:',
           importResult.imported,
@@ -144,8 +169,18 @@ export class CloudSyncModule {
         );
         return importResult;
       } else {
+        await SecurityModule.logSecurityEvent('cloud_sync_download', 'failed', {
+          statusCode,
+          endpoint: safeUrl,
+        });
         throw new Error(`Failed to download from cloud: ${statusCode}`);
       }
+    } catch (e) {
+      await SecurityModule.logSecurityEvent('cloud_sync_download', 'failed', {
+        endpoint: safeUrl,
+        reason: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     } finally {
       // 3. Clean up generic downloaded file
       await RNFS.unlink(tempImportPath).catch(() => {});
