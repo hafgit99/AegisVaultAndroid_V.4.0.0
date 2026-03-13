@@ -40,7 +40,6 @@ Comprehensive security analysis and planning are available in the following docu
 
 - **[Security Architecture](docs/SECURITY_ARCHITECTURE.md)**: Details on encryption, key derivation, and storage.
 - **[Threat Model](docs/THREAT_MODEL.md)**: Identification of potential threats and mitigation strategies.
-- **[Project Roadmap](docs/ONCELIKLI_YAPILACAKLAR_LISTESI.md)**: Current development focus and future security features.
 
 ## 🛠️ Tech Stack
 
