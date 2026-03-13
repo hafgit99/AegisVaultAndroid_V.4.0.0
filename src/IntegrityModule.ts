@@ -60,4 +60,49 @@ export const IntegrityModule = {
       };
     }
   },
+
+  /**
+   * Evaluates current device integrity signals and returns a simple risk level.
+   * Useful for policy enforcement in SecurityModule.
+   */
+  async checkDeviceIntegrity(): Promise<{
+    riskLevel: IntegritySignals['riskLevel'];
+    score: number;
+    reasons: string[];
+  }> {
+    const signals = await this.getIntegritySignals();
+
+    // Default: no risk
+    if (signals.score >= 90 && !signals.rooted && !signals.emulator) {
+      return {
+        riskLevel: 'low',
+        score: signals.score,
+        reasons: [],
+      };
+    }
+
+    // High risk: rooted or emulator
+    if (signals.rooted || signals.emulator) {
+      return {
+        riskLevel: 'critical',
+        score: signals.score,
+        reasons: signals.reasons,
+      };
+    }
+
+    // Medium risk: debug build or ADB enabled
+    if (signals.debugBuild || signals.adbEnabled) {
+      return {
+        riskLevel: 'medium',
+        score: signals.score,
+        reasons: signals.reasons,
+      };
+    }
+
+    return {
+      riskLevel: signals.riskLevel,
+      score: signals.score,
+      reasons: signals.reasons,
+    };
+  },
 };

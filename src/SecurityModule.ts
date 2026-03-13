@@ -6,9 +6,11 @@ import ReactNativeBiometrics from 'react-native-biometrics';
 import { AutofillService } from './AutofillService';
 import Argon2 from 'react-native-argon2';
 import i18n from './i18n';
+import { IntegrityModule } from './IntegrityModule';
 
 // ── Pure JS Helper for robustness to replace buggy React Native Buffer ──
-const _b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const _b64chars =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 function __bufToBase64(buf: any): string {
   let bytes: Uint8Array;
   if (buf instanceof Uint8Array) {
@@ -37,7 +39,9 @@ function __bufToBase64(buf: any): string {
 }
 
 function __bufToUtf8(buf: any): string {
-  const bytes = new Uint8Array(buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf);
+  const bytes = new Uint8Array(
+    buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf,
+  );
   let str = '';
   for (let i = 0; i < bytes.length; i++) {
     str += String.fromCharCode(bytes[i]);
@@ -50,7 +54,8 @@ function __bufToUtf8(buf: any): string {
 }
 
 function __base64ToBuf(b64: string): Uint8Array {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const lookup = new Uint8Array(256);
   for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
 
@@ -82,7 +87,9 @@ function __hexToBuf(hex: string): Uint8Array {
 }
 
 function __bufToHex(buf: any): string {
-  const bytes = new Uint8Array(buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf);
+  const bytes = new Uint8Array(
+    buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf,
+  );
   let str = '';
   for (let i = 0; i < bytes.length; i++) {
     str += bytes[i].toString(16).padStart(2, '0');
@@ -203,12 +210,21 @@ export interface WifiData {
   hidden: boolean;
 }
 
+export interface SecurityPolicy {
+  deviceTrustPolicy: 'strict' | 'moderate' | 'permissive';
+  requireBiometric: boolean;
+  rootDetectionEnabled: boolean;
+  rootBlocksVault: boolean;
+  degradedDeviceAction: 'block' | 'warn' | 'allow';
+}
+
 export interface VaultSettings {
   autoLockSeconds: number;
   biometricEnabled: boolean;
   clipboardClearSeconds: number;
   passwordLength: number;
   darkMode: boolean;
+  deviceTrustPolicy?: SecurityPolicy;
 }
 
 type PasswordFieldType = 'password' | 'wifi_password' | 'pin' | 'cvv';
@@ -262,6 +278,13 @@ const DEFAULT_SETTINGS: VaultSettings = {
   clipboardClearSeconds: 30,
   passwordLength: 20,
   darkMode: false,
+  deviceTrustPolicy: {
+    deviceTrustPolicy: 'moderate',
+    requireBiometric: true,
+    rootDetectionEnabled: true,
+    rootBlocksVault: false,
+    degradedDeviceAction: 'warn',
+  },
 };
 
 // ── Brute Force Protection State ────────────────────
@@ -275,6 +298,8 @@ interface BruteForceState {
 const SALT_FILE = `${RNFS.DocumentDirectoryPath}/aegis_device_salt.bin`;
 const BRUTE_FORCE_FILE = `${RNFS.DocumentDirectoryPath}/aegis_bf_state.json`;
 const AUDIT_BUFFER_FILE = `${RNFS.DocumentDirectoryPath}/aegis_audit_buffer.json`;
+const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
+
 const BACKUP_PBKDF2_FALLBACK_ITERATIONS = 310000;
 const BACKUP_KDF_DEFAULT = {
   algorithm: 'Argon2id',
@@ -290,11 +315,52 @@ export class SecurityModule {
   private static autoLockTimer: ReturnType<typeof setTimeout> | null = null;
   public static isPickingFileFlag: boolean = false;
   private static deviceSalt: Buffer | null = null;
+  private static appConfig: any = null;
   private static bfState: BruteForceState = {
     failCount: 0,
     lockUntil: 0,
     lastAttempt: 0,
   };
+
+  // ══════════════════════════════════════════════════
+  // 0. NON-ENCRYPTED APP CONFIG (for Pre-Unlock Settings)
+  // ══════════════════════════════════════════════════
+
+  private static async loadAppConfig(): Promise<void> {
+    if (this.appConfig) return;
+    try {
+      if (await RNFS.exists(APP_CONFIG_FILE)) {
+        const json = await RNFS.readFile(APP_CONFIG_FILE, 'utf8');
+        this.appConfig = JSON.parse(json);
+      } else {
+        this.appConfig = {};
+      }
+    } catch {
+      this.appConfig = {};
+    }
+  }
+
+  private static async saveAppConfig(): Promise<void> {
+    try {
+      await RNFS.writeFile(
+        APP_CONFIG_FILE,
+        JSON.stringify(this.appConfig || {}),
+        'utf8',
+      );
+    } catch {}
+  }
+
+  static async getAppConfigSetting(key: string): Promise<any> {
+    await this.loadAppConfig();
+    return this.appConfig?.[key] ?? (DEFAULT_SETTINGS as any)[key];
+  }
+
+  static async setAppConfigSetting(key: string, value: any): Promise<void> {
+    await this.loadAppConfig();
+    if (!this.appConfig) this.appConfig = {};
+    this.appConfig[key] = value;
+    await this.saveAppConfig();
+  }
 
   // ══════════════════════════════════════════════════
   // 1. DYNAMIC DEVICE SALT (per-device unique)
@@ -473,6 +539,8 @@ export class SecurityModule {
       // Step 3: Derive deterministic vault key
       // Argon2id(publicKey, deviceSalt, 32MB, 4 iter, 2 threads)
       const salt = await this.getDeviceSalt();
+      console.log('[Security] Salt and public key ready for Argon2');
+
       const argon2Result = await Argon2Fn(publicKey!, salt.toString('hex'), {
         mode: 'argon2id',
         memory: 32768,
@@ -482,11 +550,14 @@ export class SecurityModule {
         saltEncoding: 'hex',
       });
 
-      const keyHex = argon2Result.rawHash;
-      const derivedKey = Buffer.from(keyHex, 'hex');
+      if (!argon2Result || !argon2Result.rawHash) {
+        throw new Error('Argon2 derivation failed: No result or hash');
+      }
 
-      // Zero out key material
-      for (let i = 0; i < derivedKey.length; i++) (derivedKey as any)[i] = 0;
+      const keyHex =
+        typeof argon2Result.rawHash === 'string'
+          ? argon2Result.rawHash
+          : Buffer.from(argon2Result.rawHash).toString('hex');
 
       console.log(
         '[Security] Biometric key derived successfully using Argon2id',
@@ -543,9 +614,15 @@ export class SecurityModule {
   /**
    * Unlock the vault with a derived key.
    * Includes brute force protection with exponential backoff.
+   * ✅ NEW: Device integrity validation (root/tamper detection)
+   * Vault kilit aç ve brute force korumasını kontrol et
    */
-  static async unlockVault(password: string): Promise<boolean> {
+  static async unlockVault(
+    password: string,
+    userSecurityPolicy?: SecurityPolicy,
+  ): Promise<boolean> {
     try {
+      console.log('[Security] Unlocking vault...');
       // Check brute force lockout
       await this.loadBruteForceState();
       const remaining = await this.getRemainingLockout();
@@ -556,6 +633,41 @@ export class SecurityModule {
           remainingSeconds: remaining,
         });
         return false;
+      }
+
+      // ✅ NEW FEATURE #1: Device Integrity Check (Cihaz Bütünlüğü Kontrol)
+      const policy = userSecurityPolicy || DEFAULT_SETTINGS.deviceTrustPolicy!;
+
+      if (policy.rootDetectionEnabled) {
+        console.log('[Security] Running device integrity check...');
+        const integrityResult = await IntegrityModule.checkDeviceIntegrity();
+        console.log(
+          '[Security] Integrity result:',
+          integrityResult.riskLevel,
+          'Score:',
+          integrityResult.score,
+        );
+
+        // Handle based on policy
+        if (
+          policy.deviceTrustPolicy === 'strict' &&
+          integrityResult.riskLevel === 'critical'
+        ) {
+          await this.logSecurityEvent('vault_unlock', 'blocked', {
+            reason: 'device_integrity_failed',
+            riskLevel: integrityResult.riskLevel,
+            reasons: integrityResult.reasons,
+          });
+          console.error(
+            '[Security] Vault unlock blocked: Device integrity check failed (STRICT mode)',
+          );
+          return false;
+        }
+        // ...existing code...
+        console.log(
+          '[Security] Device integrity check passed, risk level:',
+          integrityResult.riskLevel,
+        );
       }
 
       const salt = await this.getDeviceSalt();
@@ -569,22 +681,41 @@ export class SecurityModule {
         hashLength: 32,
         saltEncoding: 'hex',
       });
-      const keyBuf = Buffer.from(argon2Result.rawHash, 'hex');
 
-      console.log('[Security] Argon2id derivation completed');
+      const keyHex =
+        typeof argon2Result.rawHash === 'string'
+          ? argon2Result.rawHash
+          : Buffer.from(argon2Result.rawHash).toString('hex');
+
+      console.log(
+        '[Security] Argon2id derivation completed, opening database...',
+      );
 
       this.db = open({
         name: 'aegis_android_vault.sqlite',
-        encryptionKey: Buffer.from(keyBuf).toString('hex'),
+        encryptionKey: keyHex,
       });
 
-      // Schema
+      // Optimize SQLite for persistence and performance
+      try {
+        this.db.executeSync('PRAGMA synchronous = NORMAL;');
+        this.db.executeSync('PRAGMA journal_mode = WAL;');
+      } catch (e) {
+        console.warn('[Security] Failed to set PRAGMAs:', e);
+      }
+
+      // Schema + migrations
       this.db.executeSync(`
         CREATE TABLE IF NOT EXISTS vault_items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          title TEXT NOT NULL, username TEXT DEFAULT '', password TEXT DEFAULT '',
-          url TEXT DEFAULT '', notes TEXT DEFAULT '', category TEXT DEFAULT 'login',
-          favorite INTEGER DEFAULT 0, data TEXT DEFAULT '{}',
+          title TEXT NOT NULL,
+          username TEXT DEFAULT '',
+          password TEXT DEFAULT '',
+          url TEXT DEFAULT '',
+          notes TEXT DEFAULT '',
+          category TEXT DEFAULT 'login',
+          favorite INTEGER DEFAULT 0,
+          data TEXT DEFAULT '{}',
           is_deleted INTEGER DEFAULT 0,
           deleted_at DATETIME DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -594,9 +725,11 @@ export class SecurityModule {
       this.db.executeSync(`
         CREATE TABLE IF NOT EXISTS vault_attachments (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          item_id INTEGER NOT NULL, filename TEXT NOT NULL,
-          mime_type TEXT DEFAULT '', size INTEGER DEFAULT 0,
-          file_data TEXT DEFAULT '',
+          item_id INTEGER NOT NULL,
+          filename TEXT NOT NULL,
+          mime_type TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          file_data TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (item_id) REFERENCES vault_items(id) ON DELETE CASCADE
         );
@@ -613,9 +746,6 @@ export class SecurityModule {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      this.db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_audit_time ON vault_audit_log(created_at DESC);`,
-      );
       this.db.executeSync(`
         CREATE TABLE IF NOT EXISTS vault_password_history (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -627,31 +757,25 @@ export class SecurityModule {
           FOREIGN KEY (item_id) REFERENCES vault_items(id) ON DELETE CASCADE
         );
       `);
+
+      this.db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_vault_items_updated ON vault_items(updated_at DESC);`,
+      );
+      this.db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_vault_items_category ON vault_items(category);`,
+      );
+      this.db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_attachments_item ON vault_attachments(item_id);`,
+      );
       this.db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_pw_history_item_time ON vault_password_history(item_id, changed_at DESC);`,
       );
+      this.db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_audit_time ON vault_audit_log(created_at DESC);`,
+      );
 
       await this.flushBufferedAuditEvents();
-
-      // Migration: add missing columns if updating
-      try {
-        this.db.executeSync(
-          "ALTER TABLE vault_items ADD COLUMN data TEXT DEFAULT '{}'",
-        );
-      } catch {}
-      try {
-        this.db.executeSync(
-          'ALTER TABLE vault_items ADD COLUMN is_deleted INTEGER DEFAULT 0',
-        );
-      } catch {}
-      try {
-        this.db.executeSync(
-          'ALTER TABLE vault_items ADD COLUMN deleted_at DATETIME DEFAULT NULL',
-        );
-      } catch {}
-
-      // Zero out key material
-      for (let i = 0; i < keyBuf.length; i++) (keyBuf as any)[i] = 0;
+      console.log('[Security] Vault schema and migrations checked');
 
       // Record successful attempt (reset brute force counter)
       await this.recordSuccessfulAttempt();
@@ -670,7 +794,7 @@ export class SecurityModule {
       await this.logSecurityEvent('vault_unlock', 'failed', {
         reason: e instanceof Error ? e.message : String(e),
       });
-      console.error('Unlock failed:', e);
+      console.error('[Security] Unlock failed:', e);
       return false;
     }
   }
@@ -773,19 +897,56 @@ export class SecurityModule {
   }
 
   static async getAuditEvents(limit: number = 100): Promise<AuditEvent[]> {
-    if (!this.db) return [];
-    try {
-      const safeLimit = Math.max(1, Math.min(500, limit));
-      return (this.db.executeSync(
-        `SELECT id, event_type, event_status, details, created_at
-         FROM vault_audit_log
-         ORDER BY created_at DESC
-         LIMIT ${safeLimit}`,
-      ).rows || []) as AuditEvent[];
-    } catch (e) {
-      console.error('getAuditEvents:', e);
-      return [];
+    const safeLimit = Math.max(1, Math.min(500, limit));
+    const fromDb: AuditEvent[] = [];
+
+    if (this.db) {
+      try {
+        fromDb.push(
+          ...((this.db.executeSync(
+            `SELECT id, event_type, event_status, details, created_at
+             FROM vault_audit_log
+             ORDER BY created_at DESC
+             LIMIT ${safeLimit}`,
+          ).rows || []) as AuditEvent[]),
+        );
+      } catch (e) {
+        console.error('getAuditEvents(db):', e);
+      }
     }
+
+    const fromBuffer: AuditEvent[] = [];
+    try {
+      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
+      if (exists) {
+        const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
+        const events = (raw ? JSON.parse(raw) : []) as Array<{
+          event_type: string;
+          event_status: AuditEvent['event_status'];
+          details: string;
+          created_at: string;
+        }>;
+
+        events.forEach((ev, index) => {
+          fromBuffer.push({
+            id: -(index + 1),
+            event_type: ev.event_type,
+            event_status: ev.event_status,
+            details: ev.details || '{}',
+            created_at: ev.created_at || new Date().toISOString(),
+          });
+        });
+      }
+    } catch (e) {
+      console.error('getAuditEvents(buffer):', e);
+    }
+
+    return [...fromDb, ...fromBuffer]
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+      .slice(0, safeLimit);
   }
 
   static async clearAuditEvents(): Promise<boolean> {
@@ -921,8 +1082,12 @@ export class SecurityModule {
   }
 
   static async addItem(item: Partial<VaultItem>): Promise<number | null> {
-    if (!this.db) return null;
+    if (!this.db) {
+      console.error('[Security] Cannot add item: Database not open');
+      return null;
+    }
     try {
+      console.log('[Security] Adding new item to vault:', item.title);
       const r = this.db.executeSync(
         `INSERT INTO vault_items (title,username,password,url,notes,category,favorite,data) VALUES (?,?,?,?,?,?,?,?)`,
         [
@@ -936,15 +1101,21 @@ export class SecurityModule {
           item.data || '{}',
         ],
       );
-      const newId =
-        r.insertId || r.rowsAffected
-          ? this.db.executeSync('SELECT last_insert_rowid() as id').rows?.[0]
-              ?.id
-          : null;
-      if (newId) await this.syncAutofill();
+
+      const res = this.db.executeSync('SELECT last_insert_rowid() as id');
+      const newId = res.rows?.[0]?.id || null;
+
+      if (newId) {
+        console.log('[Security] Item added successfully with ID:', newId);
+        await this.syncAutofill();
+        await this.logSecurityEvent('item_added', 'success', {
+          id: newId,
+          title: item.title,
+        });
+      }
       return newId;
     } catch (e) {
-      console.error('addItem:', e);
+      console.error('[Security] Error adding item:', e);
       return null;
     }
   }
@@ -953,13 +1124,20 @@ export class SecurityModule {
     id: number,
     item: Partial<VaultItem>,
   ): Promise<boolean> {
-    if (!this.db) return false;
+    if (!this.db) {
+      console.error('[Security] Cannot update item: Database not open');
+      return false;
+    }
     try {
+      console.log('[Security] Updating item ID:', id);
       const existing = this.db.executeSync(
         'SELECT * FROM vault_items WHERE id = ?',
         [id],
       ).rows?.[0] as VaultItem | undefined;
-      if (!existing) return false;
+      if (!existing) {
+        console.warn('[Security] Update failed: Item not found with ID', id);
+        return false;
+      }
 
       const merged: Partial<VaultItem> = {
         ...existing,
@@ -984,6 +1162,7 @@ export class SecurityModule {
       }
       fields.push('updated_at=CURRENT_TIMESTAMP');
       params.push(id);
+
       this.db.executeSync(
         `UPDATE vault_items SET ${fields.join(',')} WHERE id=?`,
         params,
@@ -991,9 +1170,12 @@ export class SecurityModule {
 
       await this.appendPasswordHistoryEntries(id, changedOldSecrets, 'update');
       await this.syncAutofill();
+
+      console.log('[Security] Item updated successfully');
+      await this.logSecurityEvent('item_updated', 'success', { id });
       return true;
     } catch (e) {
-      console.error('updateItem:', e);
+      console.error('[Security] Error updating item:', e);
       return false;
     }
   }
@@ -1419,18 +1601,63 @@ export class SecurityModule {
   static async getSetting(key: string): Promise<string | null> {
     if (!this.db) return null;
     try {
-      return (
-        this.db.executeSync('SELECT value FROM vault_settings WHERE key=?', [
-          key,
-        ]).rows?.[0]?.value || null
-      );
+      const row = this.db.executeSync(
+        'SELECT value FROM vault_settings WHERE key=?',
+        [key],
+      ).rows?.[0] as { value?: string | number | boolean | null } | undefined;
+      if (!row || row.value === undefined || row.value === null) return null;
+      return String(row.value);
     } catch {
       return null;
     }
   }
+
+  private static parseSettingBoolean(
+    value: string | number | boolean | null | undefined,
+    fallback: boolean,
+  ): boolean {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+    return fallback;
+  }
+
+  private static parseSettingNumber(
+    value: string | number | boolean | null | undefined,
+    fallback: number,
+  ): number {
+    if (value === null || value === undefined) return fallback;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.trunc(n));
+  }
+
+  private static parseSettingForAppConfig(
+    value: string,
+  ): string | number | boolean {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+    return value;
+  }
+
   static async setSetting(key: string, value: string) {
-    if (!this.db) return;
+    const uiSettingKeys = ['darkMode', 'biometricEnabled', 'autoLockSeconds'];
     try {
+      if (uiSettingKeys.includes(key)) {
+        await this.setAppConfigSetting(
+          key,
+          this.parseSettingForAppConfig(value),
+        );
+      }
+
+      if (!this.db) return;
+
       const previous = await this.getSetting(key);
       this.db.executeSync(
         'INSERT OR REPLACE INTO vault_settings (key,value) VALUES (?,?)',
@@ -1454,16 +1681,38 @@ export class SecurityModule {
   static async getAllSettings(): Promise<VaultSettings> {
     const s = { ...DEFAULT_SETTINGS };
     try {
+      const appAutoLock = await this.getAppConfigSetting('autoLockSeconds');
+      s.autoLockSeconds = this.parseSettingNumber(
+        appAutoLock,
+        s.autoLockSeconds,
+      );
+      const appBiometric = await this.getAppConfigSetting('biometricEnabled');
+      s.biometricEnabled = this.parseSettingBoolean(
+        appBiometric,
+        s.biometricEnabled,
+      );
+      const appDarkMode = await this.getAppConfigSetting('darkMode');
+      s.darkMode = this.parseSettingBoolean(appDarkMode, s.darkMode);
+
       const al = await this.getSetting('autoLockSeconds');
-      if (al) s.autoLockSeconds = parseInt(al);
+      if (al !== null)
+        s.autoLockSeconds = this.parseSettingNumber(al, s.autoLockSeconds);
       const bio = await this.getSetting('biometricEnabled');
-      if (bio) s.biometricEnabled = bio === 'true';
+      if (bio !== null) {
+        s.biometricEnabled = this.parseSettingBoolean(bio, s.biometricEnabled);
+      }
       const cl = await this.getSetting('clipboardClearSeconds');
-      if (cl) s.clipboardClearSeconds = parseInt(cl);
+      if (cl !== null) {
+        s.clipboardClearSeconds = this.parseSettingNumber(
+          cl,
+          s.clipboardClearSeconds,
+        );
+      }
       const pl = await this.getSetting('passwordLength');
-      if (pl) s.passwordLength = parseInt(pl);
+      if (pl !== null)
+        s.passwordLength = this.parseSettingNumber(pl, s.passwordLength);
       const dm = await this.getSetting('darkMode');
-      if (dm) s.darkMode = dm === 'true';
+      if (dm !== null) s.darkMode = this.parseSettingBoolean(dm, s.darkMode);
     } catch {}
     return s;
   }
@@ -1873,7 +2122,12 @@ export class SecurityModule {
           hashLength: number;
         };
 
-    console.log('[ENC-DEBUG] Step 2: Argon2Fn type=', typeof Argon2Fn, 'value=', Argon2Fn);
+    console.log(
+      '[ENC-DEBUG] Step 2: Argon2Fn type=',
+      typeof Argon2Fn,
+      'value=',
+      Argon2Fn,
+    );
     const hasArgon2 = typeof Argon2Fn === 'function';
     console.log('[ENC-DEBUG] Step 2: hasArgon2=', hasArgon2);
     if (hasArgon2) {
@@ -1887,7 +2141,10 @@ export class SecurityModule {
           hashLength: BACKUP_KDF_DEFAULT.hashLength,
           saltEncoding: 'hex',
         });
-        console.log('[ENC-DEBUG] Step 2a OK: argon2Result keys=', Object.keys(argon2Result || {}));
+        console.log(
+          '[ENC-DEBUG] Step 2a OK: argon2Result keys=',
+          Object.keys(argon2Result || {}),
+        );
         keyBuf = Buffer.from(argon2Result.rawHash, 'hex');
         kdfMeta = {
           kdf: 'Argon2id',
@@ -1927,11 +2184,21 @@ export class SecurityModule {
         hashLength: 32,
       };
     }
-    console.log('[ENC-DEBUG] Step 2 DONE: keyBuf.length=', keyBuf!.length, 'kdf=', (kdfMeta as any).kdf);
+    console.log(
+      '[ENC-DEBUG] Step 2 DONE: keyBuf.length=',
+      keyBuf!.length,
+      'kdf=',
+      (kdfMeta as any).kdf,
+    );
 
     console.log('[ENC-DEBUG] Step 3: getting crypto impl');
     const crypto = getCryptoImpl();
-    console.log('[ENC-DEBUG] Step 3: crypto=', !!crypto, 'createCipheriv=', typeof crypto?.createCipheriv);
+    console.log(
+      '[ENC-DEBUG] Step 3: crypto=',
+      !!crypto,
+      'createCipheriv=',
+      typeof crypto?.createCipheriv,
+    );
     if (!crypto?.createCipheriv) {
       throw new Error(
         'Crypto AES-GCM encryption is not available on this build.',
@@ -1944,10 +2211,12 @@ export class SecurityModule {
     const plaintextBuf = Buffer.from(plaintext, 'utf8');
     const updateResult = cipher.update(plaintextBuf);
     const finalResult = cipher.final();
-    
+
     const updateBytes = new Uint8Array(updateResult as ArrayBuffer);
     const finalBytes = new Uint8Array(finalResult as ArrayBuffer);
-    const encryptedBytes = new Uint8Array(updateBytes.length + finalBytes.length);
+    const encryptedBytes = new Uint8Array(
+      updateBytes.length + finalBytes.length,
+    );
     encryptedBytes.set(updateBytes, 0);
     encryptedBytes.set(finalBytes, updateBytes.length);
 
@@ -2000,7 +2269,7 @@ export class SecurityModule {
         kdfMeta?.iterations || 310000,
         32,
       );
-      keyBuf = new Uint8Array(derivedKeyBuffer as ArrayBuffer);
+      keyBuf = new Uint8Array(derivedKeyBuffer as unknown as ArrayBuffer);
     } else {
       const argon2Result = await Argon2Fn(password, __bufToHex(salt), {
         mode: 'argon2id',
@@ -2023,15 +2292,19 @@ export class SecurityModule {
 
     const decipher = cryptoDec.createDecipheriv('aes-256-gcm', keyBuf, iv);
     decipher.setAuthTag(authTag);
-    
+
     // Similarly use Uint8Array to bypass string/Buffer incompatibilities
-    const decUpdateResult = new Uint8Array(decipher.update(encData) as ArrayBuffer);
+    const decUpdateResult = new Uint8Array(
+      decipher.update(encData) as ArrayBuffer,
+    );
     const decFinalResult = new Uint8Array(decipher.final() as ArrayBuffer);
-    
-    const decryptedBytes = new Uint8Array(decUpdateResult.length + decFinalResult.length);
+
+    const decryptedBytes = new Uint8Array(
+      decUpdateResult.length + decFinalResult.length,
+    );
     decryptedBytes.set(decUpdateResult, 0);
     decryptedBytes.set(decFinalResult, decUpdateResult.length);
-    
+
     const decryptedStr = __bufToUtf8(decryptedBytes);
 
     // Zero out key

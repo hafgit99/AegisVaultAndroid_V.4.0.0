@@ -15,12 +15,31 @@ function App(): React.JSX.Element {
   const [i18nLoaded, setI18nLoaded] = useState(false);
   const [darkModeSetting, setDarkModeSetting] = useState<boolean>(false);
 
+  // Sync dark mode setting from SecurityModule events or periodically
+  useEffect(() => {
+    const checkDark = async () => {
+      const dark = await SecurityModule.getAppConfigSetting('darkMode');
+      if (dark === true || dark === 'true') {
+        if (!darkModeSetting) setDarkModeSetting(true);
+      } else {
+        if (darkModeSetting) setDarkModeSetting(false);
+      }
+    };
+    
+    // Initial check
+    checkDark();
+    
+    // Periodically check for changes (since we don't have a global event emitter for settings)
+    const interval = setInterval(checkDark, 1000);
+    return () => clearInterval(interval);
+  }, [darkModeSetting]);
+
   useEffect(() => {
     (async () => {
       await initI18n();
       try {
-        const darkMode = await SecurityModule.getSetting('darkMode');
-        setDarkModeSetting(darkMode === 'true');
+        const darkMode = await SecurityModule.getAppConfigSetting('darkMode');
+        setDarkModeSetting(darkMode === true || darkMode === 'true');
       } catch {}
       setI18nLoaded(true);
     })();

@@ -461,7 +461,14 @@ export const Dashboard = () => {
           </View>
         )}
         <TouchableOpacity
-          style={[s.bioBtn, lockoutRemaining > 0 && { opacity: 0.4 }]}
+          style={[
+            s.bioBtn,
+            {
+              backgroundColor: palette.card,
+              borderColor: palette.cardBorder,
+            },
+            lockoutRemaining > 0 && { opacity: 0.4 },
+          ]}
           onPress={auth}
           activeOpacity={0.75}
           disabled={lockoutRemaining > 0}
