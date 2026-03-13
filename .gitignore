@@ -80,3 +80,6 @@ yarn-error.log
 .env.*
 ! .env.example
 *.log
+
+# Reports
+docs/AEGIS_DETAYLI_ANALIZ_RAPORU.md
