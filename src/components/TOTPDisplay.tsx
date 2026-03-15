@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Clipboard, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Clipboard } from 'react-native';
 import { generateTOTP, isValidTOTPSecret } from '../TOTPModule';
 
 const C = {
@@ -16,14 +16,24 @@ interface Props {
   algorithm?: string;
   issuer?: string;
   compact?: boolean;
+  clipboardClearSeconds?: number;
 }
 
-export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1', issuer, compact = false }: Props) => {
+export const TOTPDisplay = ({
+  secret,
+  period = 30,
+  digits = 6,
+  algorithm = 'sha1',
+  issuer,
+  compact = false,
+  clipboardClearSeconds = 30,
+}: Props) => {
   const [code, setCode] = useState('------');
   const [remaining, setRemaining] = useState(period);
   const [progress, setProgress] = useState(0);
   const [copied, setCopied] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const clipboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const valid = isValidTOTPSecret(secret);
 
@@ -47,7 +57,13 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
 
     updateCode();
     const interval = setInterval(updateCode, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (clipboardTimerRef.current) {
+        clearTimeout(clipboardTimerRef.current);
+        clipboardTimerRef.current = null;
+      }
+    };
   }, [secret, period, digits, algorithm]);
 
   const copyCode = () => {
@@ -55,6 +71,16 @@ export const TOTPDisplay = ({ secret, period = 30, digits = 6, algorithm = 'sha1
     Clipboard.setString(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    if (clipboardTimerRef.current) {
+      clearTimeout(clipboardTimerRef.current);
+      clipboardTimerRef.current = null;
+    }
+    if (clipboardClearSeconds > 0) {
+      clipboardTimerRef.current = setTimeout(() => {
+        Clipboard.setString('');
+        clipboardTimerRef.current = null;
+      }, clipboardClearSeconds * 1000);
+    }
   };
 
   if (!valid) {
@@ -197,7 +223,6 @@ const st = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 3,
-    transition: 'width 1s linear',
   },
   timerBadge: {
     borderWidth: 2,

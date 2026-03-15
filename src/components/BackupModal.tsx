@@ -113,20 +113,34 @@ export const BackupModal = ({
       return;
     }
 
-    setLoading(true);
-    try {
-      SecurityModule.isPickingFileFlag = true;
-      let path: string;
-      if (format.id === 'csv') path = await BackupModule.exportToCSV();
-      else path = await BackupModule.exportToJSON();
-      SecurityModule.isPickingFileFlag = false;
-      setExportPath(path);
-      Alert.alert(t('backup.msg_exp_ok'), t('backup.msg_saved', { path }));
-    } catch (e: any) {
-      SecurityModule.isPickingFileFlag = false;
-      Alert.alert(t('backup.msg_err'), e?.message || 'Export failed.');
-    }
-    setLoading(false);
+    Alert.alert(
+      t('backup.msg_err'),
+      'CSV ve JSON export sifresizdir. Bu dosyalar ele gecerse tum kasa verileri okunabilir. Guvenlik icin sifreli Aegis export onerilir. Yine de devam etmek istiyor musunuz?',
+      [
+        { text: t('backup.btn_cancel'), style: 'cancel' },
+        {
+          text: 'Devam Et',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              SecurityModule.isPickingFileFlag = true;
+              const path =
+                format.id === 'csv'
+                  ? await BackupModule.exportToCSV()
+                  : await BackupModule.exportToJSON();
+              SecurityModule.isPickingFileFlag = false;
+              setExportPath(path);
+              Alert.alert(t('backup.msg_exp_ok'), t('backup.msg_saved', { path }));
+            } catch (e: any) {
+              SecurityModule.isPickingFileFlag = false;
+              Alert.alert(t('backup.msg_err'), e?.message || 'Export failed.');
+            }
+            setLoading(false);
+          },
+        },
+      ],
+    );
   };
 
   const handleEncryptedExport = async () => {
@@ -148,9 +162,6 @@ export const BackupModal = ({
       Alert.alert(t('backup.msg_enc_exp_ok'), t('backup.msg_saved', { path }));
     } catch (e: any) {
       SecurityModule.isPickingFileFlag = false;
-      console.error('[ENC-EXPORT-ERROR] Full error:', e);
-      console.error('[ENC-EXPORT-ERROR] Message:', e?.message);
-      console.error('[ENC-EXPORT-ERROR] Stack:', e?.stack);
       Alert.alert(
         t('backup.msg_err'),
         e?.message || 'Encrypted export failed.',

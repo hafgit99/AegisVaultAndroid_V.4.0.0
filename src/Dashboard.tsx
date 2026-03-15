@@ -1088,6 +1088,12 @@ const GenView = ({ theme, settings, insets }: any) => {
             Clipboard.setString(pw);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
+            if (settings.clipboardClearSeconds > 0) {
+              setTimeout(
+                () => Clipboard.setString(''),
+                settings.clipboardClearSeconds * 1000,
+              );
+            }
           }}
           activeOpacity={0.7}
         >
@@ -2172,6 +2178,7 @@ const DetailModal = ({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [breachCount, setBreachCount] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
+  const clipboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const supportsHistory =
     item?.category === 'login' ||
@@ -2195,6 +2202,15 @@ const DetailModal = ({
     setBreachCount(null);
   }, [visible, item, supportsHistory]);
 
+  useEffect(() => {
+    return () => {
+      if (clipboardTimerRef.current) {
+        clearTimeout(clipboardTimerRef.current);
+        clipboardTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const checkBreach = async (pw: string) => {
     setChecking(true);
     const count = await HIBPModule.checkPassword(pw);
@@ -2212,8 +2228,16 @@ const DetailModal = ({
     Clipboard.setString(txt);
     setCopied(lbl);
     setTimeout(() => setCopied(null), 2000);
-    if (clipClear > 0)
-      setTimeout(() => Clipboard.setString(''), clipClear * 1000);
+    if (clipboardTimerRef.current) {
+      clearTimeout(clipboardTimerRef.current);
+      clipboardTimerRef.current = null;
+    }
+    if (clipClear > 0) {
+      clipboardTimerRef.current = setTimeout(() => {
+        Clipboard.setString('');
+        clipboardTimerRef.current = null;
+      }, clipClear * 1000);
+    }
   };
 
   const DField = ({ label, value, secret, copyKey }: any) => {
@@ -2534,7 +2558,10 @@ const DetailModal = ({
             })}
             {DField({ label: t('fields.url'), value: item.url, copyKey: 'ur' })}
             {data.totp_secret ? (
-              <TOTPDisplay secret={data.totp_secret} />
+              <TOTPDisplay
+                secret={data.totp_secret}
+                clipboardClearSeconds={clipClear}
+              />
             ) : null}
           </>
         );

@@ -7,6 +7,7 @@
  */
 
 import RNFS from 'react-native-fs';
+import QuickCrypto from 'react-native-quick-crypto';
 import { SecurityModule, VaultItem } from './SecurityModule';
 import { BackupModule } from './BackupModule';
 import i18n from './i18n';
@@ -43,6 +44,27 @@ const RECOVERY_BACKUP_DIR = `${RNFS.DocumentDirectoryPath}/recovery_backups`;
 const CODE_EXPIRATION_MS = 15 * 60 * 1000; // 15 minutes
 const TOKEN_EXPIRATION_MS = 30 * 60 * 1000; // 30 minutes
 const VERIFICATION_CODE_LENGTH = 6;
+const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
+
+const secureRandomBytes = (size: number): Uint8Array => {
+  if (typeof QC?.randomBytes !== 'function') {
+    throw new Error('Secure random generator is unavailable on this build');
+  }
+  return new Uint8Array(QC.randomBytes(size));
+};
+
+const secureCreateHash = (algorithm: string) => {
+  if (typeof QC?.createHash !== 'function') {
+    throw new Error('Secure hash function is unavailable on this build');
+  }
+  return QC.createHash(algorithm);
+};
+
+const debugLog = (...args: any[]) => {
+  if (__DEV__) {
+    console.log(...args);
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════
 // RECOVERY MODULE
@@ -91,9 +113,8 @@ export class RecoveryModule {
         'utf8'
       );
 
-      // In production: Send verification code via email
-      // For now: Log to console (would use email service in real app)
-      console.log(`[Recovery] Verification code sent to ${userEmail}: ${verificationCode}`);
+      // Never log recovery codes or tokens in app logs.
+      debugLog('[Recovery] Verification code generated for recovery session');
       
       // Log recovery event
       await this.logRecoveryEvent('recovery_initiated', {
@@ -218,12 +239,9 @@ export class RecoveryModule {
         return false;
       }
 
-      // Read and decrypt backup
-      const encryptedBackup = await RNFS.readFile(session.vaultBackupPath, 'utf8');
-
-      // Import the backup (decrypt it with importEncryptedAegis)
+      // Import the encrypted backup from its secure on-disk path.
       const importResult = await BackupModule.importEncryptedAegis(
-        encryptedBackup,
+        session.vaultBackupPath,
         backupPassword
       );
 
@@ -284,17 +302,14 @@ export class RecoveryModule {
       await RNFS.mkdir(RECOVERY_BACKUP_DIR).catch(() => {});
 
       // Export encrypted backup
-      const encrypted = await BackupModule.exportEncrypted(backupPassword);
+      const exportedPath = await BackupModule.exportEncrypted(backupPassword);
 
       // Save to recovery backup directory
       const backupId = this.generateSecureRandomString(16);
       const backupPath = `${RECOVERY_BACKUP_DIR}/${backupId}.aegis`;
       
-      await RNFS.writeFile(
-        backupPath,
-        JSON.stringify(encrypted),
-        'utf8'
-      );
+      await RNFS.copyFile(exportedPath, backupPath);
+      await RNFS.unlink(exportedPath).catch(() => {});
 
       // Calculate file hash for integrity verification
       const fileHash = await this.secureHashFile(backupPath);
@@ -398,9 +413,10 @@ export class RecoveryModule {
    * 6 haneli doğrulama kodu oluşturun
    */
   private static generateVerificationCode(length: number): string {
+    const bytes = secureRandomBytes(length);
     let code = '';
     for (let i = 0; i < length; i++) {
-      code += Math.floor(Math.random() * 10).toString();
+      code += (bytes[i] % 10).toString();
     }
     return code;
   }
@@ -410,10 +426,11 @@ export class RecoveryModule {
    */
   private static generateSecureRandomString(length: number): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = secureRandomBytes(length * 2);
     let result = '';
-    // In production, use crypto.getRandomValues()
     for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+      const value = ((bytes[i * 2] << 8) | bytes[i * 2 + 1]) % chars.length;
+      result += chars.charAt(value);
     }
     return result;
   }
@@ -446,14 +463,8 @@ export class RecoveryModule {
    */
   private static async secureHashFile(filePath: string): Promise<string> {
     try {
-      const content = await RNFS.readFile(filePath, 'utf8');
-      // Placeholder: In production use actual SHA-256
-      // For now, return hex representation
-      let hash = '';
-      for (let i = 0; i < content.length; i++) {
-        hash += content.charCodeAt(i).toString(16).padStart(2, '0');
-      }
-      return hash.substring(0, 64); // Simulate 256-bit hash
+      const content = await RNFS.readFile(filePath, 'base64');
+      return secureCreateHash('sha256').update(content, 'base64').digest('hex');
     } catch (e) {
       console.error('[Recovery] secureHashFile error:', e);
       return '';

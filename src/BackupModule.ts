@@ -1,6 +1,12 @@
 import RNFS from 'react-native-fs';
 import { SecurityModule, VaultItem } from './SecurityModule';
 
+const debugLog = (...args: any[]) => {
+  if (__DEV__) {
+    console.log(...args);
+  }
+};
+
 // ═══════════════════════════════════════════════════════════════
 // Aegis Vault – Professional Backup & Restore Module
 // Supports: Bitwarden, 1Password, LastPass, KeePass, Chrome,
@@ -1055,13 +1061,10 @@ export class BackupModule {
   }
 
   static async exportEncrypted(password: string): Promise<string> {
-    console.log('[AEGIS-EXPORT] Step A: getItems');
     const items = await SecurityModule.getItems();
     const plainItems = items.map(({ id: _id, ...rest }) => rest);
     const plaintext = JSON.stringify(plainItems);
-    console.log('[AEGIS-EXPORT] Step A OK, plaintext length=', plaintext.length);
 
-    console.log('[AEGIS-EXPORT] Step B: encryptAES256GCM');
     // AES-256-GCM encryption (authenticated encryption + Argon2id KDF)
     const {
       salt,
@@ -1074,7 +1077,7 @@ export class BackupModule {
       parallelism,
       hashLength,
     } = await SecurityModule.encryptAES256GCM(plaintext, password);
-    console.log('[AEGIS-EXPORT] Step B OK: kdf=', kdf, 'ciphertext len=', ciphertext.length);
+    debugLog('[AEGIS-EXPORT] Encrypted export prepared with Argon2id');
 
     const exportData = {
       version: '2.0.0',
@@ -1093,17 +1096,12 @@ export class BackupModule {
       count: items.length,
       data: ciphertext,
     };
-    console.log('[AEGIS-EXPORT] Step C: prepare JSON size=', Object.keys(exportData).length);
-
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    console.log('[AEGIS-EXPORT] Step D: stringify JSON');
     const jsonStr = JSON.stringify(exportData, null, 2);
-    console.log('[AEGIS-EXPORT] Step E: write file');
     const path = await writeExportFile(
       `aegis_vault_encrypted_${ts}.aegis`,
       jsonStr,
     );
-    console.log('[AEGIS-EXPORT] Step F: log event');
 
     await SecurityModule.logSecurityEvent(
       'backup_export_encrypted',
@@ -1114,7 +1112,6 @@ export class BackupModule {
         output: path ? path.split('/').pop() : 'unknown',
       },
     );
-    console.log('[AEGIS-EXPORT] Step G: return path');
 
     return path;
   }

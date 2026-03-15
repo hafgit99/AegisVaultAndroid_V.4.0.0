@@ -30,7 +30,6 @@ export const initI18n = async () => {
       lng: lang,
       fallbackLng: 'en',
       interpolation: { escapeValue: false },
-      compatibilityJSON: 'v3' // Fix for React Native
     });
 };
 

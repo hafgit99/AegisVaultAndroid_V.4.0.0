@@ -99,6 +99,16 @@ function __bufToHex(buf: any): string {
 
 const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
 const Argon2Fn: any = (Argon2 as any)?.default ?? (Argon2 as any);
+const debugLog = (...args: any[]) => {
+  if (__DEV__) {
+    console.log(...args);
+  }
+};
+const debugWarn = (...args: any[]) => {
+  if (__DEV__) {
+    console.warn(...args);
+  }
+};
 
 const getCryptoImpl = (): any => {
   const g: any = global as any;
@@ -387,7 +397,7 @@ export class SecurityModule {
     const salt = randomBytesSafe(32);
     await RNFS.writeFile(SALT_FILE, salt.toString('hex'), 'utf8');
     this.deviceSalt = salt;
-    console.log('[Security] Generated new device salt');
+    debugLog('[Security] Generated new device salt');
     return salt;
   }
 
@@ -442,7 +452,7 @@ export class SecurityModule {
       this.bfState.lockUntil = Date.now() + lockDuration;
     }
     await this.saveBruteForceState();
-    console.log('[Security] Failed unlock attempt recorded');
+    debugLog('[Security] Failed unlock attempt recorded');
   }
 
   private static async recordSuccessfulAttempt(): Promise<void> {
@@ -508,7 +518,7 @@ export class SecurityModule {
         cancelButtonText: 'Cancel', // OS level default
       });
       if (!success) {
-        console.log('[Security] Biometric verification cancelled');
+        debugLog('[Security] Biometric verification cancelled');
         return null;
       }
 
@@ -517,7 +527,7 @@ export class SecurityModule {
 
       if (!publicKey) {
         // First time setup: create keys in Android Keystore
-        console.log(
+        debugLog(
           '[Security] First-time setup: creating Android Keystore keys...',
         );
         const { keysExist } = await rnBiometrics.biometricKeysExist();
@@ -533,13 +543,13 @@ export class SecurityModule {
 
         // Store the public key for deterministic derivation
         await this.storeKeyMaterial(publicKey);
-        console.log('[Security] Keystore keys created and public key stored');
+        debugLog('[Security] Keystore keys created and public key stored');
       }
 
       // Step 3: Derive deterministic vault key
       // Argon2id(publicKey, deviceSalt, 32MB, 4 iter, 2 threads)
       const salt = await this.getDeviceSalt();
-      console.log('[Security] Salt and public key ready for Argon2');
+      debugLog('[Security] Salt and public key ready for Argon2');
 
       const argon2Result = await Argon2Fn(publicKey!, salt.toString('hex'), {
         mode: 'argon2id',
@@ -559,7 +569,7 @@ export class SecurityModule {
           ? argon2Result.rawHash
           : Buffer.from(argon2Result.rawHash).toString('hex');
 
-      console.log(
+      debugLog(
         '[Security] Biometric key derived successfully using Argon2id',
       );
       return keyHex;
@@ -580,7 +590,7 @@ export class SecurityModule {
       const kmPath = `${RNFS.DocumentDirectoryPath}/aegis_km.dat`;
       await RNFS.unlink(kmPath).catch(() => {});
       await this.logSecurityEvent('biometric_reset', 'success', {});
-      console.log('[Security] Biometric keys reset');
+      debugLog('[Security] Biometric keys reset');
     } catch (e) {
       await this.logSecurityEvent('biometric_reset', 'failed', {
         reason: e instanceof Error ? e.message : String(e),
@@ -622,7 +632,7 @@ export class SecurityModule {
     userSecurityPolicy?: SecurityPolicy,
   ): Promise<boolean> {
     try {
-      console.log('[Security] Unlocking vault...');
+      debugLog('[Security] Unlocking vault...');
       // Check brute force lockout
       await this.loadBruteForceState();
       const remaining = await this.getRemainingLockout();
@@ -639,9 +649,9 @@ export class SecurityModule {
       const policy = userSecurityPolicy || DEFAULT_SETTINGS.deviceTrustPolicy!;
 
       if (policy.rootDetectionEnabled) {
-        console.log('[Security] Running device integrity check...');
+        debugLog('[Security] Running device integrity check...');
         const integrityResult = await IntegrityModule.checkDeviceIntegrity();
-        console.log(
+        debugLog(
           '[Security] Integrity result:',
           integrityResult.riskLevel,
           'Score:',
@@ -664,7 +674,7 @@ export class SecurityModule {
           return false;
         }
         // ...existing code...
-        console.log(
+        debugLog(
           '[Security] Device integrity check passed, risk level:',
           integrityResult.riskLevel,
         );
@@ -687,7 +697,7 @@ export class SecurityModule {
           ? argon2Result.rawHash
           : Buffer.from(argon2Result.rawHash).toString('hex');
 
-      console.log(
+      debugLog(
         '[Security] Argon2id derivation completed, opening database...',
       );
 
@@ -701,7 +711,7 @@ export class SecurityModule {
         this.db.executeSync('PRAGMA synchronous = NORMAL;');
         this.db.executeSync('PRAGMA journal_mode = WAL;');
       } catch (e) {
-        console.warn('[Security] Failed to set PRAGMAs:', e);
+        debugWarn('[Security] Failed to set PRAGMAs:', e);
       }
 
       // Schema + migrations
@@ -775,7 +785,7 @@ export class SecurityModule {
       );
 
       await this.flushBufferedAuditEvents();
-      console.log('[Security] Vault schema and migrations checked');
+      debugLog('[Security] Vault schema and migrations checked');
 
       // Record successful attempt (reset brute force counter)
       await this.recordSuccessfulAttempt();
@@ -786,7 +796,7 @@ export class SecurityModule {
       AutofillService.setUnlocked(true);
       await this.syncAutofill();
 
-      console.log('[Security] Vault unlocked. Dynamic salt + Argon2id.');
+      debugLog('[Security] Vault unlocked. Dynamic salt + Argon2id.');
       return true;
     } catch (e) {
       // Record failed attempt
@@ -1087,7 +1097,7 @@ export class SecurityModule {
       return null;
     }
     try {
-      console.log('[Security] Adding new item to vault:', item.title);
+      debugLog('[Security] Adding new item to vault:', item.title);
       const r = this.db.executeSync(
         `INSERT INTO vault_items (title,username,password,url,notes,category,favorite,data) VALUES (?,?,?,?,?,?,?,?)`,
         [
@@ -1106,7 +1116,7 @@ export class SecurityModule {
       const newId = res.rows?.[0]?.id || null;
 
       if (newId) {
-        console.log('[Security] Item added successfully with ID:', newId);
+        debugLog('[Security] Item added successfully with ID:', newId);
         await this.syncAutofill();
         await this.logSecurityEvent('item_added', 'success', {
           id: newId,
@@ -1129,13 +1139,13 @@ export class SecurityModule {
       return false;
     }
     try {
-      console.log('[Security] Updating item ID:', id);
+      debugLog('[Security] Updating item ID:', id);
       const existing = this.db.executeSync(
         'SELECT * FROM vault_items WHERE id = ?',
         [id],
       ).rows?.[0] as VaultItem | undefined;
       if (!existing) {
-        console.warn('[Security] Update failed: Item not found with ID', id);
+        debugWarn('[Security] Update failed: Item not found with ID', id);
         return false;
       }
 
@@ -1171,7 +1181,7 @@ export class SecurityModule {
       await this.appendPasswordHistoryEntries(id, changedOldSecrets, 'update');
       await this.syncAutofill();
 
-      console.log('[Security] Item updated successfully');
+      debugLog('[Security] Item updated successfully');
       await this.logSecurityEvent('item_updated', 'success', { id });
       return true;
     } catch (e) {
@@ -1338,7 +1348,7 @@ export class SecurityModule {
         WHERE is_deleted = 1 
         AND deleted_at < datetime('now', '-30 days')
       `);
-      console.log('[Security] Old trash items cleaned up');
+      debugLog('[Security] Old trash items cleaned up');
     } catch (e) {
       console.error('[Security] Error cleaning up old trash:', e);
     }
@@ -1373,7 +1383,7 @@ export class SecurityModule {
       await RNFS.unlink(BRUTE_FORCE_FILE).catch(() => {});
 
       await this.logSecurityEvent('factory_reset', 'success', {});
-      console.log('[Security] Factory reset complete');
+      debugLog('[Security] Factory reset complete');
       return true;
     } catch (e) {
       await this.logSecurityEvent('factory_reset', 'failed', {
@@ -1445,7 +1455,7 @@ export class SecurityModule {
           base64 = await RNFS.readFile(filePath, 'base64');
         }
       } catch (readErr) {
-        console.warn('Primary read failed, trying direct read:', readErr);
+        debugWarn('Primary read failed, trying direct read:', readErr);
         try {
           base64 = await RNFS.readFile(filePath, 'base64');
           fileSize = Math.ceil(base64.length * 0.75);
@@ -1459,7 +1469,7 @@ export class SecurityModule {
         'INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)',
         [itemId, filename, mimeType, fileSize, base64],
       );
-      console.log('[Attachment] File added to vault item');
+      debugLog('[Attachment] File added to vault item');
       return true;
     } catch (e) {
       console.error('addAttachment:', e);
@@ -2102,110 +2112,40 @@ export class SecurityModule {
     parallelism?: number;
     hashLength: number;
   }> {
-    console.log('[ENC-DEBUG] Step 1: generating salt and iv');
     const salt = randomBytesSafe(32);
     const iv = randomBytesSafe(12);
-    console.log('[ENC-DEBUG] Step 1 OK: salt=', salt.length, 'iv=', iv.length);
 
     let keyBuf: Buffer;
-    let kdfMeta:
-      | {
-          kdf: 'Argon2id';
-          memory: number;
-          iterations: number;
-          parallelism: number;
-          hashLength: number;
-        }
-      | {
-          kdf: 'PBKDF2-SHA256';
-          iterations: number;
-          hashLength: number;
-        };
+    const kdfMeta = {
+      kdf: 'Argon2id' as const,
+      memory: BACKUP_KDF_DEFAULT.memory,
+      iterations: BACKUP_KDF_DEFAULT.iterations,
+      parallelism: BACKUP_KDF_DEFAULT.parallelism,
+      hashLength: BACKUP_KDF_DEFAULT.hashLength,
+    };
 
-    console.log(
-      '[ENC-DEBUG] Step 2: Argon2Fn type=',
-      typeof Argon2Fn,
-      'value=',
-      Argon2Fn,
-    );
-    const hasArgon2 = typeof Argon2Fn === 'function';
-    console.log('[ENC-DEBUG] Step 2: hasArgon2=', hasArgon2);
-    if (hasArgon2) {
-      try {
-        console.log('[ENC-DEBUG] Step 2a: calling Argon2Fn...');
-        const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
-          mode: 'argon2id',
-          memory: BACKUP_KDF_DEFAULT.memory,
-          iterations: BACKUP_KDF_DEFAULT.iterations,
-          parallelism: BACKUP_KDF_DEFAULT.parallelism,
-          hashLength: BACKUP_KDF_DEFAULT.hashLength,
-          saltEncoding: 'hex',
-        });
-        console.log(
-          '[ENC-DEBUG] Step 2a OK: argon2Result keys=',
-          Object.keys(argon2Result || {}),
-        );
-        keyBuf = Buffer.from(argon2Result.rawHash, 'hex');
-        kdfMeta = {
-          kdf: 'Argon2id',
-          memory: BACKUP_KDF_DEFAULT.memory,
-          iterations: BACKUP_KDF_DEFAULT.iterations,
-          parallelism: BACKUP_KDF_DEFAULT.parallelism,
-          hashLength: BACKUP_KDF_DEFAULT.hashLength,
-        };
-      } catch (e) {
-        console.warn(
-          '[ENC-DEBUG] Step 2a FAILED: Argon2 error, falling back to PBKDF2.',
-          e,
-        );
-        keyBuf = await deriveKeyPBKDF2(
-          password,
-          salt.toString('hex'),
-          BACKUP_PBKDF2_FALLBACK_ITERATIONS,
-          32,
-        );
-        kdfMeta = {
-          kdf: 'PBKDF2-SHA256',
-          iterations: BACKUP_PBKDF2_FALLBACK_ITERATIONS,
-          hashLength: 32,
-        };
-      }
-    } else {
-      console.log('[ENC-DEBUG] Step 2b: using PBKDF2 fallback...');
-      keyBuf = await deriveKeyPBKDF2(
-        password,
-        salt.toString('hex'),
-        BACKUP_PBKDF2_FALLBACK_ITERATIONS,
-        32,
+    if (typeof Argon2Fn !== 'function') {
+      throw new Error(
+        'Argon2id is unavailable on this build. Encrypted export is blocked.',
       );
-      kdfMeta = {
-        kdf: 'PBKDF2-SHA256',
-        iterations: BACKUP_PBKDF2_FALLBACK_ITERATIONS,
-        hashLength: 32,
-      };
     }
-    console.log(
-      '[ENC-DEBUG] Step 2 DONE: keyBuf.length=',
-      keyBuf!.length,
-      'kdf=',
-      (kdfMeta as any).kdf,
-    );
 
-    console.log('[ENC-DEBUG] Step 3: getting crypto impl');
+    const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
+      mode: 'argon2id',
+      memory: BACKUP_KDF_DEFAULT.memory,
+      iterations: BACKUP_KDF_DEFAULT.iterations,
+      parallelism: BACKUP_KDF_DEFAULT.parallelism,
+      hashLength: BACKUP_KDF_DEFAULT.hashLength,
+      saltEncoding: 'hex',
+    });
+    keyBuf = Buffer.from(argon2Result.rawHash, 'hex');
+
     const crypto = getCryptoImpl();
-    console.log(
-      '[ENC-DEBUG] Step 3: crypto=',
-      !!crypto,
-      'createCipheriv=',
-      typeof crypto?.createCipheriv,
-    );
     if (!crypto?.createCipheriv) {
       throw new Error(
         'Crypto AES-GCM encryption is not available on this build.',
       );
     }
-
-    console.log('[ENC-DEBUG] Step 4: createCipheriv');
     const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
 
     const plaintextBuf = Buffer.from(plaintext, 'utf8');
