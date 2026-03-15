@@ -9,6 +9,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Dashboard } from './src/Dashboard';
 import { initI18n } from './src/i18n';
 import { SecurityModule } from './src/SecurityModule';
+import { AppMonitoring } from './src/AppMonitoring';
 
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
@@ -36,6 +37,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     (async () => {
+      await AppMonitoring.initialize();
       await initI18n();
       try {
         const darkMode = await SecurityModule.getAppConfigSetting('darkMode');

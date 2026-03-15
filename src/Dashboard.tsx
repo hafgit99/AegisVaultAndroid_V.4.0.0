@@ -22,6 +22,7 @@ import {
   VaultSettings,
   Attachment,
   PasswordHistoryEntry,
+  SharedVaultSpace,
 } from './SecurityModule';
 import { SelectChips, ToggleRow } from './components/FormFields';
 import { CategoryForm } from './components/CategoryForms';
@@ -32,7 +33,10 @@ import { LegalModal } from './components/LegalModal';
 import { TOTPDisplay } from './components/TOTPDisplay';
 import { DonationModal } from './components/DonationModal';
 import { TrashModal } from './components/TrashModal';
+import { SecurityReportModal } from './components/SecurityReportModal';
+import { SharedVaultsModal } from './components/SharedVaultsModal';
 import { HIBPModule } from './HIBPModule';
+import { AppMonitoring, CrashReport } from './AppMonitoring';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { switchLanguage } from './i18n';
@@ -130,8 +134,11 @@ export const Dashboard = () => {
   const [count, setCount] = useState(0);
   const [showBackup, setShowBackup] = useState(false);
   const [showCloud, setShowCloud] = useState(false);
+  const [showSecurityReport, setShowSecurityReport] = useState(false);
+  const [showSharedVaults, setShowSharedVaults] = useState(false);
   const [showDonation, setShowDonation] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [sharedSpaces, setSharedSpaces] = useState<SharedVaultSpace[]>([]);
   const [legalType, setLegalType] = useState<'terms' | 'privacy' | null>(null);
   const [integrity, setIntegrity] = useState<IntegritySignals | null>(null);
   const [integrityLoading, setIntegrityLoading] = useState(true);
@@ -228,8 +235,22 @@ export const Dashboard = () => {
     setItems(await SecurityModule.getItems(search, selCat));
     setCount(await SecurityModule.getItemCount());
   }, [search, selCat]);
+  const openItemById = useCallback(async (itemId: number) => {
+    const allItems = await SecurityModule.getItems();
+    const target = allItems.find(item => item.id === itemId);
+    if (!target) {
+      return;
+    }
+    setTab('vault');
+    setEditItem(target);
+    setShowDetail(true);
+  }, []);
   const loadSettings = useCallback(
     async () => setSettings(await SecurityModule.getAllSettings()),
+    [],
+  );
+  const loadSharedSpaces = useCallback(
+    async () => setSharedSpaces(await SecurityModule.getSharedVaultSpaces()),
     [],
   );
 
@@ -237,8 +258,9 @@ export const Dashboard = () => {
     if (unlocked) {
       load();
       loadSettings();
+      loadSharedSpaces();
     }
-  }, [unlocked, load, loadSettings]);
+  }, [unlocked, load, loadSettings, loadSharedSpaces]);
 
   useEffect(() => {
     (async () => {
@@ -644,11 +666,21 @@ export const Dashboard = () => {
           onLock={lock}
           onBackup={() => setShowBackup(true)}
           onCloud={() => setShowCloud(true)}
+          onSecurityReport={() => setShowSecurityReport(true)}
+          onSharedVaults={() => setShowSharedVaults(true)}
           openLegal={(type: any) => setLegalType(type)}
           onDonation={() => setShowDonation(true)}
           onTrash={() => setShowTrash(true)}
           insets={insets}
           onRefresh={load}
+        />
+      )}
+      {showSecurityReport && (
+        <SecurityReportModal
+          visible={showSecurityReport}
+          onClose={() => setShowSecurityReport(false)}
+          theme={palette}
+          onOpenItem={openItemById}
         />
       )}
 
@@ -696,6 +728,7 @@ export const Dashboard = () => {
         onClose={() => setShowAdd(false)}
         settings={settings}
         theme={palette}
+        sharedSpaces={sharedSpaces}
         onSave={async (item: any, pending: any[]) => {
           let id = editItem?.id ?? null;
           if (id) await SecurityModule.updateItem(id, item);
@@ -719,15 +752,18 @@ export const Dashboard = () => {
           }
           setShowAdd(false);
           load();
+          loadSharedSpaces();
         }}
       />
 
       <DetailModal
-        visible={showDetail}
-        item={editItem}
-        theme={palette}
-        onRefresh={load}
-        onClose={() => setShowDetail(false)}
+          visible={showDetail}
+          item={editItem}
+          theme={palette}
+          settings={settings}
+          sharedSpaces={sharedSpaces}
+          onRefresh={load}
+          onClose={() => setShowDetail(false)}
         onEdit={() => {
           setShowDetail(false);
           setShowAdd(true);
@@ -747,6 +783,16 @@ export const Dashboard = () => {
           }
         }}
         clipClear={settings.clipboardClearSeconds}
+      />
+
+      <SharedVaultsModal
+        visible={showSharedVaults}
+        onClose={() => setShowSharedVaults(false)}
+        onUpdated={() => {
+          load();
+          loadSharedSpaces();
+        }}
+        theme={palette}
       />
       {showBackup && (
         <BackupModal
@@ -958,6 +1004,13 @@ const VaultView = ({
                     {i.title}
                   </Text>
                   {i.favorite === 1 && <Text style={{ fontSize: 12 }}>⭐</Text>}
+                  {SecurityModule.parseSharedAssignment(i) ? (
+                    <Text
+                      style={{ fontSize: 11, color: theme.sage, fontWeight: '700' }}
+                    >
+                      {t('shared.list_badge')}
+                    </Text>
+                  ) : null}
                 </View>
                 <Text
                   style={[s.itemS, { color: theme.muted }]}
@@ -1180,6 +1233,8 @@ const SettView = ({
   onLock,
   onBackup,
   onCloud,
+  onSecurityReport,
+  onSharedVaults,
   openLegal,
   onDonation,
   onTrash,
@@ -1189,6 +1244,8 @@ const SettView = ({
   const { t, i18n } = useTranslation();
   const [auditEvents, setAuditEvents] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [crashReports, setCrashReports] = useState<CrashReport[]>([]);
+  const [crashLoading, setCrashLoading] = useState(false);
 
   const boolLabel = (value: boolean) =>
     value ? t('settings.integrity.yes') : t('settings.integrity.no');
@@ -1217,8 +1274,16 @@ const SettView = ({
     setAuditLoading(false);
   };
 
+  const loadCrashReports = async () => {
+    setCrashLoading(true);
+    const reports = await AppMonitoring.getCrashReports(20);
+    setCrashReports(reports);
+    setCrashLoading(false);
+  };
+
   useEffect(() => {
     loadAudit();
+    loadCrashReports();
   }, []);
 
   const upd = async (k: string, v: any) => {
@@ -1311,11 +1376,11 @@ const SettView = ({
       <Text style={[s.sec, { color: theme.navy }]}>
         {t('settings.autofill.title')}
       </Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+        <TouchableOpacity
+          style={[
+            s.sCard,
+            { backgroundColor: theme.card, borderColor: theme.cardBorder },
+          ]}
         onPress={() => AutofillService.openSettings()}
         activeOpacity={0.7}
       >
@@ -1405,6 +1470,90 @@ const SettView = ({
       <Text style={[s.sec, { color: theme.navy }]}>
         {t('settings.security')}
       </Text>
+      <TouchableOpacity
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        onPress={onSecurityReport}
+        activeOpacity={0.7}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
+              {t('settings.security_report.title')}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.muted,
+                marginTop: 4,
+                lineHeight: 17,
+              }}
+            >
+              {t('settings.security_report.entrypoint_desc')}
+            </Text>
+          </View>
+          <Text
+            style={{
+              fontSize: 22,
+              color: theme.muted,
+              fontWeight: '300',
+              marginLeft: 12,
+            }}
+          >
+            ›
+          </Text>
+        </View>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        onPress={onSharedVaults}
+        activeOpacity={0.7}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
+              {t('settings.shared_vaults.title')}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.muted,
+                marginTop: 4,
+                lineHeight: 17,
+              }}
+            >
+              {t('settings.shared_vaults.desc')}
+            </Text>
+          </View>
+          <Text
+            style={{
+              fontSize: 22,
+              color: theme.muted,
+              fontWeight: '300',
+              marginLeft: 12,
+            }}
+          >
+            â€º
+          </Text>
+        </View>
+      </TouchableOpacity>
       <View
         style={[
           s.sCard,
@@ -1596,18 +1745,161 @@ const SettView = ({
           })
         )}
       </View>
+
+      <Text style={[s.sec, { color: theme.navy }]}>
+        {t('settings.crash_monitoring.title')}
+      </Text>
       <View
         style={[
           s.sCard,
           { backgroundColor: theme.card, borderColor: theme.cardBorder },
         ]}
       >
-        <ToggleRow
-          label={t('settings.bio_login')}
-          value={st2.biometricEnabled}
-          onToggle={(v: boolean) => upd('biometricEnabled', v)}
-          theme={theme}
-        />
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <Text style={[s.sLbl, { color: theme.muted }]}>
+            {crashLoading
+              ? t('settings.crash_monitoring.loading')
+              : t('settings.crash_monitoring.count', {
+                  count: crashReports.length,
+                })}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[
+                s.oChip,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.cardBorder,
+                },
+              ]}
+              onPress={loadCrashReports}
+            >
+              <Text style={[s.oChipT, { color: theme.navy }]}>↻</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                s.oChip,
+                {
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.cardBorder,
+                },
+              ]}
+              onPress={() =>
+                Alert.alert(
+                  t('settings.crash_monitoring.clear_title'),
+                  t('settings.crash_monitoring.clear_confirm'),
+                  [
+                    { text: t('vault.cancel'), style: 'cancel' },
+                    {
+                      text: t('settings.crash_monitoring.clear_btn'),
+                      style: 'destructive',
+                      onPress: async () => {
+                        await AppMonitoring.clearCrashReports();
+                        await loadCrashReports();
+                      },
+                    },
+                  ],
+                )
+              }
+            >
+              <Text style={[s.oChipT, { color: theme.navy }]}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {crashReports.length === 0 ? (
+          <Text style={[s.sLbl, { color: theme.muted }]}>
+            {t('settings.crash_monitoring.empty')}
+          </Text>
+        ) : (
+          crashReports.slice(0, 8).map(report => (
+            <View
+              key={report.id}
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: theme.cardBorder,
+                paddingTop: 8,
+                marginTop: 8,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}
+              >
+                <Text
+                  style={[s.sLbl, { color: theme.navy, fontWeight: '700', flex: 1 }]}
+                >
+                  {report.name}
+                </Text>
+                <Text
+                  style={[
+                    s.sLbl,
+                    {
+                      color: report.isFatal ? '#dc2626' : '#d97706',
+                      fontWeight: '700',
+                    },
+                  ]}
+                >
+                  {report.isFatal
+                    ? t('settings.crash_monitoring.fatal')
+                    : t('settings.crash_monitoring.nonfatal')}
+                </Text>
+              </View>
+              <Text style={[s.sLbl, { color: theme.muted }]}>
+                {report.source} • {new Date(report.createdAt).toLocaleString()}
+              </Text>
+              <Text
+                style={[
+                  s.sLbl,
+                  { color: theme.navy, marginBottom: 0, lineHeight: 17 },
+                ]}
+                numberOfLines={3}
+              >
+                {report.message}
+              </Text>
+            </View>
+          ))
+        )}
+      </View>
+      <View
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        >
+          <ToggleRow
+            label={t('settings.breach_check.title')}
+            value={Boolean(st2.breachCheckEnabled)}
+            onToggle={(v: boolean) => upd('breachCheckEnabled', v)}
+            theme={theme}
+          />
+          <Text style={[s.sLbl, { color: theme.muted, marginBottom: 0 }]}>
+            {t('settings.breach_check.desc')}
+          </Text>
+        </View>
+        <View
+          style={[
+            s.sCard,
+            { backgroundColor: theme.card, borderColor: theme.cardBorder },
+          ]}
+        >
+          <ToggleRow
+            label={t('settings.bio_login')}
+            value={st2.biometricEnabled}
+            onToggle={(v: boolean) => upd('biometricEnabled', v)}
+            theme={theme}
+          />
       </View>
       <View
         style={[
@@ -2022,7 +2314,15 @@ const SettView = ({
 };
 
 // ── Add/Edit Modal ──
-const AddModal = ({ visible, item, onClose, onSave, settings, theme }: any) => {
+const AddModal = ({
+  visible,
+  item,
+  onClose,
+  onSave,
+  settings,
+  theme,
+  sharedSpaces,
+}: any) => {
   const { t } = useTranslation();
   const [form, setForm] = useState<any>({});
   const [showPw, setShowPw] = useState(false);
@@ -2077,7 +2377,11 @@ const AddModal = ({ visible, item, onClose, onSave, settings, theme }: any) => {
               options={getCats(t).filter((c: any) => c.id !== 'all')}
               value={form.category}
               onChange={(v: string) =>
-                setForm({ ...form, category: v, data: {} })
+                setForm({
+                  ...form,
+                  category: v,
+                  data: form.data?.shared ? { shared: form.data.shared } : {},
+                })
               }
               theme={theme}
             />
@@ -2122,6 +2426,159 @@ const AddModal = ({ visible, item, onClose, onSave, settings, theme }: any) => {
               t={t}
               theme={theme}
             />
+            <View
+              style={{
+                backgroundColor: theme.inputBg,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: theme.cardBorder,
+                padding: 14,
+                marginBottom: 12,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: theme.navy,
+                  marginBottom: 8,
+                }}
+              >
+                {t('fields.shared_space')}
+              </Text>
+              {sharedSpaces?.length ? (
+                <>
+                  <SelectChips
+                    options={[
+                      { id: '', label: t('shared.unassigned') },
+                      ...sharedSpaces.map((space: SharedVaultSpace) => ({
+                        id: space.id,
+                        label: space.name,
+                      })),
+                    ]}
+                    value={form.data?.shared?.spaceId || ''}
+                    onChange={(spaceId: string) =>
+                      setForm({
+                        ...form,
+                        data: {
+                          ...form.data,
+                          shared: spaceId
+                            ? {
+                                role: 'viewer',
+                                ...form.data?.shared,
+                                spaceId,
+                              }
+                            : undefined,
+                        },
+                      })
+                    }
+                    theme={theme}
+                  />
+                  {form.data?.shared?.spaceId ? (
+                    <>
+                      <SelectChips
+                        label={t('fields.shared_role')}
+                        options={[
+                          { id: 'viewer', label: t('shared.roles.viewer') },
+                          { id: 'editor', label: t('shared.roles.editor') },
+                        ]}
+                        value={form.data?.shared?.role || 'viewer'}
+                        onChange={(role: string) =>
+                          setForm({
+                            ...form,
+                            data: {
+                              ...form.data,
+                              shared: { ...form.data?.shared, role },
+                            },
+                          })
+                        }
+                        theme={theme}
+                      />
+                      <ToggleRow
+                        label={t('shared.sensitive')}
+                        value={Boolean(form.data?.shared?.isSensitive)}
+                        onToggle={(value: boolean) =>
+                          setForm({
+                            ...form,
+                            data: {
+                              ...form.data,
+                              shared: {
+                                ...form.data?.shared,
+                                isSensitive: value,
+                              },
+                            },
+                          })
+                        }
+                        theme={theme}
+                      />
+                      <ToggleRow
+                        label={t('shared.emergency_access')}
+                        value={Boolean(form.data?.shared?.emergencyAccess)}
+                        onToggle={(value: boolean) =>
+                          setForm({
+                            ...form,
+                            data: {
+                              ...form.data,
+                              shared: {
+                                ...form.data?.shared,
+                                emergencyAccess: value,
+                              },
+                            },
+                          })
+                        }
+                        theme={theme}
+                      />
+                      <View style={{ marginTop: 10 }}>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: theme.muted,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                            marginBottom: 5,
+                          }}
+                        >
+                          {t('fields.shared_notes')}
+                        </Text>
+                        <TextInput
+                          style={{
+                            backgroundColor: theme.card,
+                            borderRadius: 14,
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            fontSize: 14,
+                            color: theme.navy,
+                            borderWidth: 1,
+                            borderColor: theme.cardBorder,
+                            fontWeight: '500',
+                            minHeight: 72,
+                            textAlignVertical: 'top',
+                          }}
+                          multiline
+                          value={form.data?.shared?.notes || ''}
+                          onChangeText={(notes: string) =>
+                            setForm({
+                              ...form,
+                              data: {
+                                ...form.data,
+                                shared: { ...form.data?.shared, notes },
+                              },
+                            })
+                          }
+                          placeholder={t('shared.notes_placeholder')}
+                          placeholderTextColor={theme.muted}
+                        />
+                      </View>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 18 }}>
+                  {t('shared.no_spaces_hint')}
+                </Text>
+              )}
+            </View>
             <AttachmentSection
               itemId={item?.id || null}
               attachments={attachments}
@@ -2137,11 +2594,32 @@ const AddModal = ({ visible, item, onClose, onSave, settings, theme }: any) => {
               !form.title?.trim() && { opacity: 0.4 },
             ]}
             onPress={() => {
-              if (form.title?.trim())
+              if (!form.title?.trim()) return;
+              if (form.category === 'passkey') {
+                const validation = SecurityModule.validatePasskeyItem({
+                  ...form,
+                  data: form.data,
+                });
+                if (!validation.valid) {
+                  Alert.alert(
+                    t('passkey.validation_title'),
+                    validation.errors.join('\n'),
+                  );
+                  return;
+                }
                 onSave(
-                  { ...form, data: JSON.stringify(form.data || {}) },
+                  {
+                    ...form,
+                    data: JSON.stringify(validation.normalized),
+                  },
                   pending,
                 );
+                return;
+              }
+              onSave(
+                { ...form, data: JSON.stringify(form.data || {}) },
+                pending,
+              );
             }}
             disabled={!form.title?.trim()}
             activeOpacity={0.7}
@@ -2166,7 +2644,9 @@ const DetailModal = ({
   onDelete,
   onFav,
   clipClear,
+  settings,
   theme,
+  sharedSpaces,
 }: any) => {
   const { t } = useTranslation();
   const cc = { ...C, ...(theme || {}) };
@@ -2176,8 +2656,11 @@ const DetailModal = ({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [history, setHistory] = useState<PasswordHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [breachCount, setBreachCount] = useState<number | null>(null);
+  const [breachResult, setBreachResult] = useState<any>(null);
   const [checking, setChecking] = useState(false);
+  const [breachEnabled, setBreachEnabled] = useState(
+    Boolean(settings?.breachCheckEnabled),
+  );
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const supportsHistory =
@@ -2199,8 +2682,9 @@ const DetailModal = ({
       }
     }
     setShowPw(false);
-    setBreachCount(null);
-  }, [visible, item, supportsHistory]);
+    setBreachResult(null);
+    setBreachEnabled(Boolean(settings?.breachCheckEnabled));
+  }, [visible, item, supportsHistory, settings?.breachCheckEnabled]);
 
   useEffect(() => {
     return () => {
@@ -2211,10 +2695,37 @@ const DetailModal = ({
     };
   }, []);
 
-  const checkBreach = async (pw: string) => {
+  const requestBreachConsentAndCheck = async (pw: string) => {
+    Alert.alert(
+      t('breach_extra.privacy_title'),
+      t('breach_extra.privacy_message'),
+      [
+        { text: t('vault.cancel'), style: 'cancel' },
+        {
+          text: t('breach_extra.enable_and_check'),
+          onPress: async () => {
+            await SecurityModule.setSetting('breachCheckEnabled', 'true');
+            setBreachEnabled(true);
+            await checkBreach(pw, true);
+          },
+        },
+      ],
+    );
+  };
+
+  const checkBreach = async (pw: string, forceRefresh: boolean = false) => {
     setChecking(true);
-    const count = await HIBPModule.checkPassword(pw);
-    setBreachCount(count);
+    const result = await HIBPModule.checkPassword(pw, {
+      enabled: breachEnabled,
+      forceRefresh,
+    });
+    setBreachResult(result);
+    await SecurityModule.logSecurityEvent('breach_check', 'info', {
+      status: result.status,
+      count: result.count,
+      cached: result.cached,
+      itemId: item?.id || null,
+    });
     setChecking(false);
   };
 
@@ -2223,6 +2734,10 @@ const DetailModal = ({
   try {
     data = item.data ? JSON.parse(item.data) : {};
   } catch {}
+  const sharedAssignment = SecurityModule.parseSharedAssignment(item);
+  const sharedSpace = sharedSpaces?.find(
+    (space: SharedVaultSpace) => space.id === sharedAssignment?.spaceId,
+  );
 
   const copy = (txt: string, lbl: string) => {
     Clipboard.setString(txt);
@@ -2302,7 +2817,26 @@ const DetailModal = ({
               >
                 {t('breach.checking')}
               </Text>
-            ) : breachCount === null ? (
+            ) : !breachEnabled ? (
+              <TouchableOpacity
+                onPress={() => requestBreachConsentAndCheck(value)}
+                style={{
+                  backgroundColor: isDark
+                    ? 'rgba(245,158,11,0.18)'
+                    : 'rgba(245,158,11,0.12)',
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 10,
+                }}
+              >
+                <Text
+                  style={{ fontSize: 12, color: '#d97706', fontWeight: '700' }}
+                >
+                  {t('breach_extra.enable_prompt')}
+                </Text>
+              </TouchableOpacity>
+            ) : breachResult === null ? (
               <TouchableOpacity
                 onPress={() => checkBreach(value)}
                 style={{
@@ -2323,7 +2857,29 @@ const DetailModal = ({
                   {t('breach.check')}
                 </Text>
               </TouchableOpacity>
-            ) : breachCount > 0 ? (
+            ) : breachResult.status === 'unavailable' ? (
+              <View
+                style={{
+                  backgroundColor: isDark
+                    ? 'rgba(148,163,184,0.2)'
+                    : 'rgba(100,116,139,0.1)',
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 10,
+                  gap: 4,
+                }}
+              >
+                <Text
+                  style={{ fontSize: 12, color: cc.navy, fontWeight: '700' }}
+                >
+                  {t('breach_extra.unavailable')}
+                </Text>
+                <Text style={{ fontSize: 11, color: cc.muted }}>
+                  {t('breach_extra.unavailable_desc')}
+                </Text>
+              </View>
+            ) : breachResult.count > 0 ? (
               <View
                 style={{
                   backgroundColor: isDark
@@ -2338,8 +2894,19 @@ const DetailModal = ({
                 <Text
                   style={{ fontSize: 12, color: cc.red, fontWeight: '700' }}
                 >
-                  {t('breach.compromised', { count: breachCount })}
+                  {t('breach.compromised', { count: breachResult.count })}
                 </Text>
+                <Text style={{ fontSize: 11, color: cc.red, marginTop: 4 }}>
+                  {t('breach_extra.rotate_now')}
+                </Text>
+                {breachResult.checkedAt ? (
+                  <Text style={{ fontSize: 11, color: cc.muted, marginTop: 4 }}>
+                    {t('breach_extra.checked_at', {
+                      date: new Date(breachResult.checkedAt).toLocaleString(),
+                    })}
+                    {breachResult.cached ? ` • ${t('breach_extra.cached')}` : ''}
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View
@@ -2358,6 +2925,14 @@ const DetailModal = ({
                 >
                   {t('breach.safe')}
                 </Text>
+                {breachResult?.checkedAt ? (
+                  <Text style={{ fontSize: 11, color: cc.muted, marginTop: 4 }}>
+                    {t('breach_extra.checked_at', {
+                      date: new Date(breachResult.checkedAt).toLocaleString(),
+                    })}
+                    {breachResult.cached ? ` • ${t('breach_extra.cached')}` : ''}
+                  </Text>
+                ) : null}
               </View>
             )}
           </View>
@@ -2579,10 +3154,28 @@ const DetailModal = ({
         >
           <View style={s.mdH}>
             <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}
             >
               <Text style={{ fontSize: 22 }}>{getCatIcon(item.category)}</Text>
-              <Text style={[s.mdT, { color: cc.navy }]}>{item.title}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.mdT, { color: cc.navy }]} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                {sharedAssignment ? (
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: cc.sage,
+                      fontWeight: '700',
+                      marginTop: 2,
+                    }}
+                  >
+                    {t('shared.badge', {
+                      name: sharedSpace?.name || t('shared.deleted_space'),
+                    })}
+                  </Text>
+                ) : null}
+              </View>
             </View>
             <TouchableOpacity onPress={onClose}>
               <Text style={[s.mdX, { color: cc.muted }]}>✕</Text>
@@ -2590,6 +3183,45 @@ const DetailModal = ({
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             {renderCatFields()}
+            {sharedAssignment ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: cc.muted,
+                    textTransform: 'uppercase',
+                    marginBottom: 4,
+                  }}
+                >
+                  {t('shared.section_title')}
+                </Text>
+                <Text style={{ fontSize: 14, color: cc.navy, lineHeight: 21 }}>
+                  {sharedSpace?.name || t('shared.deleted_space')}
+                </Text>
+                <Text style={{ fontSize: 12, color: cc.muted, marginTop: 4 }}>
+                  {t(`shared.roles.${sharedAssignment.role}`)}
+                  {sharedAssignment.isSensitive
+                    ? ` • ${t('shared.sensitive_label')}`
+                    : ''}
+                  {sharedAssignment.emergencyAccess
+                    ? ` • ${t('shared.emergency_enabled')}`
+                    : ''}
+                </Text>
+                {sharedAssignment.notes ? (
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: cc.navy,
+                      lineHeight: 20,
+                      marginTop: 8,
+                    }}
+                  >
+                    {sharedAssignment.notes}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             {item.notes ? (
               <View style={{ marginBottom: 14 }}>
                 <Text

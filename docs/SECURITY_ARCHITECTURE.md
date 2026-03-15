@@ -1,123 +1,113 @@
-# Aegis Vault Android - Security Architecture
+# Security Architecture
 
-## Overview
+Date: 2026-03-15
 
-The architecture follows a local-first, encrypted-by-default model:
+## Executive Summary
 
-- Local vault uses SQLCipher and a deterministic Argon2id-derived key.
-- Backup/export uses AES-256-GCM with Argon2id-derived key material.
-- Cloud sync transfers only encrypted `.aegis` payloads.
+Aegis Vault is a local-first Android vault application. Secrets remain on-device by default, the vault database is encrypted with SQLCipher, biometric unlock derives a deterministic vault key using Android Keystore material plus Argon2id, and encrypted backup/export uses AES-256-GCM with Argon2id-derived keys.
 
-## Cryptographic Building Blocks
+## Security Objectives
 
-- `KDF (vault unlock)`: Argon2id (`memory=32768`, `iterations=4`, `parallelism=2`, `hashLength=32`).
-- `KDF (backup export)`: Argon2id (same baseline parameters).
-- `Cipher (backup payload)`: AES-256-GCM.
-- `Salt`: 32-byte random value per encryption context.
-- `IV/Nonce`: 12-byte random value for GCM.
+- Keep vault data offline-first and device-local by default
+- Minimize plaintext exposure in storage, clipboard, logs, and exports
+- Require strong modern KDFs for new encrypted backups
+- Provide safe recovery and import paths without silent downgrade
+- Expose security posture through audit logs, integrity status, password health reporting, and local crash monitoring
 
-Legacy compatibility:
+## Core Components
 
-- Import path supports PBKDF2-SHA256 metadata for old backups.
-- Export path always emits Argon2id metadata to prevent future downgrade drift.
+### Vault Storage
 
-## Key Derivation Model
+- Primary store: SQLCipher-backed local database
+- Attachments: encrypted and linked to vault items
+- Trash and password history: retained locally with explicit lifecycle handling
 
-### Vault key path
+### Key Management
 
-1. App obtains/generates per-install device salt (`aegis_device_salt.bin`).
-2. Biometric flow produces deterministic key material anchored to Android Keystore public key.
-3. Argon2id derives fixed 32-byte key used by SQLCipher.
-4. Derived key buffers are zeroed in memory after use.
+- Android Keystore generates device-bound key material
+- Biometric unlock derives deterministic vault key using Argon2id
+- Device salt is stored separately from the database
+- Release exports require Argon2id and AES-256-GCM
 
-### Backup key path
+### Authentication and Access Control
 
-1. User provides backup password at export/import time.
-2. Export creates random backup salt.
-3. Argon2id derives 32-byte AES key.
-4. AES-256-GCM encrypts serialized vault items.
-5. Export stores KDF metadata (`kdf`, `memory`, `iterations`, `parallelism`, `hashLength`) in backup header.
+- Biometric unlock with device credentials fallback
+- Auto-lock timer and background lock behavior
+- Brute-force lockout state persisted locally
+- Device integrity policy can warn or block based on configured trust posture
 
-## Data-at-Rest Design
+### Backup and Recovery
 
-- Primary secrets are stored in encrypted SQLite (SQLCipher open with derived key).
-- Attachments and item fields are inside vault DB and therefore covered by DB encryption.
-- Security state files (salt, brute-force counters, key material references) are in app private storage.
+- Encrypted export/import uses AES-256-GCM
+- Legacy PBKDF2 imports are supported for migration only
+- New encrypted export blocks if Argon2id is unavailable
+- Recovery flows use secure randomness, integrity hashing, and corrected file handling
 
-## Backup and Recovery Architecture
+### Passkey and WebAuthn
 
-Encrypted backup format includes:
+- Native Android Credential Manager integration
+- Passkey creation and verification can be initiated on-device
+- RP ID, credential ID, and user handle are normalized and validated before save
 
-- `algorithm`: `AES-256-GCM`
-- `kdf`: `Argon2id`
-- KDF parameters and random `salt`
-- `iv` and `authTag`
-- `data` (ciphertext)
+### Monitoring and Audit
 
-Import behavior:
+- Security audit log records sensitive operational events
+- Password health report scores reused, weak, similar, and incomplete secrets
+- Crash monitoring stores recent crash and non-fatal error reports locally on-device
+- Release log policy suppresses noisy console output while keeping fatal/non-fatal diagnostics locally available
 
-- Rejects invalid/unexpected envelope shape.
-- Supports Argon2id and legacy PBKDF2 metadata decryption routes.
-- Parses decrypted JSON and rehydrates vault entries.
+## Data Flow Summary
 
-## Cloud Sync Security
+### Unlock Flow
 
-Cloud sync module:
+1. App checks brute-force state
+2. App checks device integrity signals
+3. App requests biometric/device verification
+4. Android Keystore material + device salt feed Argon2id
+5. Derived key opens SQLCipher database
+6. Security audit event is recorded
 
-- Requires HTTPS endpoint.
-- Enforces certificate pin format and validation via native bridge.
-- Upload/download uses temporary local encrypted file that is deleted after operation.
+### Encrypted Export Flow
 
-Trust model:
+1. User chooses encrypted export
+2. App derives export key with Argon2id
+3. Vault payload is encrypted with AES-256-GCM
+4. Export metadata stores KDF parameters and cipher fields
+5. Audit event is recorded
 
-- Cloud endpoint is treated as untrusted encrypted blob storage.
-- Server compromise should not reveal plaintext vault data without backup password.
+### Passkey Flow
 
-## Biometric Flow
+1. User prepares passkey entry metadata
+2. App validates RP ID and identifiers
+3. Native Credential Manager create/get flow is invoked
+4. Result is normalized and saved into the vault entry
 
-- User presence is verified via biometric prompt.
-- Android Keystore-backed key material is used as deterministic derivation input.
-- If key material is missing/corrupt, reset and rebootstrap flow exists.
+## Threat Model Notes
 
-## Device Attack Surface and Controls
+### Addressed
 
-Implemented controls:
+- Offline database theft without unlock key
+- Weak new backup encryption due to silent KDF downgrade
+- Sensitive plaintext leaks through default backup paths
+- Recovery misuse caused by incorrect file path/content handling
+- Basic credential hygiene risks through password health analysis
 
-- Exponential lockout after repeated failures.
-- In-memory key material zeroing after key usage.
-- TLS + pinning requirement for cloud sync.
-- Local password-health analytics to reduce credential-risk blast radius.
+### Residual Risks
 
-Planned controls:
+- Rooted or compromised devices can still weaken runtime guarantees
+- Clipboard remains a system-level exposure during copy windows
+- Local crash monitoring is diagnostic only and does not provide fleet analytics
+- Legacy imports remain a migration surface and require continued regression testing
 
-- Root/integrity/tamper signals.
-- Audit trail for critical security actions.
-- Policy mode for strict handling on degraded devices.
+## Operational Controls
 
-## Password Health Engine
+- Release-signed builds only for public distribution
+- `npm test -- --runInBand` and `npx tsc --noEmit` required before release
+- Device matrix validation required for backup, recovery, passkey, and autofill flows
+- Security architecture and release readiness docs updated alongside security-sensitive changes
 
-Vault-level health report includes:
+## Recommended Next Steps
 
-- Weak secret detection.
-- Reused secret detection.
-- Similar mutation detection.
-- Empty/incomplete entry detection.
-- Aggregated score (`0-100`), risk level, issue list, and action recommendations.
-
-Operational goal:
-
-- Convert passive storage into active risk reduction guidance.
-
-## Operational Security Considerations
-
-- Keep Argon2id parameters configurable only via code release policy, not runtime user tweaks.
-- Monitor performance impacts on low-end devices before increasing memory cost.
-- Preserve strict backward compatibility for import while keeping export on strongest defaults.
-
-## Verification Checklist
-
-- Exported backup metadata reports `kdf: Argon2id`.
-- New backups decrypt correctly on same and different devices using password.
-- Legacy PBKDF2 backups still import successfully.
-- Password health report returns deterministic counts and non-empty action list.
-- Cloud sync still functions with temporary encrypted backup lifecycle.
+- Add native crash report export/share flow for support diagnostics
+- Extend password health reporting with breach intelligence if privacy posture allows
+- Continue expanding device matrix evidence collection per release

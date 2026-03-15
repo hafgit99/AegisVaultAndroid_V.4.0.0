@@ -1,6 +1,7 @@
 module.exports = {
   preset: 'react-native',
   setupFiles: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/jest.afterEnv.js'],
   testPathIgnorePatterns: [
     '<rootDir>/__tests__/.*\\.current\\.test\\.(ts|tsx)$',
     '<rootDir>/__tests__/crypto-vectors\\.test\\.ts$',

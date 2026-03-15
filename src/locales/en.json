@@ -80,6 +80,9 @@
     "passkey_user_handle": "User Handle",
     "passkey_display_name": "Passkey Name",
     "passkey_transport": "Transport",
+    "shared_space": "Shared Space",
+    "shared_role": "Shared Role",
+    "shared_notes": "Sharing Notes",
     "copied": "Copied",
     "copy": "Copy",
     "copied_symbol": "✓",
@@ -91,9 +94,46 @@
     "compromised": "⚠️ Password pwned ({{count}} times)!",
     "safe": "✅ Password is safe"
   },
+  "breach_extra": {
+    "enable_prompt": "Enable optional breach check",
+    "privacy_title": "Optional Breach Check",
+    "privacy_message": "This check is optional. Your full password never leaves the device. Only the first 5 characters of a SHA-1 hash prefix are sent to the HIBP API, and the result is cached locally for up to 7 days.",
+    "enable_and_check": "Enable & Check",
+    "unavailable": "Network check unavailable",
+    "unavailable_desc": "The breach service could not be reached right now. Try again later.",
+    "checked_at": "Checked: {{date}}",
+    "cached": "cached",
+    "rotate_now": "Rotate this password immediately if the account is still active."
+  },
   "totp": {
     "title": "TOTP Verification Code",
     "invalid": "⚠️ Invalid TOTP secret"
+  },
+  "passkey": {
+    "validation_title": "Passkey validation",
+    "fill_rp_id": "Fill RP ID",
+    "generate_ids": "Generate IDs",
+    "import_title": "Import passkey JSON",
+    "import_json": "WebAuthn / Passkey JSON",
+    "import_placeholder": "{\"id\":\"...\",\"rp\":{\"id\":\"example.com\"}}",
+    "import_apply": "Apply JSON",
+    "import_success": "Passkey JSON data was applied to the entry.",
+    "native_create": "Create on device",
+    "native_auth": "Verify on device",
+    "native_working": "Working...",
+    "native_ready": "Android passkey support is ready",
+    "native_unavailable": "Android passkey support is currently unavailable",
+    "native_hint": "Enter a username and domain to create a passkey. For verification, first generate or import a credential ID.",
+    "native_unavailable_title": "Passkey unavailable",
+    "native_unavailable_message": "This device, Android version, or current session could not start the passkey flow. Reopen the app and try again.",
+    "native_create_title": "Android passkey creation",
+    "native_auth_title": "Android passkey verification",
+    "native_create_success": "Passkey was created on the device and linked to the entry.",
+    "native_create_failed": "Passkey creation could not be completed.",
+    "native_auth_success": "Passkey verification succeeded.",
+    "native_auth_failed": "Passkey verification failed.",
+    "create_prereq": "To create a passkey, enter at least a username and a URL or RP ID.",
+    "auth_prereq": "To verify a passkey, first create or import a credential."
   },
   "generator": {
     "title": "Generate Strong Passwords",
@@ -123,6 +163,25 @@
     "default_length": "🔑 Password Generator",
     "default_length_desc": "Default length: {{length}}",
     "backup": "💾 Backup",
+    "crash_monitoring": {
+      "title": "Crash Monitoring",
+      "loading": "Loading crash reports...",
+      "count": "Recent reports: {{count}}",
+      "empty": "No crash report has been captured on this device.",
+      "clear_title": "Clear Crash Reports",
+      "clear_confirm": "Delete all locally stored crash reports?",
+      "clear_btn": "Clear",
+      "fatal": "Fatal",
+      "nonfatal": "Non-fatal"
+    },
+    "breach_check": {
+      "title": "Optional Breach Check",
+      "desc": "Manually query the HIBP k-Anonymity API for a password when needed. The full password never leaves the device."
+    },
+    "shared_vaults": {
+      "title": "Family / Team Spaces",
+      "desc": "Create local shared spaces, assign roles, and review sharing hygiene without turning the vault into a cloud service."
+    },
     "import_export": "Import / Export",
     "import_export_desc": "Bitwarden, 1Password, CSV, JSON and encrypted vaults",
     "cloud": "☁️ Cloud Synchronization",
@@ -191,10 +250,98 @@
         "backup_import_encrypted": "Encrypted import",
         "cloud_sync_upload": "Cloud upload",
         "cloud_sync_download": "Cloud download",
-        "audit_log_cleared": "Audit logs cleared"
+        "breach_check": "Breach check",
+        "shared_space_saved": "Shared space saved",
+        "shared_space_deleted": "Shared space deleted",
+        "audit_log_cleared": "Audit logs cleared",
+        "password_health_report_viewed": "Password health report viewed"
       }
-    }
-  },
+    },
+    "security_report": {
+      "title": "Password Health Report",
+      "subtitle": "Review weak, reused, and similar secrets in one place.",
+      "entrypoint_desc": "Score password risk across the vault and jump into problematic entries quickly.",
+      "loading": "Building report...",
+      "score_label": "Overall security score",
+      "checked": "Analyzed {{checked}} secret fields across {{total}} entries",
+      "actions_title": "Priority actions",
+      "issues_title": "Findings ({{count}})",
+      "refresh": "Refresh",
+      "no_issues": "No significant password health issue was found.",
+      "open_item": "Open entry",
+      "risk": {
+        "critical": "Critical risk",
+        "high": "High risk",
+        "medium": "Medium risk",
+        "low": "Low risk"
+      },
+      "severity": {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium"
+      },
+      "issue_type": {
+        "weak": "Weak",
+        "reused": "Reused",
+        "similar": "Similar",
+        "empty": "Empty or incomplete"
+      },
+      "field": {
+        "password": "Password",
+        "wifi_password": "Wi-Fi password",
+        "pin": "PIN",
+        "cvv": "CVV"
+      },
+      "summary": {
+        "reused": "Reused secrets",
+        "weak": "Weak secrets",
+        "similar": "Similar secrets",
+        "incomplete": "Empty or incomplete"
+      },
+      "action": {
+        "reused": "Replace reused secrets with unique values first.",
+        "incomplete": "Complete empty or incomplete entries to reduce lockout and recovery risk.",
+        "weak": "Use strong secrets with at least 16 characters wherever possible.",
+        "similar": "Avoid small mutations; generate fully unrelated random values.",
+        "healthy": "No critical finding. Keep rotating high-value account secrets periodically."
+      },
+        "issue_message": {
+          "weak": "This secret looks short or predictable. Use a longer random value.",
+          "reused": "This secret is reused across multiple entries. Rotate all duplicates.",
+          "similar": "This secret is too similar to another entry. Use a fully unrelated value.",
+          "empty": "This field is empty or incomplete. Fill it in to reduce lockout and recovery risk."
+        },
+        "hardening": {
+          "title": "Account Hardening",
+          "checked": "Analyzed {{count}} login entries for local hardening signals",
+          "actions_title": "Hardening priorities",
+          "issues_title": "Hardening findings ({{count}})",
+          "no_issues": "No major account hardening issue was found.",
+          "summary": {
+            "totp": "TOTP protected",
+            "passkey": "Passkey backed",
+            "missing_2fa": "Missing 2FA",
+            "stale": "Stale secrets"
+          },
+          "action": {
+            "missing_2fa": "Add TOTP or a related passkey to password-based accounts first.",
+            "stale_secret": "Rotate secrets that have not changed for 180+ days.",
+            "missing_identity": "Complete username/email and domain metadata for login entries.",
+            "healthy": "2FA coverage and account metadata look healthy for the current vault."
+          },
+          "type": {
+            "missing_2fa": "Missing 2FA",
+            "stale_secret": "Stale secret",
+            "missing_identity": "Missing identity"
+          },
+          "message": {
+            "missing_2fa": "This login uses a password but has no local TOTP seed and no related passkey entry.",
+            "stale_secret": "This login secret appears older than 180 days and should be reviewed for rotation.",
+            "missing_identity": "This login is missing a username/email or normalized domain, which weakens autofill and recovery quality."
+          }
+        }
+      }
+    },
   "cloud": {
     "title": "☁️ Cloud Synchronization (Optional)",
     "url_label": "WebDAV / API URL",
@@ -274,6 +421,63 @@
     "hdr": "Attachments",
     "hdr_sub": "{{count}} files",
     "btn_add": "Add File"
+  },
+  "shared": {
+    "badge": "Shared: {{name}}",
+    "list_badge": "shared",
+    "deleted_space": "Deleted space",
+    "unassigned": "Not shared",
+    "section_title": "Sharing",
+    "overview_title": "Sharing overview",
+    "overview_summary": "{{spaces}} spaces, {{items}} shared items, {{pending}} pending members",
+    "modal_subtitle": "Manage local family and team spaces without moving your vault online.",
+    "spaces_title": "Shared spaces",
+    "new_space": "New space",
+    "create_space": "Create space",
+    "edit_space": "Edit space",
+    "save_space": "Save space",
+    "delete_space": "Delete space",
+    "name": "Space name",
+    "name_placeholder": "Family emergency vault",
+    "description": "Description",
+    "description_placeholder": "Who uses this space and what belongs here?",
+    "kind": "Space type",
+    "kinds": {
+      "family": "Family",
+      "team": "Team",
+      "private": "Private"
+    },
+    "default_role": "Default member role",
+    "allow_export": "Allow exporting entries assigned to this space",
+    "require_review": "Require access review every 90 days",
+    "members": "Members",
+    "member_count": "members",
+    "member_name": "Member name",
+    "member_name_placeholder": "Harun",
+    "member_email": "Member email",
+    "member_role": "Member role",
+    "member_status": "Member status",
+    "device_label": "Trusted device label",
+    "device_label_placeholder": "Harun Pixel 9",
+    "add_member": "Add member",
+    "remove": "Remove",
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    },
+    "status": {
+      "active": "Active",
+      "pending": "Pending",
+      "emergency_only": "Emergency only"
+    },
+    "sensitive": "Mark as sensitive shared entry",
+    "sensitive_label": "Sensitive",
+    "emergency_access": "Emergency access available",
+    "emergency_enabled": "Emergency access ready",
+    "notes_placeholder": "Who can use this entry and under which conditions?",
+    "no_spaces_hint": "No family or team space exists yet. Create one in Settings before assigning entries."
   },
   "legal": {
     "terms": "Terms of Use",

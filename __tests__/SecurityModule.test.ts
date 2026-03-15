@@ -259,30 +259,105 @@ describe('SecurityModule - Password Health (Şifre Sağlığı)', () => {
     // Implementation should use Levenshtein: distance < 3 = similar
   });
 
-  test('password health report includes score and risk level', () => {
-    const report = {
-      score: 75,
-      riskLevel: 'medium',
-      summary: {
-        totalItems: 10,
-        checkedSecrets: 10,
-        weakCount: 2,
-        reusedCount: 1,
-        similarCount: 0,
-        emptyOrIncompleteCount: 0,
+  test('password health report scores reused, weak, similar and incomplete secrets', async () => {
+    jest.spyOn(SecurityModule, 'getItems').mockResolvedValue([
+      {
+        id: 1,
+        title: 'GitHub',
+        username: 'harun',
+        password: 'password123',
+        url: 'https://github.com',
+        notes: '',
+        category: 'login',
+        favorite: 0,
+        data: '{}',
+        is_deleted: 0,
       },
-      actions: [
-        'Update weak passwords immediately',
-        'Review and update reused passwords',
-      ],
-      issues: [],
-    };
+      {
+        id: 2,
+        title: 'Mail',
+        username: 'harun',
+        password: 'password123',
+        url: 'https://mail.example.com',
+        notes: '',
+        category: 'login',
+        favorite: 0,
+        data: '{}',
+        is_deleted: 0,
+      },
+      {
+        id: 3,
+        title: 'Office WiFi',
+        username: '',
+        password: '',
+        url: '',
+        notes: '',
+        category: 'wifi',
+        favorite: 0,
+        data: JSON.stringify({
+          ssid: 'Office',
+          wifi_password: 'OfficeSecretAa',
+        }),
+        is_deleted: 0,
+      },
+      {
+        id: 4,
+        title: 'Guest WiFi',
+        username: '',
+        password: '',
+        url: '',
+        notes: '',
+        category: 'wifi',
+        favorite: 0,
+        data: JSON.stringify({
+          ssid: 'Guest',
+          wifi_password: 'OfficeSecretAb',
+        }),
+        is_deleted: 0,
+      },
+      {
+        id: 5,
+        title: 'Broken Entry',
+        username: 'harun',
+        password: '',
+        url: '',
+        notes: '',
+        category: 'login',
+        favorite: 0,
+        data: '{}',
+        is_deleted: 0,
+      },
+    ] as any);
 
-    expect(report.score).toBeGreaterThan(0);
-    expect(report.score).toBeLessThanOrEqual(100);
-    expect(['critical', 'high', 'medium', 'low']).toContain(report.riskLevel);
-    expect(report.summary.weakCount).toBeGreaterThanOrEqual(0);
-    expect(report.actions).toHaveLength(2);
+    const report = await SecurityModule.getPasswordHealthReport();
+
+    expect(report.score).toBe(44);
+    expect(report.riskLevel).toBe('critical');
+    expect(report.summary.totalItems).toBe(5);
+    expect(report.summary.checkedSecrets).toBe(4);
+    expect(report.summary.weakCount).toBe(2);
+    expect(report.summary.reusedCount).toBe(2);
+    expect(report.summary.similarCount).toBe(2);
+    expect(report.summary.emptyOrIncompleteCount).toBe(1);
+    expect(report.actions.length).toBeGreaterThanOrEqual(4);
+    expect(report.issues.some(issue => issue.type === 'reused')).toBe(true);
+    expect(report.issues.some(issue => issue.type === 'weak')).toBe(true);
+    expect(report.issues.some(issue => issue.type === 'similar')).toBe(true);
+    expect(report.issues.some(issue => issue.type === 'empty')).toBe(true);
+    expect(report.hardening.score).toBe(74);
+    expect(report.hardening.riskLevel).toBe('medium');
+    expect(report.hardening.summary.loginItems).toBe(3);
+    expect(report.hardening.summary.totpProtectedCount).toBe(0);
+    expect(report.hardening.summary.passkeyProtectedCount).toBe(0);
+    expect(report.hardening.summary.missing2FACount).toBe(2);
+    expect(report.hardening.summary.staleSecretCount).toBe(0);
+    expect(report.hardening.summary.incompleteLoginCount).toBe(1);
+    expect(
+      report.hardening.checks.some(check => check.type === 'missing_2fa'),
+    ).toBe(true);
+    expect(
+      report.hardening.checks.some(check => check.type === 'missing_identity'),
+    ).toBe(true);
   });
 
   test('HIBP k-anonymity check never sends full password', () => {
@@ -519,6 +594,176 @@ describe('SecurityModule - Integration (İntegrasyon Testleri)', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+describe('SecurityModule - Passkey Support', () => {
+  test('normalizePasskeyRpId derives hostname from URL', () => {
+    expect(
+      SecurityModule.normalizePasskeyRpId('https://accounts.example.com/login'),
+    ).toBe('accounts.example.com');
+    expect(
+      SecurityModule.normalizePasskeyRpId('', 'https://example.com:443/auth'),
+    ).toBe('example.com');
+  });
+
+  test('generatePasskeyData creates Base64URL credential values', () => {
+    const data = SecurityModule.generatePasskeyData({
+      username: 'user@example.com',
+      url: 'https://example.com',
+    });
+
+    expect(data.rp_id).toBe('example.com');
+    expect(data.transport).toBe('internal');
+    expect(data.algorithm).toBe('ES256');
+    expect(data.credential_id).toMatch(/^[A-Za-z0-9\-_]+$/);
+    expect(data.user_handle).toMatch(/^[A-Za-z0-9\-_]+$/);
+    expect((data.credential_id || '').length).toBeGreaterThanOrEqual(32);
+    expect((data.user_handle || '').length).toBeGreaterThanOrEqual(32);
+  });
+
+  test('parsePasskeyPayload extracts normalized metadata from WebAuthn JSON', () => {
+    const parsed = SecurityModule.parsePasskeyPayload(
+      JSON.stringify({
+        id: 'AbCdEf123_-',
+        rp: { id: 'example.com' },
+        user: { id: 'XyZ987_-', name: 'user@example.com' },
+        authenticatorAttachment: 'platform',
+        response: { transports: ['internal'] },
+      }),
+    );
+
+    expect(parsed.valid).toBe(false);
+    expect(parsed.normalized.rp_id).toBe('example.com');
+    expect(parsed.normalized.transport).toBe('internal');
+  });
+
+  test('validatePasskeyItem accepts generated passkey records', () => {
+    const generated = SecurityModule.generatePasskeyData({
+      username: 'user@example.com',
+      url: 'https://example.com',
+    });
+    const validation = SecurityModule.validatePasskeyItem({
+      title: 'Example',
+      username: 'user@example.com',
+      url: 'https://example.com',
+      category: 'passkey',
+      data: JSON.stringify(generated),
+    });
+
+    expect(validation.valid).toBe(true);
+    expect(validation.normalized.rp_id).toBe('example.com');
+  });
+});
+
+describe('SecurityModule - Shared Vaults', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('parseSharedAssignment extracts normalized sharing metadata', () => {
+    const assignment = SecurityModule.parseSharedAssignment({
+      data: JSON.stringify({
+        shared: {
+          spaceId: 'family-main',
+          role: 'editor',
+          isSensitive: true,
+          emergencyAccess: true,
+          notes: 'Parents only',
+        },
+      }),
+    } as any);
+
+    expect(assignment).toEqual(
+      expect.objectContaining({
+        spaceId: 'family-main',
+        role: 'editor',
+        isSensitive: true,
+        emergencyAccess: true,
+        notes: 'Parents only',
+      }),
+    );
+  });
+
+  test('getSharingOverview reports orphaned and review-required shared items', async () => {
+    jest
+      .spyOn(SecurityModule, 'getSharedVaultSpaces')
+      .mockResolvedValue([
+        {
+          id: 'space-1',
+          name: 'Family',
+          kind: 'family',
+          description: '',
+          defaultRole: 'viewer',
+          allowExport: true,
+          requireReview: true,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          members: [
+            {
+              id: 'member-1',
+              name: 'Harun',
+              email: 'harun@example.com',
+              role: 'admin',
+              status: 'active',
+            },
+          ],
+        },
+      ] as any);
+    jest.spyOn(SecurityModule, 'getItems').mockResolvedValue([
+      {
+        id: 1,
+        title: 'Netflix',
+        username: 'family@example.com',
+        password: 'StrongSecret!123',
+        url: 'https://netflix.com',
+        notes: '',
+        category: 'login',
+        favorite: 0,
+        data: JSON.stringify({
+          shared: {
+            spaceId: 'space-1',
+            role: 'viewer',
+            isSensitive: true,
+            emergencyAccess: false,
+            lastReviewedAt: '2025-01-01T00:00:00.000Z',
+          },
+        }),
+        is_deleted: 0,
+      },
+      {
+        id: 2,
+        title: 'Legacy Share',
+        username: 'ops@example.com',
+        password: 'StrongSecret!456',
+        url: 'https://example.com',
+        notes: '',
+        category: 'login',
+        favorite: 0,
+        data: JSON.stringify({
+          shared: {
+            spaceId: 'missing-space',
+            role: 'viewer',
+          },
+        }),
+        is_deleted: 0,
+      },
+    ] as any);
+
+    const report = await SecurityModule.getSharingOverview();
+
+    expect(report.summary.spaces).toBe(1);
+    expect(report.summary.sharedItems).toBe(2);
+    expect(report.summary.reviewRequiredItems).toBe(1);
+    expect(
+      report.issues.some(issue => issue.type === 'orphaned_space'),
+    ).toBe(true);
+    expect(
+      report.issues.some(issue => issue.type === 'review_required'),
+    ).toBe(true);
+    expect(
+      report.issues.some(issue => issue.type === 'sensitive_without_emergency'),
+    ).toBe(true);
+  });
+});
+
 // TEST COVERAGE SUMMARY
 // ═══════════════════════════════════════════════════════════════
 

@@ -16,6 +16,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           // Aegis Vault – Autofill Bridge
           add(AutofillPackage())
+          add(PasskeyPackage())
           add(CloudSyncPackage())
           add(IntegrityPackage())
         },

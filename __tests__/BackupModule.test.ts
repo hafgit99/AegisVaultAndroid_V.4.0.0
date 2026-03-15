@@ -15,6 +15,8 @@ jest.mock('react-native-fs', () => ({
 jest.mock('../src/SecurityModule', () => ({
   SecurityModule: {
     getItems: jest.fn(),
+    getSharedVaultSpaces: jest.fn(),
+    saveSharedVaultSpace: jest.fn(),
     addItem: jest.fn(),
     logSecurityEvent: jest.fn().mockResolvedValue(undefined),
     encryptAES256GCM: jest.fn(),
@@ -51,6 +53,21 @@ describe('BackupModule current API', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (SecurityModule.getItems as jest.Mock).mockResolvedValue(mockItems);
+    (SecurityModule.getSharedVaultSpaces as jest.Mock).mockResolvedValue([
+      {
+        id: 'space-1',
+        name: 'Family',
+        kind: 'family',
+        description: '',
+        defaultRole: 'viewer',
+        allowExport: true,
+        requireReview: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        members: [],
+      },
+    ]);
+    (SecurityModule.saveSharedVaultSpace as jest.Mock).mockResolvedValue(true);
     (SecurityModule.addItem as jest.Mock).mockResolvedValue(1);
     (SecurityModule.encryptAES256GCM as jest.Mock).mockResolvedValue({
       salt: 'salt-b64',
@@ -117,6 +134,7 @@ describe('BackupModule current API', () => {
     const parsed = JSON.parse(content);
     expect(parsed.app).toBe('Aegis Vault Android');
     expect(parsed.count).toBe(2);
+    expect(parsed.sharedSpaces).toHaveLength(1);
     expect(parsed.items[0].title).toBe('GitHub');
   });
 
@@ -133,6 +151,11 @@ describe('BackupModule current API', () => {
     expect(parsed.kdf).toBe('Argon2id');
     expect(parsed.algorithm).toBe('AES-256-GCM');
     expect(parsed.data).toBe('cipher-b64');
+    const decryptedPayload = JSON.parse(
+      (SecurityModule.encryptAES256GCM as jest.Mock).mock.calls[0][0],
+    );
+    expect(decryptedPayload.sharedSpaces).toHaveLength(1);
+    expect(decryptedPayload.items).toHaveLength(2);
   });
 
   test('importEncryptedAegis decrypts and imports items', async () => {
@@ -150,7 +173,49 @@ describe('BackupModule current API', () => {
       expect.objectContaining({ kdf: 'Argon2id', iterations: 4 }),
     );
     expect(SecurityModule.addItem).toHaveBeenCalledTimes(1);
+    expect(SecurityModule.saveSharedVaultSpace).not.toHaveBeenCalled();
     expect(result.imported).toBe(1);
+  });
+
+  test('importEncryptedAegis restores shared spaces from encrypted bundle', async () => {
+    (SecurityModule.decryptAES256GCM as jest.Mock).mockResolvedValueOnce(
+      JSON.stringify({
+        items: [
+          {
+            title: 'GitHub',
+            username: 'john',
+            password: 'secret-1',
+            url: 'https://github.com',
+            notes: 'dev',
+            category: 'login',
+            favorite: 1,
+            data: '{}',
+          },
+        ],
+        sharedSpaces: [
+          {
+            id: 'space-1',
+            name: 'Family',
+            kind: 'family',
+            description: '',
+            defaultRole: 'viewer',
+            allowExport: true,
+            requireReview: true,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            members: [],
+          },
+        ],
+      }),
+    );
+
+    await BackupModule.importEncryptedAegis(
+      '/mock/documents/test.aegis',
+      'backup-password',
+    );
+
+    expect(SecurityModule.addItem).toHaveBeenCalledTimes(1);
+    expect(SecurityModule.saveSharedVaultSpace).toHaveBeenCalledTimes(1);
   });
 
   test('importFromFile imports generic CSV rows', async () => {

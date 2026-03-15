@@ -80,6 +80,9 @@
     "passkey_user_handle": "User Handle",
     "passkey_display_name": "Passkey Adı",
     "passkey_transport": "Taşıma Türü",
+    "shared_space": "Ortak Alan",
+    "shared_role": "Paylasim Rolu",
+    "shared_notes": "Paylasim Notu",
     "copied": "Kopyalandı",
     "copy": "Kopyala",
     "copied_symbol": "✓",
@@ -91,9 +94,46 @@
     "compromised": "⚠️ Şifreniz sızdırılmış ({{count}} defa)!",
     "safe": "✅ Şifreniz güvende"
   },
+  "breach_extra": {
+    "enable_prompt": "Opsiyonel ihlal kontrolunu etkinlestir",
+    "privacy_title": "Opsiyonel Ihlal Kontrolu",
+    "privacy_message": "Bu kontrol istege baglidir. Parolanizin tam hali cihazdan cikmaz. HIBP servisine yalnizca SHA-1 ozetinin ilk 5 karakteri gonderilir ve sonuc bu cihazda 7 gun boyunca yerel olarak saklanir.",
+    "enable_and_check": "Etkinlestir ve Kontrol Et",
+    "unavailable": "Ag tabanli kontrol su an kullanilamiyor",
+    "unavailable_desc": "Ihlal servisine su anda ulasilamadi. Daha sonra tekrar deneyin.",
+    "checked_at": "Kontrol zamani: {{date}}",
+    "cached": "onbellekten",
+    "rotate_now": "Bu hesap hala aktifse parolayi hemen degistirin."
+  },
   "totp": {
     "title": "TOTP Doğrulama Kodu",
     "invalid": "⚠️ Geçersiz TOTP anahtarı"
+  },
+  "passkey": {
+    "validation_title": "Passkey dogrulamasi",
+    "fill_rp_id": "RP ID doldur",
+    "generate_ids": "ID uret",
+    "import_title": "Passkey JSON ice aktar",
+    "import_json": "WebAuthn / Passkey JSON",
+    "import_placeholder": "{\"id\":\"...\",\"rp\":{\"id\":\"example.com\"}}",
+    "import_apply": "JSON uygula",
+    "import_success": "Passkey JSON verisi kayda uygulandi.",
+    "native_create": "Cihazda olustur",
+    "native_auth": "Cihazda dogrula",
+    "native_working": "Isleniyor...",
+    "native_ready": "Android passkey destegi hazir",
+    "native_unavailable": "Android passkey destegi su an kullanilamiyor",
+    "native_hint": "Kayit olusturmak icin kullanici adi ve alan adi girin. Dogrulama icin once bir credential kimligi olusturun veya ice aktarın.",
+    "native_unavailable_title": "Passkey kullanilamiyor",
+    "native_unavailable_message": "Bu cihazda, bu Android surumunde veya bu oturumda passkey akisi baslatilamadi. Uygulamayi yeniden acip tekrar deneyin.",
+    "native_create_title": "Android passkey olusturma",
+    "native_auth_title": "Android passkey dogrulama",
+    "native_create_success": "Passkey cihazda olusturuldu ve kayda baglandi.",
+    "native_create_failed": "Passkey olusturma tamamlanamadi.",
+    "native_auth_success": "Passkey dogrulama basarili.",
+    "native_auth_failed": "Passkey dogrulamasi basarisiz oldu.",
+    "create_prereq": "Passkey olusturmak icin en az kullanici adi ve URL veya RP ID girmeniz gerekiyor.",
+    "auth_prereq": "Passkey dogrulamasi icin once bir credential kaydetmeniz veya ice aktarmaniz gerekiyor."
   },
   "generator": {
     "title": "Zor Parolalar Üretin",
@@ -133,6 +173,25 @@
     "off": "Kapalı",
     "sec": "sn",
     "min": "dk",
+    "crash_monitoring": {
+      "title": "Cokme Izleme",
+      "loading": "Cokme raporlari yukleniyor...",
+      "count": "Son raporlar: {{count}}",
+      "empty": "Bu cihazda kaydedilmis bir cokme raporu yok.",
+      "clear_title": "Cokme Raporlarini Temizle",
+      "clear_confirm": "Yerelde saklanan tum cokme raporlari silinsin mi?",
+      "clear_btn": "Temizle",
+      "fatal": "Fatal",
+      "nonfatal": "Fatal olmayan"
+    },
+    "breach_check": {
+      "title": "Opsiyonel Ihlal Kontrolu",
+      "desc": "Istediginizde bir parolayi HIBP k-Anonymity API'sine manuel olarak sorabilirsiniz. Parolanin tam hali cihazdan cikmaz."
+    },
+    "shared_vaults": {
+      "title": "Aile / Ekip Alanlari",
+      "desc": "Ortak alanlar olusturun, rolleri yonetin ve paylasim hijyenini buluta bagimlilik olmadan takip edin."
+    },
     "autofill": {
       "title": "🔑 Otomatik Doldurma (Autofill)",
       "enable": "🔑 Autofill Servisini Etkinleştir",
@@ -192,6 +251,102 @@
         "cloud_sync_upload": "Buluta yükleme",
         "cloud_sync_download": "Buluttan indirme",
         "audit_log_cleared": "Audit kayıtları temizlendi"
+      }
+    },
+    "security_report": {
+      "title": "Parola Sagligi Raporu",
+      "subtitle": "Zayif, tekrar kullanilan ve benzer sirlari tek ekranda inceleyin.",
+      "entrypoint_desc": "Tum kasadaki parola risklerini puanlayin ve problemli kayitlari hizlica acin.",
+      "loading": "Rapor olusturuluyor...",
+      "score_label": "Genel guvenlik puani",
+      "checked": "{{total}} kayittan {{checked}} gizli alan analiz edildi",
+      "actions_title": "Oncelikli oneriler",
+      "issues_title": "Bulgular ({{count}})",
+      "refresh": "Yenile",
+      "no_issues": "Belirgin bir parola sagligi sorunu bulunmadi.",
+      "open_item": "Kaydi ac",
+      "risk": {
+        "critical": "Kritik risk",
+        "high": "Yuksek risk",
+        "medium": "Orta risk",
+        "low": "Dusuk risk"
+      },
+      "severity": {
+        "critical": "Kritik",
+        "high": "Yuksek",
+        "medium": "Orta"
+      },
+      "issue_type": {
+        "weak": "Zayif",
+        "reused": "Tekrar kullanilan",
+        "similar": "Benzer",
+        "empty": "Bos veya eksik"
+      },
+      "field": {
+        "password": "Parola",
+        "wifi_password": "Wi-Fi sifresi",
+        "pin": "PIN",
+        "cvv": "CVV"
+      },
+      "summary": {
+        "reused": "Tekrar kullanilan sir",
+        "weak": "Zayif sir",
+        "similar": "Benzer sir",
+        "incomplete": "Bos veya eksik"
+      },
+      "action": {
+        "reused": "Ayni sirri kullanan kayitlari once benzersiz degerlerle degistirin.",
+        "incomplete": "Bos veya eksik kayitlari tamamlayin; erisim ve kurtarma sorunlari azalir.",
+        "weak": "Mumkun olan her yerde en az 16 karakterlik guclu degerler kullanin.",
+        "similar": "Kucuk varyasyonlar yerine tamamen farkli ve rastgele degerler olusturun.",
+        "healthy": "Kritik bir bulgu yok. Yuksek degerli hesaplarin sirlari duzenli araliklarla donsun."
+      },
+      "issue_message": {
+        "weak": "Bu gizli bilgi kisa veya tahmin edilmesi kolay gorunuyor. Daha uzun ve rastgele bir deger kullanin.",
+        "reused": "Bu gizli bilgi birden fazla kayitta tekrar kullaniliyor. Tum kopyalari degistirin.",
+        "similar": "Bu gizli bilgi baska bir kayitla fazla benzer. Kucuk degisiklikler yerine tamamen farkli bir deger kullanin.",
+        "empty": "Bu alan bos veya eksik. Kilitlenme ve kurtarma riskini azaltmak icin tamamlayin."
+      },
+      "hardening": {
+        "title": "Hesap Sertlestirme",
+        "checked": "{{count}} giris kaydi yerel sertlestirme sinyalleri icin analiz edildi",
+        "actions_title": "Sertlestirme oncelikleri",
+        "issues_title": "Sertlestirme bulgulari ({{count}})",
+        "no_issues": "Belirgin bir hesap sertlestirme sorunu bulunmadi.",
+        "summary": {
+          "totp": "TOTP korumali",
+          "passkey": "Passkey destekli",
+          "missing_2fa": "2FA eksik",
+          "stale": "Eski sirlar"
+        },
+        "action": {
+          "missing_2fa": "Parolali hesaplarda once TOTP veya iliskili bir passkey ekleyin.",
+          "stale_secret": "180+ gundur degismeyen sirlari rotasyona alin.",
+          "missing_identity": "Giris kayitlarindaki kullanici adi/e-posta ve alan adi bilgilerini tamamlayin.",
+          "healthy": "Mevcut kasada 2FA kapsami ve hesap metadatasi saglikli gorunuyor."
+        },
+        "type": {
+          "missing_2fa": "2FA eksik",
+          "stale_secret": "Eski sir",
+          "missing_identity": "Kimlik bilgisi eksik"
+        },
+        "message": {
+          "missing_2fa": "Bu giris parola kullaniyor ancak yerel TOTP tohumu veya iliskili passkey kaydi yok.",
+          "stale_secret": "Bu giris sirlari 180 gunden eski gorunuyor; rotasyon icin gozden gecirin.",
+          "missing_identity": "Bu giriste kullanici adi/e-posta veya normalize alan adi eksik. Bu durum autofill ve kurtarma kalitesini dusurur."
+        }
+      }
+      ,
+      "crash_monitoring": {
+        "title": "Cokme Izleme",
+        "loading": "Cokme raporlari yukleniyor...",
+        "count": "Son raporlar: {{count}}",
+        "empty": "Bu cihazda kaydedilmis bir cokme raporu yok.",
+        "clear_title": "Cokme Raporlarini Temizle",
+        "clear_confirm": "Yerelde saklanan tum cokme raporlari silinsin mi?",
+        "clear_btn": "Temizle",
+        "fatal": "Fatal",
+        "nonfatal": "Fatal olmayan"
       }
     }
   },
@@ -274,6 +429,63 @@
     "hdr": "Ekler",
     "hdr_sub": "{{count}} dosya",
     "btn_add": "Dosya Ekle"
+  },
+  "shared": {
+    "badge": "Paylasim: {{name}}",
+    "list_badge": "ortak",
+    "deleted_space": "Silinmis alan",
+    "unassigned": "Paylasilmiyor",
+    "section_title": "Paylasim",
+    "overview_title": "Paylasim ozeti",
+    "overview_summary": "{{spaces}} alan, {{items}} ortak kayit, {{pending}} bekleyen uye",
+    "modal_subtitle": "Kasayi buluta tasimadan yerel aile ve ekip alanlarini yonetin.",
+    "spaces_title": "Ortak alanlar",
+    "new_space": "Yeni alan",
+    "create_space": "Alan olustur",
+    "edit_space": "Alani duzenle",
+    "save_space": "Alani kaydet",
+    "delete_space": "Alani sil",
+    "name": "Alan adi",
+    "name_placeholder": "Aile acil durum kasasi",
+    "description": "Aciklama",
+    "description_placeholder": "Bu alani kimler kullanir ve burada neler tutulur?",
+    "kind": "Alan tipi",
+    "kinds": {
+      "family": "Aile",
+      "team": "Ekip",
+      "private": "Ozel"
+    },
+    "default_role": "Varsayilan rol",
+    "allow_export": "Bu alana atanan kayitlar export edilebilsin",
+    "require_review": "90 gunde bir erisim gozden gecirmesi iste",
+    "members": "Uyeler",
+    "member_count": "uye",
+    "member_name": "Uye adi",
+    "member_name_placeholder": "Harun",
+    "member_email": "Uye e-postasi",
+    "member_role": "Uye rolu",
+    "member_status": "Uye durumu",
+    "device_label": "Guvenilen cihaz etiketi",
+    "device_label_placeholder": "Harun Pixel 9",
+    "add_member": "Uye ekle",
+    "remove": "Kaldir",
+    "roles": {
+      "owner": "Sahip",
+      "admin": "Yonetici",
+      "editor": "Duzenleyici",
+      "viewer": "Goruntuleyici"
+    },
+    "status": {
+      "active": "Aktif",
+      "pending": "Bekliyor",
+      "emergency_only": "Sadece acil durum"
+    },
+    "sensitive": "Kaydi hassas ortak kayit olarak isaretle",
+    "sensitive_label": "Hassas",
+    "emergency_access": "Acil erisim tanimli",
+    "emergency_enabled": "Acil erisim hazir",
+    "notes_placeholder": "Bu kaydi kimler, hangi kosullarda kullanabilir?",
+    "no_spaces_hint": "Henuz bir aile veya ekip alani yok. Kayit atamadan once Ayarlar ekranindan bir alan olusturun."
   },
   "legal": {
     "terms": "Kullanım Koşulları",

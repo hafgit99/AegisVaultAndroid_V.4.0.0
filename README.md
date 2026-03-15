@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-4.0.0-blue?style=for-the-badge&logo=android" alt="Version">
-  <img src="https://img.shields.io/badge/React--Native-0.72+-61DAFB?style=for-the-badge&logo=react" alt="React Native">
+  <img src="https://img.shields.io/badge/Version-0.1.1-blue?style=for-the-badge&logo=android" alt="Version">
+  <img src="https://img.shields.io/badge/React--Native-0.84+-61DAFB?style=for-the-badge&logo=react" alt="React Native">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Security-AES--256-green?style=for-the-badge" alt="Security">
 </p>
@@ -26,11 +26,13 @@
 
 - **🔐 End-to-End Encryption:** Your data is encrypted locally using **AES-256-GCM**. No one else can access it.
 - **🛡️ Google Play Integrity:** Real-time hardware-backed device integrity monitoring to prevent unauthorized access on compromised devices.
+- **🔑 Passkey Support:** Native Android Credential Manager integration for seamless passwordless login and verification.
+- **👥 Family & Team Spaces:** Secure, offline-first sharing for family and team environments with member roles.
 - **🆔 Biometric Security:** Instant access with Fingerprint or Face ID integration.
 - **🕒 TOTP Support:** Integrated 2FA authenticator for all your accounts.
-- **🔍 Leak Detection:** Powered by _Have I Been Pwned_ API to check if your credentials are compromised.
-- **☁️ Secure Cloud Sync:** Synchronize your vault across multiple devices with cloud encryption.
-- **📥 Professional Backup:** Seamless JSON and Encrypted Aegis export/import system with cross-platform compatibility.
+- **🔍 Leak Detection:** Powered by _Have I Been Pwned_ API (k-anonimity) to check if your credentials are compromised.
+- **📥 Professional Backup:** Argon2id-enforced JSON and Encrypted Aegis export/import system with cross-platform compatibility.
+- **📈 App Monitoring:** Local-first crash monitoring and security audit logs to track sensitive operations.
 - **🗑️ Recycle Bin:** Advanced trash system with 30-day auto-cleanup.
 - **🌍 Multi-language:** Premium localization for **English** and **Turkish**.
 
@@ -40,6 +42,8 @@ Comprehensive security analysis and planning are available in the following docu
 
 - **[Security Architecture](docs/SECURITY_ARCHITECTURE.md)**: Details on encryption, key derivation, and storage.
 - **[Threat Model](docs/THREAT_MODEL.md)**: Identification of potential threats and mitigation strategies.
+- **[Device Matrix Test Plan](docs/DEVICE_MATRIX_TEST_PLAN.md)**: Multi-device validation strategy for core security flows.
+- **[Release Notes 0.1.1](docs/RELEASE_NOTES_0.1.1.md)**: Summary of latest security hardening and features.
 
 ## 🛠️ Tech Stack
 

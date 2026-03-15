@@ -41,9 +41,21 @@ describe('ImportVersioning current behavior', () => {
   const mockVaultData = {
     vault: [{ id: 'entry-1', title: 'GitHub', password: 'secret-1' }],
   };
+  let consoleErrorSpy: jest.SpyInstance;
+  let consoleWarnSpy: jest.SpyInstance;
+  let consoleLogSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     MigrationAuditLogger.clearLogs();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 
   test('detectKDFVersion recognizes legacy PBKDF2 backups', async () => {

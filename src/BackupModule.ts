@@ -327,6 +327,17 @@ export class BackupModule {
         }
       }
 
+      if (source === 'aegis_vault' || source === 'generic_json') {
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed?.sharedSpaces)) {
+            for (const space of parsed.sharedSpaces) {
+              await SecurityModule.saveSharedVaultSpace(space);
+            }
+          }
+        } catch {}
+      }
+
       await SecurityModule.logSecurityEvent('backup_import', 'success', {
         source,
         total: result.total,
@@ -972,7 +983,10 @@ export class BackupModule {
         },
       );
 
-      const items = JSON.parse(plaintext);
+      const parsedPlaintext = JSON.parse(plaintext);
+      const items = Array.isArray(parsedPlaintext)
+        ? parsedPlaintext
+        : parsedPlaintext?.items || [];
       result.total = items.length;
       for (const item of items) {
         try {
@@ -981,6 +995,12 @@ export class BackupModule {
         } catch (e: any) {
           result.skipped++;
           result.errors.push(`"${item.title}": ${e?.message || 'Error'}`);
+        }
+      }
+
+      if (Array.isArray(parsedPlaintext?.sharedSpaces)) {
+        for (const space of parsedPlaintext.sharedSpaces) {
+          await SecurityModule.saveSharedVaultSpace(space);
         }
       }
 
@@ -1043,11 +1063,13 @@ export class BackupModule {
 
   static async exportToJSON(): Promise<string> {
     const items = await SecurityModule.getItems();
+    const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
     const exportData = {
       version: '1.0.0',
       app: 'Aegis Vault Android',
       exported_at: new Date().toISOString(),
       count: items.length,
+      sharedSpaces,
       items: items.map(({ id: _id, ...rest }) => rest),
     };
     const json = JSON.stringify(exportData, null, 2);
@@ -1062,8 +1084,12 @@ export class BackupModule {
 
   static async exportEncrypted(password: string): Promise<string> {
     const items = await SecurityModule.getItems();
+    const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
     const plainItems = items.map(({ id: _id, ...rest }) => rest);
-    const plaintext = JSON.stringify(plainItems);
+    const plaintext = JSON.stringify({
+      items: plainItems,
+      sharedSpaces,
+    });
 
     // AES-256-GCM encryption (authenticated encryption + Argon2id KDF)
     const {

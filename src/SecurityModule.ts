@@ -220,6 +220,23 @@ export interface WifiData {
   hidden: boolean;
 }
 
+export interface PasskeyData {
+  rp_id?: string;
+  credential_id?: string;
+  user_handle?: string;
+  display_name?: string;
+  transport?: string;
+  authenticator_attachment?: string;
+  algorithm?: string;
+  created_at?: string;
+}
+
+export interface PasskeyValidationResult {
+  valid: boolean;
+  errors: string[];
+  normalized: PasskeyData;
+}
+
 export interface SecurityPolicy {
   deviceTrustPolicy: 'strict' | 'moderate' | 'permissive';
   requireBiometric: boolean;
@@ -234,7 +251,80 @@ export interface VaultSettings {
   clipboardClearSeconds: number;
   passwordLength: number;
   darkMode: boolean;
+  breachCheckEnabled?: boolean;
   deviceTrustPolicy?: SecurityPolicy;
+}
+
+export type SharedVaultKind = 'private' | 'family' | 'team';
+export type SharedVaultRole = 'owner' | 'admin' | 'editor' | 'viewer';
+export type SharedMemberStatus = 'active' | 'pending' | 'emergency_only';
+
+export interface SharedVaultMember {
+  id: string;
+  name: string;
+  email: string;
+  role: SharedVaultRole;
+  status: SharedMemberStatus;
+  deviceLabel?: string;
+  notes?: string;
+  lastVerifiedAt?: string;
+}
+
+export interface SharedVaultSpace {
+  id: string;
+  name: string;
+  kind: SharedVaultKind;
+  description: string;
+  defaultRole: Exclude<SharedVaultRole, 'owner'>;
+  allowExport: boolean;
+  requireReview: boolean;
+  createdAt: string;
+  updatedAt: string;
+  members: SharedVaultMember[];
+}
+
+export interface SharedItemAssignment {
+  spaceId: string;
+  role: Exclude<SharedVaultRole, 'owner' | 'admin'>;
+  sharedBy?: string;
+  isSensitive?: boolean;
+  emergencyAccess?: boolean;
+  notes?: string;
+  lastReviewedAt?: string;
+}
+
+export interface SharingOverviewIssue {
+  itemId: number;
+  title: string;
+  severity: 'high' | 'medium';
+  type:
+    | 'orphaned_space'
+    | 'no_members'
+    | 'review_required'
+    | 'sensitive_without_emergency';
+  message: string;
+}
+
+export interface SharingOverviewReport {
+  score: number;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low';
+  summary: {
+    spaces: number;
+    sharedItems: number;
+    familySpaces: number;
+    teamSpaces: number;
+    pendingMembers: number;
+    reviewRequiredItems: number;
+  };
+  actions: string[];
+  issues: SharingOverviewIssue[];
+  spaces: Array<
+    SharedVaultSpace & {
+      itemCount: number;
+      activeMembers: number;
+      pendingMembers: number;
+    }
+  >;
 }
 
 type PasswordFieldType = 'password' | 'wifi_password' | 'pin' | 'cvv';
@@ -247,6 +337,30 @@ export interface PasswordHealthIssue {
   severity: 'critical' | 'high' | 'medium';
   type: 'weak' | 'reused' | 'similar' | 'empty';
   message: string;
+}
+
+export interface AccountHardeningCheck {
+  itemId: number;
+  title: string;
+  category: string;
+  severity: 'critical' | 'high' | 'medium';
+  type: 'missing_2fa' | 'stale_secret' | 'missing_identity';
+  message: string;
+}
+
+export interface AccountHardeningReport {
+  score: number;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low';
+  summary: {
+    loginItems: number;
+    totpProtectedCount: number;
+    passkeyProtectedCount: number;
+    missing2FACount: number;
+    staleSecretCount: number;
+    incompleteLoginCount: number;
+  };
+  actions: string[];
+  checks: AccountHardeningCheck[];
 }
 
 export interface PasswordHealthReport {
@@ -263,6 +377,8 @@ export interface PasswordHealthReport {
   };
   actions: string[];
   issues: PasswordHealthIssue[];
+  hardening: AccountHardeningReport;
+  sharing?: SharingOverviewReport;
 }
 
 export interface PasswordHistoryEntry {
@@ -288,6 +404,7 @@ const DEFAULT_SETTINGS: VaultSettings = {
   clipboardClearSeconds: 30,
   passwordLength: 20,
   darkMode: false,
+  breachCheckEnabled: false,
   deviceTrustPolicy: {
     deviceTrustPolicy: 'moderate',
     requireBiometric: true,
@@ -309,6 +426,7 @@ const SALT_FILE = `${RNFS.DocumentDirectoryPath}/aegis_device_salt.bin`;
 const BRUTE_FORCE_FILE = `${RNFS.DocumentDirectoryPath}/aegis_bf_state.json`;
 const AUDIT_BUFFER_FILE = `${RNFS.DocumentDirectoryPath}/aegis_audit_buffer.json`;
 const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
+const SHARED_SPACES_SETTING_KEY = 'sharedVaultSpaces';
 
 const BACKUP_PBKDF2_FALLBACK_ITERATIONS = 310000;
 const BACKUP_KDF_DEFAULT = {
@@ -318,6 +436,9 @@ const BACKUP_KDF_DEFAULT = {
   parallelism: 2,
   hashLength: 32,
 } as const;
+
+const BASE64URL_CHARS =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 // ═══════════════════════════════════════════════════
 export class SecurityModule {
@@ -979,6 +1100,295 @@ export class SecurityModule {
     }
   }
 
+  private static generateLocalId(prefix: string): string {
+    return `${prefix}_${Date.now()}_${__bufToHex(randomBytesSafe(6))}`;
+  }
+
+  private static sanitizeSharedMember(
+    input: Partial<SharedVaultMember>,
+  ): SharedVaultMember {
+    return {
+      id: (input.id || this.generateLocalId('member')).trim(),
+      name: (input.name || '').trim(),
+      email: (input.email || '').trim().toLowerCase(),
+      role: (input.role || 'viewer') as SharedVaultRole,
+      status: (input.status || 'active') as SharedMemberStatus,
+      deviceLabel: (input.deviceLabel || '').trim() || undefined,
+      notes: (input.notes || '').trim() || undefined,
+      lastVerifiedAt: input.lastVerifiedAt || undefined,
+    };
+  }
+
+  private static sanitizeSharedSpace(
+    input: Partial<SharedVaultSpace>,
+  ): SharedVaultSpace {
+    const now = new Date().toISOString();
+    const members = Array.isArray(input.members)
+      ? input.members
+          .map(member => this.sanitizeSharedMember(member))
+          .filter(member => member.name || member.email)
+      : [];
+
+    return {
+      id: (input.id || this.generateLocalId('space')).trim(),
+      name: (input.name || '').trim(),
+      kind: (input.kind || 'family') as SharedVaultKind,
+      description: (input.description || '').trim(),
+      defaultRole: (input.defaultRole || 'viewer') as Exclude<
+        SharedVaultRole,
+        'owner'
+      >,
+      allowExport: input.allowExport !== false,
+      requireReview: Boolean(input.requireReview),
+      createdAt: input.createdAt || now,
+      updatedAt: now,
+      members,
+    };
+  }
+
+  static parseSharedAssignment(
+    itemOrData?: Partial<VaultItem> | string | null,
+  ): SharedItemAssignment | null {
+    const data =
+      typeof itemOrData === 'string'
+        ? this.parseDataJson(itemOrData)
+        : this.parseDataJson(itemOrData?.data);
+    const shared = data?.shared;
+    if (!shared || typeof shared !== 'object') return null;
+    if (!(shared.spaceId || '').trim()) return null;
+
+    return {
+      spaceId: String(shared.spaceId).trim(),
+      role: (
+        shared.role && ['editor', 'viewer'].includes(shared.role)
+          ? shared.role
+          : 'viewer'
+      ) as 'editor' | 'viewer',
+      sharedBy: (shared.sharedBy || '').trim() || undefined,
+      isSensitive: Boolean(shared.isSensitive),
+      emergencyAccess: Boolean(shared.emergencyAccess),
+      notes: (shared.notes || '').trim() || undefined,
+      lastReviewedAt: (shared.lastReviewedAt || '').trim() || undefined,
+    };
+  }
+
+  static mergeSharedAssignmentIntoData(
+    rawData: any,
+    assignment?: SharedItemAssignment | null,
+  ): string {
+    const data =
+      typeof rawData === 'string' ? this.parseDataJson(rawData) : rawData || {};
+    const next = { ...data };
+    if (assignment?.spaceId) {
+      next.shared = {
+        ...assignment,
+        spaceId: assignment.spaceId.trim(),
+        role: assignment.role || 'viewer',
+      };
+    } else {
+      delete next.shared;
+    }
+    return JSON.stringify(next);
+  }
+
+  static async getSharedVaultSpaces(): Promise<SharedVaultSpace[]> {
+    try {
+      const raw = await this.getSetting(SHARED_SPACES_SETTING_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map(space => this.sanitizeSharedSpace(space))
+        .filter(space => space.name);
+    } catch {
+      return [];
+    }
+  }
+
+  static async saveSharedVaultSpace(
+    input: Partial<SharedVaultSpace>,
+  ): Promise<SharedVaultSpace | null> {
+    const normalized = this.sanitizeSharedSpace(input);
+    if (!normalized.name) {
+      return null;
+    }
+
+    const spaces = await this.getSharedVaultSpaces();
+    const nextSpaces = spaces.some(space => space.id === normalized.id)
+      ? spaces.map(space => (space.id === normalized.id ? normalized : space))
+      : [...spaces, normalized];
+
+    await this.setSetting(
+      SHARED_SPACES_SETTING_KEY,
+      JSON.stringify(nextSpaces, null, 2),
+    );
+    await this.logSecurityEvent('shared_space_saved', 'success', {
+      id: normalized.id,
+      kind: normalized.kind,
+      members: normalized.members.length,
+    });
+    return normalized;
+  }
+
+  static async deleteSharedVaultSpace(spaceId: string): Promise<boolean> {
+    const trimmedId = (spaceId || '').trim();
+    if (!trimmedId) return false;
+
+    const spaces = await this.getSharedVaultSpaces();
+    const nextSpaces = spaces.filter(space => space.id !== trimmedId);
+    await this.setSetting(
+      SHARED_SPACES_SETTING_KEY,
+      JSON.stringify(nextSpaces, null, 2),
+    );
+
+    const items = await this.getItems();
+    for (const item of items) {
+      const assignment = this.parseSharedAssignment(item);
+      if (assignment?.spaceId !== trimmedId || !item.id) continue;
+      await this.updateItem(item.id, {
+        data: this.mergeSharedAssignmentIntoData(item.data, null),
+      });
+    }
+
+    await this.logSecurityEvent('shared_space_deleted', 'info', {
+      id: trimmedId,
+    });
+    return true;
+  }
+
+  static async setItemSharedAssignment(
+    itemId: number,
+    assignment?: SharedItemAssignment | null,
+  ): Promise<boolean> {
+    const item = await this.getItemById(itemId);
+    if (!item) return false;
+    return this.updateItem(itemId, {
+      data: this.mergeSharedAssignmentIntoData(item.data, assignment || null),
+    });
+  }
+
+  static async getSharingOverview(): Promise<SharingOverviewReport> {
+    const spaces = await this.getSharedVaultSpaces();
+    const items = await this.getItems();
+    const issues: SharingOverviewIssue[] = [];
+    const now = Date.now();
+    const reviewThresholdMs = 90 * 24 * 60 * 60 * 1000;
+    let sharedItems = 0;
+    let reviewRequiredItems = 0;
+    let pendingMembers = 0;
+
+    const spaceSummaries = spaces.map(space => {
+      const activeMembers = space.members.filter(
+        member => member.status === 'active',
+      ).length;
+      const pending = space.members.filter(
+        member => member.status === 'pending',
+      ).length;
+      pendingMembers += pending;
+      return {
+        ...space,
+        itemCount: 0,
+        activeMembers,
+        pendingMembers: pending,
+      };
+    });
+
+    const spaceIndex = new Map(spaceSummaries.map(space => [space.id, space]));
+
+    for (const item of items) {
+      const assignment = this.parseSharedAssignment(item);
+      if (!assignment) continue;
+      sharedItems++;
+      const space = spaceIndex.get(assignment.spaceId);
+      if (!space) {
+        issues.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          severity: 'high',
+          type: 'orphaned_space',
+          message: 'Shared assignment points to a space that no longer exists.',
+        });
+        continue;
+      }
+
+      space.itemCount += 1;
+
+      if (space.members.length === 0) {
+        issues.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          severity: 'high',
+          type: 'no_members',
+          message: 'Shared item belongs to a space without any configured members.',
+        });
+      }
+
+      const reviewedAt = assignment.lastReviewedAt
+        ? new Date(assignment.lastReviewedAt).getTime()
+        : 0;
+      const requiresReview = space.requireReview && (!reviewedAt || now - reviewedAt > reviewThresholdMs);
+      if (requiresReview) {
+        reviewRequiredItems++;
+        issues.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          severity: 'medium',
+          type: 'review_required',
+          message: 'Shared access review is overdue for this item.',
+        });
+      }
+
+      if (assignment.isSensitive && !assignment.emergencyAccess) {
+        issues.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          severity: 'medium',
+          type: 'sensitive_without_emergency',
+          message: 'Sensitive shared item has no emergency access path configured.',
+        });
+      }
+    }
+
+    const penalty =
+      issues.filter(issue => issue.severity === 'high').length * 12 +
+      issues.filter(issue => issue.severity === 'medium').length * 6 +
+      pendingMembers * 2;
+    const score = Math.max(0, 100 - penalty);
+    const actions: string[] = [];
+
+    if (issues.some(issue => issue.type === 'orphaned_space')) {
+      actions.push('Fix items linked to deleted spaces before the next backup or export.');
+    }
+    if (issues.some(issue => issue.type === 'no_members')) {
+      actions.push('Add at least one active member to every shared family or team space.');
+    }
+    if (reviewRequiredItems > 0) {
+      actions.push('Review shared access every 90 days for spaces that require periodic review.');
+    }
+    if (issues.some(issue => issue.type === 'sensitive_without_emergency')) {
+      actions.push('Enable emergency access for highly sensitive shared entries.');
+    }
+    if (actions.length === 0) {
+      actions.push('Shared spaces look healthy. Keep member roles and access reviews current.');
+    }
+
+    return {
+      score,
+      riskLevel: this.getRiskLevelFromScore(score),
+      summary: {
+        spaces: spaces.length,
+        sharedItems,
+        familySpaces: spaces.filter(space => space.kind === 'family').length,
+        teamSpaces: spaces.filter(space => space.kind === 'team').length,
+        pendingMembers,
+        reviewRequiredItems,
+      },
+      actions,
+      issues,
+      spaces: spaceSummaries.sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+
   private static extractHistorySecretsFromItem(
     item: Partial<VaultItem>,
   ): Array<{
@@ -1097,6 +1507,21 @@ export class SecurityModule {
       return null;
     }
     try {
+      if ((item.category || '').toLowerCase() === 'passkey') {
+        const validation = this.validatePasskeyItem(item);
+        if (!validation.valid) {
+          console.error(
+            '[Security] Cannot add passkey item:',
+            validation.errors.join(' '),
+          );
+          return null;
+        }
+        item = {
+          ...item,
+          data: JSON.stringify(validation.normalized),
+        };
+      }
+
       debugLog('[Security] Adding new item to vault:', item.title);
       const r = this.db.executeSync(
         `INSERT INTO vault_items (title,username,password,url,notes,category,favorite,data) VALUES (?,?,?,?,?,?,?,?)`,
@@ -1138,9 +1563,24 @@ export class SecurityModule {
       console.error('[Security] Cannot update item: Database not open');
       return false;
     }
-    try {
-      debugLog('[Security] Updating item ID:', id);
-      const existing = this.db.executeSync(
+      try {
+        debugLog('[Security] Updating item ID:', id);
+        if ((item.category || '').toLowerCase() === 'passkey') {
+          const validation = this.validatePasskeyItem(item);
+          if (!validation.valid) {
+            console.error(
+              '[Security] Cannot update passkey item:',
+              validation.errors.join(' '),
+            );
+            return false;
+          }
+          item = {
+            ...item,
+            data: JSON.stringify(validation.normalized),
+          };
+        }
+
+        const existing = this.db.executeSync(
         'SELECT * FROM vault_items WHERE id = ?',
         [id],
       ).rows?.[0] as VaultItem | undefined;
@@ -1657,7 +2097,12 @@ export class SecurityModule {
   }
 
   static async setSetting(key: string, value: string) {
-    const uiSettingKeys = ['darkMode', 'biometricEnabled', 'autoLockSeconds'];
+      const uiSettingKeys = [
+        'darkMode',
+        'biometricEnabled',
+        'autoLockSeconds',
+        'breachCheckEnabled',
+      ];
     try {
       if (uiSettingKeys.includes(key)) {
         await this.setAppConfigSetting(
@@ -1723,6 +2168,13 @@ export class SecurityModule {
         s.passwordLength = this.parseSettingNumber(pl, s.passwordLength);
       const dm = await this.getSetting('darkMode');
       if (dm !== null) s.darkMode = this.parseSettingBoolean(dm, s.darkMode);
+      const bc = await this.getSetting('breachCheckEnabled');
+      if (bc !== null) {
+        s.breachCheckEnabled = this.parseSettingBoolean(
+          bc,
+          Boolean(s.breachCheckEnabled),
+        );
+      }
     } catch {}
     return s;
   }
@@ -1781,6 +2233,198 @@ export class SecurityModule {
     if (sc <= 4) return { score: sc, label: 'Orta', color: '#f59e0b' };
     if (sc <= 5) return { score: sc, label: 'Güçlü', color: '#22c55e' };
     return { score: sc, label: 'Çok Güçlü', color: '#06b6d4' };
+  }
+
+  static normalizePasskeyRpId(url?: string, rpId?: string): string {
+    const explicit = (rpId || '').trim().toLowerCase();
+    if (explicit) {
+      return explicit
+        .replace(/^https?:\/\//, '')
+        .replace(/\/.*$/, '')
+        .replace(/:\d+$/, '');
+    }
+
+    const rawUrl = (url || '').trim();
+    if (!rawUrl) return '';
+    try {
+      const normalizedUrl = /^https?:\/\//i.test(rawUrl)
+        ? rawUrl
+        : `https://${rawUrl}`;
+      return new URL(normalizedUrl).hostname.toLowerCase();
+    } catch {
+      return rawUrl
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/\/.*$/, '')
+        .replace(/:\d+$/, '');
+    }
+  }
+
+  private static toBase64Url(bytes: Uint8Array): string {
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+      const a = bytes[i];
+      const b = bytes[i + 1];
+      const c = bytes[i + 2];
+      out += BASE64URL_CHARS[a >> 2];
+      out += BASE64URL_CHARS[((a & 3) << 4) | ((b || 0) >> 4)];
+      if (i + 1 < bytes.length) {
+        out += BASE64URL_CHARS[((b & 15) << 2) | ((c || 0) >> 6)];
+      }
+      if (i + 2 < bytes.length) {
+        out += BASE64URL_CHARS[c & 63];
+      }
+    }
+    return out;
+  }
+
+  static sanitizeBase64Url(value?: string): string {
+    return (value || '').replace(/[^A-Za-z0-9\-_]/g, '');
+  }
+
+  static generatePasskeyData(input?: {
+    username?: string;
+    url?: string;
+    rpId?: string;
+    displayName?: string;
+  }): PasskeyData {
+    const rpId = this.normalizePasskeyRpId(input?.url, input?.rpId);
+    const credentialId = this.toBase64Url(randomBytesSafe(32));
+    const userHandle = this.toBase64Url(randomBytesSafe(32));
+    const displayName =
+      (input?.displayName || '').trim() ||
+      (input?.username || '').trim() ||
+      rpId ||
+      'Device passkey';
+
+    return {
+      rp_id: rpId,
+      credential_id: credentialId,
+      user_handle: userHandle,
+      display_name: displayName,
+      transport: 'internal',
+      authenticator_attachment: 'platform',
+      algorithm: 'ES256',
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  static parsePasskeyPayload(
+    payload: string,
+    fallback?: { url?: string; rpId?: string; username?: string },
+  ): PasskeyValidationResult {
+    const errors: string[] = [];
+    let parsed: any = null;
+
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      return {
+        valid: false,
+        errors: ['Passkey JSON is not valid JSON.'],
+        normalized: {},
+      };
+    }
+
+    const rpId = this.normalizePasskeyRpId(
+      fallback?.url,
+      parsed?.rp?.id || parsed?.rpId || parsed?.relyingPartyId || fallback?.rpId,
+    );
+    const credentialId = this.sanitizeBase64Url(
+      parsed?.credential_id || parsed?.credentialId || parsed?.id || parsed?.rawId,
+    );
+    const userHandle = this.sanitizeBase64Url(
+      parsed?.user_handle ||
+        parsed?.userHandle ||
+        parsed?.response?.userHandle ||
+        parsed?.user?.id,
+    );
+    const displayName =
+      (parsed?.display_name ||
+        parsed?.displayName ||
+        parsed?.user?.displayName ||
+        parsed?.user?.name ||
+        fallback?.username ||
+        '').trim();
+    const transportRaw =
+      parsed?.transport ||
+      parsed?.transports?.[0] ||
+      parsed?.response?.transports?.[0] ||
+      parsed?.authenticatorAttachment ||
+      'internal';
+
+    const normalized: PasskeyData = {
+      rp_id: rpId,
+      credential_id: credentialId,
+      user_handle: userHandle,
+      display_name: displayName,
+      transport: `${transportRaw}`.toLowerCase(),
+      authenticator_attachment: parsed?.authenticatorAttachment || 'platform',
+      algorithm:
+        parsed?.algorithm ||
+        parsed?.pubKeyCredParams?.[0]?.alg ||
+        parsed?.response?.publicKeyAlgorithm ||
+        'ES256',
+      created_at: parsed?.created_at || new Date().toISOString(),
+    };
+
+    if (!normalized.rp_id) errors.push('RP ID is required.');
+    if (!normalized.credential_id || normalized.credential_id.length < 16) {
+      errors.push('Credential ID is missing or too short.');
+    }
+    if (!normalized.user_handle || normalized.user_handle.length < 16) {
+      errors.push('User handle is missing or too short.');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      normalized,
+    };
+  }
+
+  static validatePasskeyItem(item: Partial<VaultItem>): PasskeyValidationResult {
+    let data: PasskeyData & Record<string, any> = {};
+    try {
+      data =
+        typeof item.data === 'string'
+          ? JSON.parse(item.data || '{}')
+          : ((item.data as unknown as PasskeyData) || {});
+    } catch {
+      return {
+        valid: false,
+        errors: ['Passkey data is not valid JSON.'],
+        normalized: {},
+      };
+    }
+
+    const normalized: PasskeyData & Record<string, any> = {
+      ...data,
+      rp_id: this.normalizePasskeyRpId(item.url, data.rp_id),
+      credential_id: this.sanitizeBase64Url(data.credential_id),
+      user_handle: this.sanitizeBase64Url(data.user_handle),
+      display_name: (data.display_name || item.username || item.title || '').trim(),
+      transport: (data.transport || 'internal').trim().toLowerCase(),
+      authenticator_attachment: (
+        data.authenticator_attachment || 'platform'
+      ).trim(),
+      algorithm: (data.algorithm || 'ES256').trim(),
+      created_at: data.created_at || new Date().toISOString(),
+    };
+
+    const errors: string[] = [];
+    if (!(item.title || '').trim()) errors.push('Title is required.');
+    if (!(item.username || '').trim()) errors.push('Username is required.');
+    if (!(item.url || '').trim()) errors.push('Website URL is required.');
+    if (!normalized.rp_id) errors.push('RP ID could not be derived from URL.');
+    if (!normalized.credential_id || normalized.credential_id.length < 16) {
+      errors.push('Credential ID must be a valid Base64URL value.');
+    }
+    if (!normalized.user_handle || normalized.user_handle.length < 16) {
+      errors.push('User handle must be a valid Base64URL value.');
+    }
+
+    return { valid: errors.length === 0, errors, normalized };
   }
 
   private static buildPasswordFields(item: VaultItem): Array<{
@@ -1849,6 +2493,160 @@ export class SecurityModule {
       .replace(/\s+/g, '')
       .replace(/[-_.]/g, '')
       .replace(/[^a-z]+$/g, '');
+  }
+
+  private static getItemData(item: VaultItem): any {
+    try {
+      return item.data ? JSON.parse(item.data || '{}') : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private static getItemTimestamp(item: VaultItem): number | null {
+    const raw = item.updated_at || item.created_at;
+    if (!raw) return null;
+    const ts = new Date(raw).getTime();
+    return Number.isFinite(ts) ? ts : null;
+  }
+
+  private static getRiskLevelFromScore(
+    score: number,
+  ): 'critical' | 'high' | 'medium' | 'low' {
+    return score < 45
+      ? 'critical'
+      : score < 65
+      ? 'high'
+      : score < 80
+      ? 'medium'
+      : 'low';
+  }
+
+  private static buildAccountHardeningReport(
+    items: VaultItem[],
+  ): AccountHardeningReport {
+    const checks: AccountHardeningCheck[] = [];
+    const passkeyRefs = new Map<string, Set<string>>();
+    const now = Date.now();
+    const staleThresholdMs = 180 * 24 * 60 * 60 * 1000;
+
+    for (const item of items) {
+      if ((item.category || '').toLowerCase() !== 'passkey') continue;
+      const data = this.getItemData(item);
+      const rpId = this.normalizePasskeyRpId(item.url, data?.rp_id);
+      if (!rpId) continue;
+      const usernames = passkeyRefs.get(rpId) || new Set<string>();
+      usernames.add((item.username || '').trim().toLowerCase());
+      passkeyRefs.set(rpId, usernames);
+    }
+
+    let loginItems = 0;
+    let totpProtectedCount = 0;
+    let passkeyProtectedCount = 0;
+    let missing2FACount = 0;
+    let staleSecretCount = 0;
+    let incompleteLoginCount = 0;
+
+    for (const item of items) {
+      if ((item.category || '').toLowerCase() !== 'login') continue;
+      loginItems++;
+
+      const data = this.getItemData(item);
+      const username = (item.username || '').trim().toLowerCase();
+      const rpId = this.normalizePasskeyRpId(item.url);
+      const hasPassword = Boolean((item.password || '').trim());
+      const hasTotp = Boolean((data?.totp_secret || '').trim());
+      const relatedPasskeys = rpId ? passkeyRefs.get(rpId) : null;
+      const hasPasskey =
+        Boolean(
+          relatedPasskeys &&
+            (relatedPasskeys.has(username) ||
+              relatedPasskeys.has('') ||
+              (!username && relatedPasskeys.size > 0)),
+        ) || false;
+
+      if (hasTotp) totpProtectedCount++;
+      if (hasPasskey) passkeyProtectedCount++;
+
+      if (hasPassword && !hasTotp && !hasPasskey) {
+        missing2FACount++;
+        checks.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          category: 'login',
+          severity: 'high',
+          type: 'missing_2fa',
+          message:
+            'Login has a password but no local TOTP seed or related passkey entry.',
+        });
+      }
+
+      if (!(item.username || '').trim() || !rpId) {
+        incompleteLoginCount++;
+        checks.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          category: 'login',
+          severity: 'medium',
+          type: 'missing_identity',
+          message:
+            'Login entry is missing a username/email or a normalized domain.',
+        });
+      }
+
+      const itemTs = this.getItemTimestamp(item);
+      if (hasPassword && itemTs && now - itemTs > staleThresholdMs) {
+        staleSecretCount++;
+        checks.push({
+          itemId: item.id || 0,
+          title: item.title || 'Untitled',
+          category: 'login',
+          severity: 'medium',
+          type: 'stale_secret',
+          message:
+            'Secret appears old and should be reviewed for rotation.',
+        });
+      }
+    }
+
+    const penalty =
+      missing2FACount * 10 + staleSecretCount * 5 + incompleteLoginCount * 6;
+    const score = Math.max(0, 100 - penalty);
+    const actions: string[] = [];
+
+    if (missing2FACount > 0) {
+      actions.push(
+        'Add TOTP or a related passkey to password-based accounts first.',
+      );
+    }
+    if (staleSecretCount > 0) {
+      actions.push('Rotate secrets that have not changed for 180+ days.');
+    }
+    if (incompleteLoginCount > 0) {
+      actions.push(
+        'Complete missing username/email and domain metadata for logins.',
+      );
+    }
+    if (actions.length === 0) {
+      actions.push(
+        '2FA coverage and login metadata look healthy for the current vault.',
+      );
+    }
+
+    return {
+      score,
+      riskLevel: this.getRiskLevelFromScore(score),
+      summary: {
+        loginItems,
+        totpProtectedCount,
+        passkeyProtectedCount,
+        missing2FACount,
+        staleSecretCount,
+        incompleteLoginCount,
+      },
+      actions,
+      checks,
+    };
   }
 
   private static levenshteinDistance(a: string, b: string): number {
@@ -2040,13 +2838,7 @@ export class SecurityModule {
     const score = Math.max(0, 100 - penalty);
 
     const riskLevel: PasswordHealthReport['riskLevel'] =
-      score < 45
-        ? 'critical'
-        : score < 65
-        ? 'high'
-        : score < 80
-        ? 'medium'
-        : 'low';
+      this.getRiskLevelFromScore(score);
 
     const actions: string[] = [];
     if (reusedCount > 0) {
@@ -2073,6 +2865,8 @@ export class SecurityModule {
       );
     }
 
+    const hardening = this.buildAccountHardeningReport(items);
+
     return {
       score,
       riskLevel,
@@ -2087,6 +2881,7 @@ export class SecurityModule {
       },
       actions,
       issues,
+      hardening,
     };
   }
 

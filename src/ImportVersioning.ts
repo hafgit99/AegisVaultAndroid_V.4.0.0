@@ -11,6 +11,27 @@ import Argon2 from 'react-native-argon2';
 import QuickCrypto from 'react-native-quick-crypto';
 import { Buffer } from '@craftzdog/react-native-buffer';
 
+const shouldLogImportVersioning =
+  typeof process !== 'undefined' && process.env.NODE_ENV !== 'test';
+
+const importVersioningLog = (...args: any[]) => {
+  if (shouldLogImportVersioning) {
+    console.log(...args);
+  }
+};
+
+const importVersioningWarn = (...args: any[]) => {
+  if (shouldLogImportVersioning) {
+    console.warn(...args);
+  }
+};
+
+const importVersioningError = (...args: any[]) => {
+  if (shouldLogImportVersioning) {
+    console.error(...args);
+  }
+};
+
 // ═══════════════════════════════════════════════════════════════
 // Types & Interfaces
 // ═══════════════════════════════════════════════════════════════

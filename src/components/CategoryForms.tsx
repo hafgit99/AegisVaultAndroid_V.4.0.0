@@ -1,7 +1,8 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Text, TouchableOpacity, View } from 'react-native';
 import { Field, PasswordField, SelectChips } from './FormFields';
 import { SecurityModule } from '../SecurityModule';
+import { PasskeyModule } from '../PasskeyModule';
 
 const SECURITY_TYPES = [
   { id: 'WPA2', label: 'WPA2' },
@@ -376,80 +377,395 @@ export const WifiForm = ({
 };
 
 // ── Passkey Form ──
-export const PasskeyForm = ({ form, setForm, t, theme }: any) => (
-  <View>
-    <Field
-      label={t('fields.username')}
-      value={form.username}
-      onChange={(v: string) => setForm({ ...form, username: v })}
-      placeholder="user@example.com"
-      keyboardType="email-address"
-      theme={theme}
-    />
-    <Field
-      label={t('fields.url')}
-      value={form.url}
-      onChange={(v: string) => setForm({ ...form, url: v })}
-      placeholder="https://example.com"
-      keyboardType="url"
-      theme={theme}
-    />
-    <Field
-      label={t('fields.passkey_rp_id')}
-      value={form.data?.rp_id}
-      onChange={(v: string) =>
-        setForm({ ...form, data: { ...form.data, rp_id: v } })
+export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
+  const [importJson, setImportJson] = useState('');
+  const [working, setWorking] = useState(false);
+  const [nativeAvailable, setNativeAvailable] = useState<boolean | null>(null);
+  const cc = {
+    navy: theme?.navy || '#101828',
+    sage: theme?.sage || '#72886f',
+    sageLight: theme?.sageLight || 'rgba(114,136,111,0.12)',
+    muted: theme?.muted || 'rgba(16,24,40,0.45)',
+    inputBg: theme?.inputBg || 'rgba(255,255,255,0.7)',
+    cardBorder: theme?.cardBorder || 'rgba(255,255,255,0.55)',
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    PasskeyModule.isAvailable()
+      .then((available) => {
+        if (mounted) {
+          setNativeAvailable(available);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setNativeAvailable(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const updatePasskey = (patch: any) =>
+    setForm({ ...form, data: { ...form.data, ...patch } });
+
+  const autofillRpId = () => {
+    const rpId = SecurityModule.normalizePasskeyRpId(form.url, form.data?.rp_id);
+    updatePasskey({
+      rp_id: rpId,
+      display_name:
+        form.data?.display_name || form.username || rpId || 'Device passkey',
+    });
+  };
+
+  const generateIds = () => {
+    const generated = SecurityModule.generatePasskeyData({
+      username: form.username,
+      url: form.url,
+      rpId: form.data?.rp_id,
+      displayName: form.data?.display_name,
+    });
+    updatePasskey(generated);
+  };
+
+  const importPayload = () => {
+    const parsed = SecurityModule.parsePasskeyPayload(importJson, {
+      url: form.url,
+      rpId: form.data?.rp_id,
+      username: form.username,
+    });
+    if (!parsed.valid) {
+      Alert.alert(t('passkey.import_title'), parsed.errors.join('\n'));
+      return;
+    }
+    setForm({
+      ...form,
+      data: { ...form.data, ...parsed.normalized },
+      url: form.url || !parsed.normalized.rp_id
+        ? form.url
+        : `https://${parsed.normalized.rp_id}`,
+    });
+    setImportJson('');
+    Alert.alert(t('backup.success'), t('passkey.import_success'));
+  };
+
+  const ensureNativeAvailable = () => {
+    if (nativeAvailable) {
+      return true;
+    }
+
+    Alert.alert(
+      t('passkey.native_unavailable_title'),
+      t('passkey.native_unavailable_message'),
+    );
+    return false;
+  };
+
+  const createOnDevice = async () => {
+    if (!ensureNativeAvailable()) {
+      return;
+    }
+    if (!form.username || !(form.url || form.data?.rp_id)) {
+      Alert.alert(
+        t('passkey.native_create_title'),
+        t('passkey.create_prereq'),
+      );
+      return;
+    }
+
+    try {
+      setWorking(true);
+      const requestJson = PasskeyModule.buildRegistrationRequest({
+        title: form.title,
+        username: form.username,
+        url: form.url,
+        rpId: form.data?.rp_id,
+        displayName: form.data?.display_name,
+        userHandle: form.data?.user_handle,
+      });
+      const result = await PasskeyModule.createPasskey(requestJson);
+      const parsed = SecurityModule.parsePasskeyPayload(
+        result.registrationResponseJson,
+        {
+          url: form.url,
+          rpId: form.data?.rp_id,
+          username: form.username,
+        },
+      );
+      if (!parsed.normalized.credential_id) {
+        Alert.alert(
+          t('passkey.native_create_title'),
+          t('passkey.native_create_failed'),
+        );
+        return;
       }
-      placeholder="example.com"
-      theme={theme}
-    />
-    <Field
-      label={t('fields.passkey_credential_id')}
-      value={form.data?.credential_id}
-      onChange={(v: string) =>
-        setForm({ ...form, data: { ...form.data, credential_id: v } })
+
+      const validation = SecurityModule.validatePasskeyItem({
+        ...form,
+        category: 'passkey',
+        data: {
+          ...form.data,
+          ...parsed.normalized,
+        },
+      });
+      if (!validation.valid) {
+        Alert.alert(
+          t('passkey.validation_title'),
+          validation.errors.join('\n'),
+        );
+        return;
       }
-      placeholder="Base64URL credential id"
-      theme={theme}
-    />
-    <Field
-      label={t('fields.passkey_user_handle')}
-      value={form.data?.user_handle}
-      onChange={(v: string) =>
-        setForm({ ...form, data: { ...form.data, user_handle: v } })
-      }
-      placeholder="Optional"
-      theme={theme}
-    />
-    <Field
-      label={t('fields.passkey_display_name')}
-      value={form.data?.display_name}
-      onChange={(v: string) =>
-        setForm({ ...form, data: { ...form.data, display_name: v } })
-      }
-      placeholder="Device passkey"
-      theme={theme}
-    />
-    <SelectChips
-      label={t('fields.passkey_transport')}
-      options={PASSKEY_TRANSPORTS}
-      value={form.data?.transport || 'internal'}
-      onChange={(v: string) =>
-        setForm({ ...form, data: { ...form.data, transport: v } })
-      }
-      theme={theme}
-    />
-    <Field
-      label={t('vault.notes')}
-      value={form.notes}
-      onChange={(v: string) => setForm({ ...form, notes: v })}
-      placeholder="..."
-      multiline
-      lines={3}
-      theme={theme}
-    />
-  </View>
-);
+      setForm({
+        ...form,
+        data: {
+          ...form.data,
+          ...validation.normalized,
+          registration_response_json: result.registrationResponseJson,
+        },
+      });
+      Alert.alert(t('backup.success'), t('passkey.native_create_success'));
+    } catch (error: any) {
+      Alert.alert(
+        t('passkey.native_create_title'),
+        error?.message || t('passkey.native_create_failed'),
+      );
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const authenticateOnDevice = async () => {
+    if (!ensureNativeAvailable()) {
+      return;
+    }
+    if (!form.data?.credential_id) {
+      Alert.alert(t('passkey.native_auth_title'), t('passkey.auth_prereq'));
+      return;
+    }
+
+    try {
+      setWorking(true);
+      const requestJson = PasskeyModule.buildAuthenticationRequest({
+        url: form.url,
+        rpId: form.data?.rp_id,
+        credentialId: form.data?.credential_id,
+        transport: form.data?.transport,
+      });
+      const result = await PasskeyModule.authenticatePasskey(requestJson);
+      updatePasskey({
+        authentication_response_json: result.authenticationResponseJson,
+      });
+      Alert.alert(t('backup.success'), t('passkey.native_auth_success'));
+    } catch (error: any) {
+      Alert.alert(
+        t('passkey.native_auth_title'),
+        error?.message || t('passkey.native_auth_failed'),
+      );
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return (
+    <View>
+      <Field
+        label={t('fields.username')}
+        value={form.username}
+        onChange={(v: string) => setForm({ ...form, username: v })}
+        placeholder="user@example.com"
+        keyboardType="email-address"
+        theme={theme}
+      />
+      <Field
+        label={t('fields.url')}
+        value={form.url}
+        onChange={(v: string) => setForm({ ...form, url: v })}
+        placeholder="https://example.com"
+        keyboardType="url"
+        theme={theme}
+      />
+
+      <View
+        style={{
+          backgroundColor: cc.sageLight,
+          borderWidth: 1,
+          borderColor: cc.cardBorder,
+          borderRadius: 14,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{
+            color: cc.navy,
+            fontSize: 12,
+            fontWeight: '700',
+            marginBottom: 4,
+          }}
+        >
+          {nativeAvailable === false
+            ? t('passkey.native_unavailable')
+            : t('passkey.native_ready')}
+        </Text>
+        <Text style={{ color: cc.muted, fontSize: 12, lineHeight: 18 }}>
+          {t('passkey.native_hint')}
+        </Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <TouchableOpacity
+          onPress={autofillRpId}
+          style={{
+            flex: 1,
+            backgroundColor: cc.sageLight,
+            borderWidth: 1,
+            borderColor: cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: cc.sage, fontSize: 12, fontWeight: '700' }}>
+            {t('passkey.fill_rp_id')}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={generateIds}
+          style={{
+            flex: 1,
+            backgroundColor: cc.sageLight,
+            borderWidth: 1,
+            borderColor: cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: cc.sage, fontSize: 12, fontWeight: '700' }}>
+            {t('passkey.generate_ids')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <TouchableOpacity
+          onPress={createOnDevice}
+          disabled={working}
+          style={{
+            flex: 1,
+            backgroundColor: cc.sage,
+            borderWidth: 1,
+            borderColor: cc.sage,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+            opacity: working ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+            {working ? t('passkey.native_working') : t('passkey.native_create')}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={authenticateOnDevice}
+          disabled={working || !form.data?.credential_id}
+          style={{
+            flex: 1,
+            backgroundColor: cc.inputBg,
+            borderWidth: 1,
+            borderColor: cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+            opacity: working || !form.data?.credential_id ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: cc.navy, fontSize: 12, fontWeight: '700' }}>
+            {working ? t('passkey.native_working') : t('passkey.native_auth')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <Field
+        label={t('fields.passkey_rp_id')}
+        value={form.data?.rp_id}
+        onChange={(v: string) => updatePasskey({ rp_id: v })}
+        placeholder="example.com"
+        theme={theme}
+      />
+      <Field
+        label={t('fields.passkey_credential_id')}
+        value={form.data?.credential_id}
+        onChange={(v: string) =>
+          updatePasskey({ credential_id: SecurityModule.sanitizeBase64Url(v) })
+        }
+        placeholder="Base64URL credential id"
+        theme={theme}
+      />
+      <Field
+        label={t('fields.passkey_user_handle')}
+        value={form.data?.user_handle}
+        onChange={(v: string) =>
+          updatePasskey({ user_handle: SecurityModule.sanitizeBase64Url(v) })
+        }
+        placeholder="Base64URL user handle"
+        theme={theme}
+      />
+      <Field
+        label={t('fields.passkey_display_name')}
+        value={form.data?.display_name}
+        onChange={(v: string) => updatePasskey({ display_name: v })}
+        placeholder="Device passkey"
+        theme={theme}
+      />
+      <SelectChips
+        label={t('fields.passkey_transport')}
+        options={PASSKEY_TRANSPORTS}
+        value={form.data?.transport || 'internal'}
+        onChange={(v: string) => updatePasskey({ transport: v })}
+        theme={theme}
+      />
+      <Field
+        label={t('passkey.import_json')}
+        value={importJson}
+        onChange={setImportJson}
+        placeholder={t('passkey.import_placeholder')}
+        multiline
+        lines={5}
+        theme={theme}
+      />
+      <TouchableOpacity
+        onPress={importPayload}
+        style={{
+          backgroundColor: cc.inputBg,
+          borderWidth: 1,
+          borderColor: cc.cardBorder,
+          borderRadius: 12,
+          paddingVertical: 10,
+          alignItems: 'center',
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: cc.navy, fontSize: 12, fontWeight: '700' }}>
+          {t('passkey.import_apply')}
+        </Text>
+      </TouchableOpacity>
+      <Field
+        label={t('vault.notes')}
+        value={form.notes}
+        onChange={(v: string) => setForm({ ...form, notes: v })}
+        placeholder="..."
+        multiline
+        lines={3}
+        theme={theme}
+      />
+    </View>
+  );
+};
 
 // ── Form Router ──
 export const CategoryForm = ({
