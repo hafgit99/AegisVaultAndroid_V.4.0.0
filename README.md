@@ -25,8 +25,8 @@
 ## ✨ Key Features
 
 - **🔐 End-to-End Encryption:** Your data is encrypted locally using **AES-256-GCM**. No one else can access it.
-- **🛡️ Google Play Integrity:** Real-time hardware-backed device integrity monitoring to prevent unauthorized access on compromised devices.
-- **🔑 Passkey Support:** Native Android Credential Manager integration for seamless passwordless login and verification.
+- **🛡️ Device Integrity Signals:** Native Android root, emulator, test-keys and ADB heuristics to detect degraded devices.
+- **🔑 Passkey Support:** Native Android Credential Manager helper flow for on-device passkey creation/verification and local metadata handling.
 - **👥 Family & Team Spaces:** Secure, offline-first sharing for family and team environments with member roles.
 - **🆔 Biometric Security:** Instant access with Fingerprint or Face ID integration.
 - **🕒 TOTP Support:** Integrated 2FA authenticator for all your accounts.
@@ -43,6 +43,10 @@ Comprehensive security analysis and planning are available in the following docu
 - **[Security Architecture](docs/SECURITY_ARCHITECTURE.md)**: Details on encryption, key derivation, and storage.
 - **[Threat Model](docs/THREAT_MODEL.md)**: Identification of potential threats and mitigation strategies.
 - **[Device Matrix Test Plan](docs/DEVICE_MATRIX_TEST_PLAN.md)**: Multi-device validation strategy for core security flows.
+- **[Turkish Device Validation Guide](docs/CIHAZ_MATRISI_VE_SAHA_DOGRULAMA_TR.md)**: Turkish field guide for real-device validation and evidence collection.
+- **[Validation Workspace](docs/validation/README_TR.md)**: Ready-to-fill CSV matrix and evidence folder structure for field validation.
+- **[Passkey WebAuthn ADR (TR)](docs/PASSKEY_WEBAUTHN_ADR_TR.md)**: Proposed production architecture and API contract for server-verified passkeys.
+- **[Passkey Backend Checklist (TR)](docs/PASSKEY_BACKEND_IMPLEMENTATION_CHECKLIST_TR.md)**: Implementation checklist for relying-party backend endpoints.
 - **[Release Notes 0.1.1](docs/RELEASE_NOTES_0.1.1.md)**: Summary of latest security hardening and features.
 
 ## 🛠️ Tech Stack
@@ -50,7 +54,7 @@ Comprehensive security analysis and planning are available in the following docu
 - **Frontend:** React Native 0.72+ (Hermes Optimized)
 - **Security Logic:** Pure JavaScript crypto-wrappers to bypass platform buffer inconsistencies.
 - **Encryption:** AES-256-GCM with Argon2id (Key Derivation).
-- **Integrity:** Android Play Integrity API integration.
+- **Integrity:** Native Android device-integrity heuristics with policy-based blocking or warning.
 - **Design:** Premium Glassmorphism UI with high-opacity Light Mode accessibility.
 
 ## 📸 Screenshots
@@ -103,8 +107,8 @@ The metadata also pins Gradle toolchain discovery to installed JDKs to avoid aut
 
 ### Secure Release Signing (Optional for local builds)
 
-If release signing credentials are not provided, the project falls back to debug signing for local and CI release builds.
-To strictly enforce release signing, pass `-PrequireReleaseSigning=true` to Gradle.
+Release builds require release signing credentials by default.
+For local-only test builds, you can temporarily allow debug signing fallback with `-PallowDebugReleaseSigning=true`.
 
 Set these environment variables before building release:
 
@@ -128,7 +132,7 @@ Then build:
 
 ```bash
 cd android
-./gradlew assembleRelease -PrequireReleaseSigning=true
+./gradlew assembleRelease
 ```
 
 ### Cloud Sync TLS Certificate Pinning

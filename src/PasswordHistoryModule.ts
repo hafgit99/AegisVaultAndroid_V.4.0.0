@@ -435,7 +435,7 @@ export class PasswordHistoryModule {
     if (/[0-9]/.test(newPassword)) strengthScore += 15;
     else errors.push('Add numbers');
 
-    if (/[!@#$%^&*()_\-+=\[\]{};':"\\|,.<>?\\/]/.test(newPassword)) strengthScore += 15;
+    if (/[^A-Za-z0-9]/.test(newPassword)) strengthScore += 15;
     else errors.push('Add special characters');
 
     // Check for common patterns

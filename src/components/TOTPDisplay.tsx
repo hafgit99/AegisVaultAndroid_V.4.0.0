@@ -64,7 +64,7 @@ export const TOTPDisplay = ({
         clipboardTimerRef.current = null;
       }
     };
-  }, [secret, period, digits, algorithm]);
+  }, [algorithm, digits, period, pulseAnim, secret, valid]);
 
   const copyCode = () => {
     if (!valid) return;

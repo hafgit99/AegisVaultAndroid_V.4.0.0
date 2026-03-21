@@ -35,6 +35,15 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
   const [password, setPassword] = useState(''); // Encrypt/Decrypt password
   const [certificatePin, setCertificatePin] = useState('');
   const [loading, setLoading] = useState(false);
+  const tokenRowStyle = {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
+  } as const;
+  const loadingStyle = { marginVertical: 20 } as const;
+  const downloadButtonStyle = {
+    backgroundColor: isDark ? '#1f2937' : cc.navy,
+  } as const;
 
   const handleSync = async (direction: 'up' | 'down') => {
     const safeUrl = url.trim();
@@ -125,13 +134,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
               autoCapitalize="none"
             />
 
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                marginTop: 14,
-              }}
-            >
+            <View style={tokenRowStyle}>
               <Text style={[st.label, { color: cc.muted }]}>
                 {t('cloud.token_label')}
               </Text>
@@ -215,7 +218,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
               <ActivityIndicator
                 size="large"
                 color={cc.sage}
-                style={{ marginVertical: 20 }}
+                style={loadingStyle}
               />
             ) : (
               <View style={st.buttonRow}>
@@ -226,10 +229,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
                   <Text style={st.btnText}>{t('cloud.btn_up')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[
-                    st.btn,
-                    { backgroundColor: isDark ? '#1f2937' : cc.navy },
-                  ]}
+                  style={[st.btn, downloadButtonStyle]}
                   onPress={() => handleSync('down')}
                 >
                   <Text style={st.btnText}>{t('cloud.btn_down')}</Text>

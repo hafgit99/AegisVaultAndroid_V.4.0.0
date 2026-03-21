@@ -311,15 +311,15 @@ export const Dashboard = () => {
       }
       setAuthStatus(t('lock_screen.verifying'));
 
-      // Deterministic biometric key derivation (Android Keystore + Argon2id)
-      const vaultKey = await SecurityModule.deriveKeyFromBiometric();
+      // Biometric gate + stable unlock secret derivation
+      const unlockSecret = await SecurityModule.deriveKeyFromBiometric();
 
-      if (!vaultKey) {
+      if (!unlockSecret) {
         setAuthStatus(t('lock_screen.cancelled'));
         return;
       }
 
-      if (await SecurityModule.unlockVault(vaultKey)) {
+      if (await SecurityModule.unlockVault(unlockSecret)) {
         setUnlocked(true);
         setAuthStatus(t('lock_screen.unlocked'));
         setFailCount(0);
@@ -3114,6 +3114,39 @@ const DetailModal = ({
               label: t('fields.passkey_transport'),
               value: data.transport,
               copyKey: 'pktp',
+            })}
+            {DField({
+              label: t('passkey.mode_label'),
+              value:
+                data.mode === 'rp_connected'
+                  ? t('passkey.mode_rp_connected')
+                  : t('passkey.mode_local_helper'),
+              copyKey: 'pkmode',
+            })}
+            {DField({
+              label: t('passkey.challenge_source_label'),
+              value:
+                data.challenge_source === 'server'
+                  ? t('passkey.challenge_server')
+                  : t('passkey.challenge_local_helper'),
+              copyKey: 'pkchallenge',
+            })}
+            {DField({
+              label: t('passkey.server_verified_label'),
+              value: data.server_verified
+                ? t('passkey.verified_yes')
+                : t('passkey.verified_no'),
+              copyKey: 'pkverified',
+            })}
+            {DField({
+              label: t('passkey.last_registration_label'),
+              value: data.last_registration_at,
+              copyKey: 'pkregat',
+            })}
+            {DField({
+              label: t('passkey.last_auth_label'),
+              value: data.last_auth_at,
+              copyKey: 'pkauthat',
             })}
           </>
         );

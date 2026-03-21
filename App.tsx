@@ -49,10 +49,16 @@ function App(): React.JSX.Element {
 
   const useDark = darkModeSetting || isDarkMode;
   const bg = useDark ? '#0b1220' : '#F0EEE9';
+  const loaderStyle = {
+    flex: 1,
+    backgroundColor: bg,
+    justifyContent: 'center',
+  } as const;
+  const safeAreaStyle = { flex: 1, backgroundColor: bg } as const;
 
   if (!i18nLoaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: bg, justifyContent: 'center' }}>
+      <View style={loaderStyle}>
         <ActivityIndicator size="large" color="#72886f" />
       </View>
     );
@@ -60,7 +66,7 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
+      <SafeAreaView style={safeAreaStyle} edges={['top']}>
         <StatusBar
           barStyle={useDark ? 'light-content' : 'dark-content'}
           backgroundColor={bg}

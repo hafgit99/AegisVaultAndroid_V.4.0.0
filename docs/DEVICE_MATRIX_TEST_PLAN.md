@@ -86,3 +86,10 @@ This matrix standardizes backup, recovery, passkey, autofill, and crash-monitori
 - No fatal crash in backup, recovery, unlock, or passkey flows
 - No data loss report during import, restore, or recovery
 - Crash monitoring writes and clears reports correctly
+
+## Workspace
+
+The repo now includes a lightweight validation workspace for collecting real-device evidence:
+
+- [Turkish Validation Workspace](docs/validation/README_TR.md)
+- [Device Matrix CSV](docs/validation/cihaz-matrisi.csv)

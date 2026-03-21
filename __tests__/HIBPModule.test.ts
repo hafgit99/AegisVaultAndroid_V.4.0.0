@@ -30,18 +30,27 @@ describe('HIBPModule', () => {
     expect(result.status).toBe('compromised');
     expect(result.count).toBe(12);
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/range/5BAA6');
-    expect(RNFS.writeFile).toHaveBeenCalledTimes(1);
+    expect(RNFS.writeFile).toHaveBeenCalledTimes(2);
+    const cacheWrite = (RNFS.writeFile as jest.Mock).mock.calls.find(([path]) =>
+      String(path).includes('aegis_breach_cache.json'),
+    );
+    expect(cacheWrite).toBeDefined();
+    const [, payload] = cacheWrite!;
+    expect(payload).not.toContain('5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8');
   });
 
   test('returns cached result when available', async () => {
-    (RNFS.exists as jest.Mock).mockResolvedValue(true);
+    (RNFS.exists as jest.Mock).mockImplementation(async (path: string) =>
+      path.includes('aegis_breach_cache.json'),
+    );
+    const legacyCache = JSON.stringify({
+      '5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8': {
+        count: 12,
+        checkedAt: new Date().toISOString(),
+      },
+    });
     (RNFS.readFile as jest.Mock).mockResolvedValue(
-      JSON.stringify({
-        '5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8': {
-          count: 12,
-          checkedAt: new Date().toISOString(),
-        },
-      }),
+      legacyCache,
     );
 
     const result = await HIBPModule.checkPassword('password', { enabled: true });
@@ -49,5 +58,20 @@ describe('HIBPModule', () => {
     expect(result.status).toBe('compromised');
     expect(result.cached).toBe(true);
     expect(global.fetch).not.toHaveBeenCalled();
+    const cacheWrite = (RNFS.writeFile as jest.Mock).mock.calls.find(([path]) =>
+      String(path).includes('aegis_breach_cache.json'),
+    );
+    expect(cacheWrite).toBeDefined();
+    const [, migratedPayload] = cacheWrite!;
+    expect(migratedPayload).not.toContain('5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8');
+  });
+
+  test('clearCache removes both cache and device secret files when present', async () => {
+    (RNFS.exists as jest.Mock).mockResolvedValue(true);
+
+    const result = await HIBPModule.clearCache();
+
+    expect(result).toBe(true);
+    expect(RNFS.unlink).toHaveBeenCalledTimes(2);
   });
 });

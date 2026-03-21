@@ -32,7 +32,7 @@ Hiçbir kişisel veri, analitik verisi, kullanım istatistiği, konum veya rekla
 
 2. SUNUCU İLETİŞİMİ
 a) Bulut Senkronizasyonu (İsteğe Bağlı): Kullanıcı ayarlarından kendi "Cloud Sync" (WebDAV/NextCloud vb.) bağlantısını aktif edip kendi sunucu bilgilerini girerse, ağ bağlantısı sadece o sunucuyla kurulur. Kasanız yine "Aegis Şifreli" (Encrypted JSON) olarak karşıya iletilir. Sunucu sahibi dahil hiç kimse kasa içeriğini okuyamaz.
-b) HIBP (Have I Been Pwned): İsteğe bağlı olarak ihlal sorgulaması yapıldığında, Aegis Vault şifreli hashelenmiş verinin sadece ilk 5 karakterini (kAnonimity yöntemiyle) pwnedpasswords.com adresine anonim HTTPS sorgusuyla (K-Anonymity) gönderir. Şifrenizin tam metni dışarı ASLA aktarılmaz.
+b) HIBP (Have I Been Pwned): İsteğe bağlı olarak ihlal sorgulaması yapıldığında, Aegis Vault şifreli hashelenmiş verinin sadece ilk 5 karakterini (kAnonimity yöntemiyle) pwnedpasswords.com adresine anonim HTTPS sorgusuyla (K-Anonymity) gönderir. Şifrenizin tam metni dışarı ASLA aktarılmaz. Yerel sonuç önbelleği, cihazda üretilen ayrı bir gizli anahtar ile türetilmiş anahtarlı kayıtlar kullanılarak tutulur.
 
 3. ÜÇÜNCÜ TARAF PAYLAŞIMI
 Hiçbir verinizi (çünkü bizde yok) hiçbir reklam şirketi, hükümet otoriteleri, analiz araçları (Crashlytics vb.) veya servis sağlayıcılar ile paylaşmıyoruz, takas etmiyoruz ve satmıyoruz. Uygulamada tracker/reklam bulunmamaktadır.
@@ -73,7 +73,7 @@ We DO NOT collect any personal data, analytics data, usage statistics, location,
 
 2. SERVER COMMUNICATION
 a) Cloud Synchronization (Optional): If the user activates their own "Cloud Sync" (WebDAV/NextCloud, etc.) from the settings and enters their server credentials, the network connection is established solely with that server. Your vault is still uploaded as an "Aegis Encrypted" (Encrypted JSON) bundle. Nobody, not even the server owner, can read the vault contents.
-b) HIBP (Have I Been Pwned): When optionally executing a breach query, Aegis Vault utilizes the K-Anonymity model and only securely sends the first 5 characters of a hashed string to pwnedpasswords.com via an anonymous HTTPS request. The full plaintext password is NEVER exported.
+b) HIBP (Have I Been Pwned): When optionally executing a breach query, Aegis Vault utilizes the K-Anonymity model and only securely sends the first 5 characters of a hashed string to pwnedpasswords.com via an anonymous HTTPS request. The full plaintext password is NEVER exported. Local result caching uses keyed entries derived with a device-generated secret.
 
 3. THIRD-PARTY SHARING
 We do not share, trade, or sell any of your data (because we don't have it) with any advertising agency, government authority, analytics tools (e.g., Crashlytics), or service providers. The application contains zero trackers or ads.

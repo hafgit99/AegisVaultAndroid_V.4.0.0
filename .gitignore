@@ -76,10 +76,18 @@ yarn-error.log
 
 # Others
 *.apk
+*.aab
 .env
 .env.*
-! .env.example
+!.env.example
 *.log
 
 # Reports
 docs/AEGIS_DETAYLI_ANALIZ_RAPORU.md
+
+# Validation evidence
+docs/validation/kanit/**
+!docs/validation/kanit/
+!docs/validation/kanit/.gitkeep
+!docs/validation/kanit/*/
+!docs/validation/kanit/*/.gitkeep

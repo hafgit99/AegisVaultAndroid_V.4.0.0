@@ -4,7 +4,7 @@ Date: 2026-03-15
 
 ## Executive Summary
 
-Aegis Vault is a local-first Android vault application. Secrets remain on-device by default, the vault database is encrypted with SQLCipher, biometric unlock derives a deterministic vault key using Android Keystore material plus Argon2id, and encrypted backup/export uses AES-256-GCM with Argon2id-derived keys.
+Aegis Vault is a local-first Android vault application. Secrets remain on-device by default, the vault database is encrypted with SQLCipher, biometric unlock acts as a gate before a stable unlock secret is processed with Argon2id, and encrypted backup/export uses AES-256-GCM with Argon2id-derived keys.
 
 ## Security Objectives
 
@@ -25,7 +25,7 @@ Aegis Vault is a local-first Android vault application. Secrets remain on-device
 ### Key Management
 
 - Android Keystore generates device-bound key material
-- Biometric unlock derives deterministic vault key using Argon2id
+- Biometric unlock derives a stable biometric-gated secret using Argon2id
 - Device salt is stored separately from the database
 - Release exports require Argon2id and AES-256-GCM
 
@@ -48,6 +48,7 @@ Aegis Vault is a local-first Android vault application. Secrets remain on-device
 - Native Android Credential Manager integration
 - Passkey creation and verification can be initiated on-device
 - RP ID, credential ID, and user handle are normalized and validated before save
+- Offline builds currently operate as a local helper flow unless a relying-party server provides the WebAuthn challenge
 
 ### Monitoring and Audit
 
@@ -63,8 +64,8 @@ Aegis Vault is a local-first Android vault application. Secrets remain on-device
 1. App checks brute-force state
 2. App checks device integrity signals
 3. App requests biometric/device verification
-4. Android Keystore material + device salt feed Argon2id
-5. Derived key opens SQLCipher database
+4. Android Keystore material + device salt feed Argon2id to produce a biometric-gated unlock secret
+5. Unlock secret + device salt feed Argon2id to open SQLCipher database
 6. Security audit event is recorded
 
 ### Encrypted Export Flow
@@ -79,8 +80,9 @@ Aegis Vault is a local-first Android vault application. Secrets remain on-device
 
 1. User prepares passkey entry metadata
 2. App validates RP ID and identifiers
-3. Native Credential Manager create/get flow is invoked
-4. Result is normalized and saved into the vault entry
+3. App uses a server-provided challenge when available, otherwise falls back to a local helper challenge for offline mode
+4. Native Credential Manager create/get flow is invoked
+5. Result is normalized and saved into the vault entry
 
 ## Threat Model Notes
 
@@ -98,6 +100,7 @@ Aegis Vault is a local-first Android vault application. Secrets remain on-device
 - Clipboard remains a system-level exposure during copy windows
 - Local crash monitoring is diagnostic only and does not provide fleet analytics
 - Legacy imports remain a migration surface and require continued regression testing
+- Passkey helper mode is not equivalent to a full relying-party validated WebAuthn server deployment
 
 ## Operational Controls
 

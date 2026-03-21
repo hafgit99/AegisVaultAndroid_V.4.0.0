@@ -120,7 +120,7 @@ export const AppMonitoring = {
       console.debug = () => {};
       console.error = (...args: any[]) => {
         originalConsole.error(...args);
-        void this.recordHandledError('console.error', toConsoleErrorMessage(args));
+        this.recordHandledError('console.error', toConsoleErrorMessage(args)).catch(() => {});
       };
     }
 
@@ -128,7 +128,7 @@ export const AppMonitoring = {
     if (globalErrorUtils?.getGlobalHandler && globalErrorUtils?.setGlobalHandler) {
       previousGlobalHandler = globalErrorUtils.getGlobalHandler();
       globalErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
-        void this.recordCrash(error, Boolean(isFatal), 'global');
+        this.recordCrash(error, Boolean(isFatal), 'global').catch(() => {});
         if (previousGlobalHandler) {
           previousGlobalHandler(error, isFatal);
         }

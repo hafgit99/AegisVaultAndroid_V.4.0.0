@@ -69,7 +69,8 @@ def releaseKeyPassword = project.findProperty('RELEASE_KEY_PASSWORD') ?: System.
 def debugKeystoreFile = file('debug.keystore')
 def hasReleaseSigning =
     releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
-def requireReleaseSigning = (project.findProperty('requireReleaseSigning') ?: "false").toBoolean()
+def requireReleaseSigning = (project.findProperty('requireReleaseSigning') ?: "true").toBoolean()
+def allowDebugReleaseSigning = (project.findProperty('allowDebugReleaseSigning') ?: "false").toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -125,6 +126,9 @@ android {
         release {
             if (requireReleaseSigning && !hasReleaseSigning) {
                 throw new GradleException('Release signing credentials are missing. Configure RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD.')
+            }
+            if (!hasReleaseSigning && !allowDebugReleaseSigning) {
+                throw new GradleException('Debug signing fallback is disabled for release builds. Set release signing credentials or pass -PallowDebugReleaseSigning=true for local-only builds.')
             }
             signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds

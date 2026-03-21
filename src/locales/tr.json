@@ -97,7 +97,7 @@
   "breach_extra": {
     "enable_prompt": "Opsiyonel ihlal kontrolunu etkinlestir",
     "privacy_title": "Opsiyonel Ihlal Kontrolu",
-    "privacy_message": "Bu kontrol istege baglidir. Parolanizin tam hali cihazdan cikmaz. HIBP servisine yalnizca SHA-1 ozetinin ilk 5 karakteri gonderilir ve sonuc bu cihazda 7 gun boyunca yerel olarak saklanir.",
+    "privacy_message": "Bu kontrol istege baglidir. Parolanizin tam hali cihazdan cikmaz. HIBP servisine yalnizca SHA-1 ozetinin ilk 5 karakteri gonderilir ve sonuc bu cihazda cihaza bagli anahtarli bir onbellekle 7 gun boyunca yerel olarak saklanir.",
     "enable_and_check": "Etkinlestir ve Kontrol Et",
     "unavailable": "Ag tabanli kontrol su an kullanilamiyor",
     "unavailable_desc": "Ihlal servisine su anda ulasilamadi. Daha sonra tekrar deneyin.",
@@ -121,19 +121,31 @@
     "native_create": "Cihazda olustur",
     "native_auth": "Cihazda dogrula",
     "native_working": "Isleniyor...",
-    "native_ready": "Android passkey destegi hazir",
+    "native_ready": "Android passkey yardimci akisi hazir",
     "native_unavailable": "Android passkey destegi su an kullanilamiyor",
     "native_hint": "Kayit olusturmak icin kullanici adi ve alan adi girin. Dogrulama icin once bir credential kimligi olusturun veya ice aktarın.",
     "native_unavailable_title": "Passkey kullanilamiyor",
     "native_unavailable_message": "Bu cihazda, bu Android surumunde veya bu oturumda passkey akisi baslatilamadi. Uygulamayi yeniden acip tekrar deneyin.",
     "native_create_title": "Android passkey olusturma",
     "native_auth_title": "Android passkey dogrulama",
-    "native_create_success": "Passkey cihazda olusturuldu ve kayda baglandi.",
+    "native_create_success": "Passkey metadata'si cihaz akisindan alindi ve kayda baglandi.",
     "native_create_failed": "Passkey olusturma tamamlanamadi.",
-    "native_auth_success": "Passkey dogrulama basarili.",
+    "native_auth_success": "Passkey dogrulama cihaz akisi uzerinde tamamlandi.",
     "native_auth_failed": "Passkey dogrulamasi basarisiz oldu.",
     "create_prereq": "Passkey olusturmak icin en az kullanici adi ve URL veya RP ID girmeniz gerekiyor.",
-    "auth_prereq": "Passkey dogrulamasi icin once bir credential kaydetmeniz veya ice aktarmaniz gerekiyor."
+    "auth_prereq": "Passkey dogrulamasi icin once bir credential kaydetmeniz veya ice aktarmaniz gerekiyor.",
+    "scope_notice": "Bu offline akis, relying-party sunucusu challenge saglamadikca yerelde uretilen bir challenge kullanir. Tek basina tam sunucu tarafli WebAuthn kurulumu degildir.",
+    "mode_label": "Mod",
+    "challenge_source_label": "Challenge kaynagi",
+    "server_verified_label": "Sunucu dogrulamasi",
+    "last_registration_label": "Son kayit",
+    "last_auth_label": "Son dogrulama",
+    "mode_local_helper": "Yerel yardimci",
+    "mode_rp_connected": "RP bagli",
+    "challenge_local_helper": "Yerel yardimci",
+    "challenge_server": "Sunucu",
+    "verified_yes": "Evet",
+    "verified_no": "Hayir"
   },
   "generator": {
     "title": "Zor Parolalar Üretin",
@@ -186,7 +198,7 @@
     },
     "breach_check": {
       "title": "Opsiyonel Ihlal Kontrolu",
-      "desc": "Istediginizde bir parolayi HIBP k-Anonymity API'sine manuel olarak sorabilirsiniz. Parolanin tam hali cihazdan cikmaz."
+      "desc": "Istediginizde bir parolayi HIBP k-Anonymity API'sine manuel olarak sorabilirsiniz. Parolanin tam hali cihazdan cikmaz ve yerel onbellek kayitlari cihaza baglidir."
     },
     "shared_vaults": {
       "title": "Aile / Ekip Alanlari",

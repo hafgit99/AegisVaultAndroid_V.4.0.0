@@ -413,6 +413,26 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
   const updatePasskey = (patch: any) =>
     setForm({ ...form, data: { ...form.data, ...patch } });
 
+  const getPasskeyStatusText = () => {
+    const mode =
+      form.data?.mode === 'rp_connected'
+        ? t('passkey.mode_rp_connected')
+        : t('passkey.mode_local_helper');
+    const challengeSource =
+      form.data?.challenge_source === 'server'
+        ? t('passkey.challenge_server')
+        : t('passkey.challenge_local_helper');
+    const verified = form.data?.server_verified
+      ? t('passkey.verified_yes')
+      : t('passkey.verified_no');
+
+    return [
+      `${t('passkey.mode_label')}: ${mode}`,
+      `${t('passkey.challenge_source_label')}: ${challengeSource}`,
+      `${t('passkey.server_verified_label')}: ${verified}`,
+    ].join('\n');
+  };
+
   const autofillRpId = () => {
     const rpId = SecurityModule.normalizePasskeyRpId(form.url, form.data?.rp_id);
     updatePasskey({
@@ -429,7 +449,12 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
       rpId: form.data?.rp_id,
       displayName: form.data?.display_name,
     });
-    updatePasskey(generated);
+    updatePasskey({
+      ...generated,
+      mode: 'local_helper',
+      challenge_source: 'local_helper',
+      server_verified: false,
+    });
   };
 
   const importPayload = () => {
@@ -444,7 +469,13 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
     }
     setForm({
       ...form,
-      data: { ...form.data, ...parsed.normalized },
+      data: {
+        ...form.data,
+        ...parsed.normalized,
+        mode: parsed.normalized.mode || 'local_helper',
+        challenge_source: parsed.normalized.challenge_source || 'local_helper',
+        server_verified: Boolean(parsed.normalized.server_verified),
+      },
       url: form.url || !parsed.normalized.rp_id
         ? form.url
         : `https://${parsed.normalized.rp_id}`,
@@ -525,6 +556,10 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
           ...form.data,
           ...validation.normalized,
           registration_response_json: result.registrationResponseJson,
+          mode: 'local_helper',
+          challenge_source: 'local_helper',
+          server_verified: false,
+          last_registration_at: new Date().toISOString(),
         },
       });
       Alert.alert(t('backup.success'), t('passkey.native_create_success'));
@@ -558,6 +593,11 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
       const result = await PasskeyModule.authenticatePasskey(requestJson);
       updatePasskey({
         authentication_response_json: result.authenticationResponseJson,
+        mode: form.data?.mode === 'rp_connected' ? 'rp_connected' : 'local_helper',
+        challenge_source:
+          form.data?.challenge_source === 'server' ? 'server' : 'local_helper',
+        server_verified: Boolean(form.data?.server_verified),
+        last_auth_at: new Date().toISOString(),
       });
       Alert.alert(t('backup.success'), t('passkey.native_auth_success'));
     } catch (error: any) {
@@ -613,6 +653,26 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
         </Text>
         <Text style={{ color: cc.muted, fontSize: 12, lineHeight: 18 }}>
           {t('passkey.native_hint')}
+        </Text>
+        <Text
+          style={{
+            color: cc.muted,
+            fontSize: 11,
+            lineHeight: 17,
+            marginTop: 6,
+          }}
+        >
+          {t('passkey.scope_notice')}
+        </Text>
+        <Text
+          style={{
+            color: cc.muted,
+            fontSize: 11,
+            lineHeight: 17,
+            marginTop: 8,
+          }}
+        >
+          {getPasskeyStatusText()}
         </Text>
       </View>
 

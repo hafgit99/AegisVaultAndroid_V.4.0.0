@@ -229,6 +229,11 @@ export interface PasskeyData {
   authenticator_attachment?: string;
   algorithm?: string;
   created_at?: string;
+  mode?: 'local_helper' | 'rp_connected';
+  server_verified?: boolean;
+  challenge_source?: 'local_helper' | 'server';
+  last_registration_at?: string;
+  last_auth_at?: string;
 }
 
 export interface PasskeyValidationResult {
@@ -428,7 +433,6 @@ const AUDIT_BUFFER_FILE = `${RNFS.DocumentDirectoryPath}/aegis_audit_buffer.json
 const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
 const SHARED_SPACES_SETTING_KEY = 'sharedVaultSpaces';
 
-const BACKUP_PBKDF2_FALLBACK_ITERATIONS = 310000;
 const BACKUP_KDF_DEFAULT = {
   algorithm: 'Argon2id',
   memory: 32768,
@@ -621,7 +625,7 @@ export class SecurityModule {
    * - Public key is hardware-bound (tied to Android Keystore)
    * - Device salt is unique per installation (32 bytes CSPRNG)
    * - Argon2id with memory-hard parameters provides GPU resistance
-   * - Biometric verification required before key derivation
+   * - Biometric verification required before secret derivation
    * - Key material zeroed after use
    */
   static async deriveKeyFromBiometric(): Promise<string | null> {
@@ -691,11 +695,11 @@ export class SecurityModule {
           : Buffer.from(argon2Result.rawHash).toString('hex');
 
       debugLog(
-        '[Security] Biometric key derived successfully using Argon2id',
+        '[Security] Biometric-gated unlock secret derived successfully using Argon2id',
       );
       return keyHex;
     } catch (e) {
-      console.error('[Security] Biometric key derivation error:', e);
+      console.error('[Security] Biometric unlock secret derivation error:', e);
       return null;
     }
   }
@@ -749,7 +753,7 @@ export class SecurityModule {
    * Vault kilit aç ve brute force korumasını kontrol et
    */
   static async unlockVault(
-    password: string,
+    unlockSecret: string,
     userSecurityPolicy?: SecurityPolicy,
   ): Promise<boolean> {
     try {
@@ -804,7 +808,7 @@ export class SecurityModule {
       const salt = await this.getDeviceSalt();
 
       // GPU-resistant Argon2id KDF derivation
-      const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
+      const argon2Result = await Argon2Fn(unlockSecret, salt.toString('hex'), {
         mode: 'argon2id',
         memory: 32768,
         iterations: 4,
@@ -911,7 +915,7 @@ export class SecurityModule {
       // Record successful attempt (reset brute force counter)
       await this.recordSuccessfulAttempt();
       await this.logSecurityEvent('vault_unlock', 'success', {
-        method: 'biometric_derived_key',
+        method: 'biometric_gated_secret',
       });
 
       AutofillService.setUnlocked(true);
@@ -1523,7 +1527,7 @@ export class SecurityModule {
       }
 
       debugLog('[Security] Adding new item to vault:', item.title);
-      const r = this.db.executeSync(
+      this.db.executeSync(
         `INSERT INTO vault_items (title,username,password,url,notes,category,favorite,data) VALUES (?,?,?,?,?,?,?,?)`,
         [
           item.title || '',
@@ -2366,6 +2370,11 @@ export class SecurityModule {
         parsed?.response?.publicKeyAlgorithm ||
         'ES256',
       created_at: parsed?.created_at || new Date().toISOString(),
+      mode: parsed?.mode === 'rp_connected' ? 'rp_connected' : 'local_helper',
+      server_verified: Boolean(parsed?.server_verified),
+      challenge_source: parsed?.challenge_source === 'server' ? 'server' : 'local_helper',
+      last_registration_at: parsed?.last_registration_at,
+      last_auth_at: parsed?.last_auth_at,
     };
 
     if (!normalized.rp_id) errors.push('RP ID is required.');
@@ -2410,6 +2419,12 @@ export class SecurityModule {
       ).trim(),
       algorithm: (data.algorithm || 'ES256').trim(),
       created_at: data.created_at || new Date().toISOString(),
+      mode: data.mode === 'rp_connected' ? 'rp_connected' : 'local_helper',
+      server_verified: Boolean(data.server_verified),
+      challenge_source:
+        data.challenge_source === 'server' ? 'server' : 'local_helper',
+      last_registration_at: data.last_registration_at,
+      last_auth_at: data.last_auth_at,
     };
 
     const errors: string[] = [];

@@ -97,7 +97,7 @@
   "breach_extra": {
     "enable_prompt": "Enable optional breach check",
     "privacy_title": "Optional Breach Check",
-    "privacy_message": "This check is optional. Your full password never leaves the device. Only the first 5 characters of a SHA-1 hash prefix are sent to the HIBP API, and the result is cached locally for up to 7 days.",
+    "privacy_message": "This check is optional. Your full password never leaves the device. Only the first 5 characters of a SHA-1 hash prefix are sent to the HIBP API, and the result is cached locally for up to 7 days with a device-bound keyed cache.",
     "enable_and_check": "Enable & Check",
     "unavailable": "Network check unavailable",
     "unavailable_desc": "The breach service could not be reached right now. Try again later.",
@@ -121,19 +121,31 @@
     "native_create": "Create on device",
     "native_auth": "Verify on device",
     "native_working": "Working...",
-    "native_ready": "Android passkey support is ready",
+    "native_ready": "Android passkey helper is ready",
     "native_unavailable": "Android passkey support is currently unavailable",
-    "native_hint": "Enter a username and domain to create a passkey. For verification, first generate or import a credential ID.",
+    "native_hint": "Enter a username and domain to create an on-device passkey and save local metadata for this vault entry.",
+    "scope_notice": "This offline flow uses a locally generated challenge unless a relying-party server provides one. It is not a full server-side WebAuthn deployment by itself.",
     "native_unavailable_title": "Passkey unavailable",
     "native_unavailable_message": "This device, Android version, or current session could not start the passkey flow. Reopen the app and try again.",
     "native_create_title": "Android passkey creation",
     "native_auth_title": "Android passkey verification",
-    "native_create_success": "Passkey was created on the device and linked to the entry.",
+    "native_create_success": "Passkey metadata was captured from the device flow and linked to the entry.",
     "native_create_failed": "Passkey creation could not be completed.",
-    "native_auth_success": "Passkey verification succeeded.",
+    "native_auth_success": "Passkey verification completed on the device flow.",
     "native_auth_failed": "Passkey verification failed.",
     "create_prereq": "To create a passkey, enter at least a username and a URL or RP ID.",
-    "auth_prereq": "To verify a passkey, first create or import a credential."
+    "auth_prereq": "To verify a passkey, first create or import a credential.",
+    "mode_label": "Mode",
+    "challenge_source_label": "Challenge source",
+    "server_verified_label": "Server verified",
+    "last_registration_label": "Last registration",
+    "last_auth_label": "Last verification",
+    "mode_local_helper": "Local helper",
+    "mode_rp_connected": "RP connected",
+    "challenge_local_helper": "Local helper",
+    "challenge_server": "Server",
+    "verified_yes": "Yes",
+    "verified_no": "No"
   },
   "generator": {
     "title": "Generate Strong Passwords",
@@ -176,7 +188,7 @@
     },
     "breach_check": {
       "title": "Optional Breach Check",
-      "desc": "Manually query the HIBP k-Anonymity API for a password when needed. The full password never leaves the device."
+      "desc": "Manually query the HIBP k-Anonymity API for a password when needed. The full password never leaves the device, and local cache entries are device-bound."
     },
     "shared_vaults": {
       "title": "Family / Team Spaces",
