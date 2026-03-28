@@ -13,7 +13,7 @@ Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
 Builds:
   - versionName: 4.0.2
     versionCode: 402
-    commit: bb66c600056e3f03c68661d6d994ef41a78453b2
+    commit: 0fba1ba0056e3f03c68661d6d994ef41a78453b2
     subdir: android
     sudo:
       - apt-get update
@@ -32,6 +32,7 @@ Builds:
       - node_modules/react-native/ReactAndroid/publish.gradle
       - node_modules/hermes-compiler/hermesc/linux64-bin/hermesc
       - node_modules/fb-dotslash/bin/linux-musl.x86_64/dotslash
+      - node_modules/fb-dotslash/bin/windows-arm64/dotslash.exe
       - node_modules/@op-engineering/op-sqlite/android/src/main/libsqlitevec
       - node_modules/@op-engineering/op-sqlite/android/src/main/jniLibs
       - node_modules/@op-engineering/op-sqlite/android/src/main/libcrsqlite
@@ -40,6 +41,7 @@ Builds:
       - node_modules/hermes-compiler/hermesc/osx-bin
       - node_modules/fb-dotslash/bin/macos
       - node_modules/fb-dotslash/bin/windows
+      - node_modules/fb-dotslash/bin/windows-arm64
       - node_modules/fb-dotslash/bin/linux-musl.aarch64
       - node_modules/@op-engineering/op-sqlite/ios
       - node_modules/react-native/React/I18n/strings
