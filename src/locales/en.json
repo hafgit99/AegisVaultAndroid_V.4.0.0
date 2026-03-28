@@ -354,6 +354,45 @@
         }
       }
     },
+    "security_center": {
+      "title": "🛡️ Security Center",
+      "subtitle": "Monitor vault-wide risk signals and take action on critical findings.",
+      "score_label": "Overall Risk Score",
+      "risk_low": "Low Risk",
+      "risk_medium": "Medium Risk",
+      "risk_high": "High Risk",
+      "metrics": {
+        "missing_2fa": "Missing 2FA",
+        "passkey_ready": "Passkey Ready",
+        "aging_credentials": "Aging Credentials",
+        "sensitive_sharing": "Sensitive Sharing"
+      },
+      "issue": {
+        "missing_2fa": "Login entries without TOTP or passkey protection.",
+        "aging_credentials": "Credentials older than 180 days that need rotation.",
+        "sensitive_sharing": "Shared entries without a completed access review.",
+        "missing_identity": "Login entries missing username or domain metadata."
+      },
+      "action": {
+        "missing_2fa": "Add TOTP or a related passkey to password-based accounts first.",
+        "aging_credentials": "Rotate secrets that have not changed for 180+ days.",
+        "sensitive_sharing": "Complete the access review for shared sensitive entries.",
+        "missing_identity": "Fill in username/email and domain for login entries."
+      },
+      "detail": {
+        "missing_2fa": "This login has no TOTP seed and no related passkey.",
+        "aging_credentials": "This credential appears older than 180 days.",
+        "sensitive_sharing": "This shared entry has not been reviewed.",
+        "missing_identity": "This entry is missing username or domain metadata."
+      },
+      "triage_title": "Action Queue ({{count}})",
+      "reviewed_title": "Reviewed ({{count}})",
+      "review_btn": "Mark Reviewed",
+      "reopen_btn": "Reopen",
+      "no_issues": "No security issues found. Your vault looks healthy!",
+      "reviewed_at": "Reviewed {{date}}",
+      "expires_in": "Re-appears in {{days}} days"
+    },
   "cloud": {
     "title": "☁️ Cloud Synchronization (Optional)",
     "url_label": "WebDAV / API URL",
@@ -373,6 +412,31 @@
     "err_sync": "Synchronization Error",
     "success": "Success",
     "error": "Error"
+  },
+  "sync": {
+    "title": "🔄 Advanced Synchronization (Relay)",
+    "relay_url": "Relay Server URL",
+    "session_id": "Session ID",
+    "last_sync": "Last Sync: {{date}}",
+    "btn_sync": "Sync Now",
+    "info": "End-to-End encrypted relay sync allows real-time data sharing between your devices.",
+    "how_title": "How does it work?",
+    "how_body": "The relay server is the transport service that carries encrypted sync packages between devices and cannot read the plaintext vault data. The session ID is the shared room code that groups devices into the same sync channel. To use this feature, enter the same relay URL and the same session ID on every device, keep the vault unlocked, and then start synchronization.",
+    "err_missing": "Relay server URL and session ID are required.",
+    "err_url": "Relay server URL must start with http:// or https://.",
+    "err_locked": "The vault must be unlocked before synchronization can run.",
+    "err_failed": "Relay synchronization could not be completed.",
+    "status_syncing": "Relay synchronization is in progress...",
+    "success": "Relay synchronization completed successfully."
+  },
+  "passkeys": {
+    "title": "🔑 Passkey Management",
+    "bindings": "Bound Devices",
+    "btn_bind": "Add New Passkey",
+    "btn_rotate": "Rotate Passkey",
+    "btn_revoke": "Revoke",
+    "status_revoked": "REVOKED",
+    "info": "Manage FIDO2 passkey bind records here, revoking access for lost/stolen devices."
   },
   "backup": {
     "title": "💾 Backup",

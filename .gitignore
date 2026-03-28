@@ -81,6 +81,10 @@ yarn-error.log
 .env.*
 !.env.example
 *.log
+build_log.txt
+lint_report.txt
+lint_report_utf8.txt
+scripts/relay-data.json
 
 # Reports
 docs/AEGIS_DETAYLI_ANALIZ_RAPORU.md

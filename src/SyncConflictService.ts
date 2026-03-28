@@ -1,0 +1,76 @@
+/**
+ * SyncConflictService — Aegis Vault Android v4.02
+ * Implements "Last-Write-Wins" (LWW) conflict resolution for vault items.
+ * Ported from desktop SyncConflictService.ts.
+ *
+ * Çatışma Çözümleme Servisi — Kasa öğeleri için "Last-Write-Wins" (LWW) çatışma çözümleme.
+ */
+
+import type { VaultItem } from './SecurityModule';
+
+export interface SyncConflictResult {
+  merged: VaultItem[];
+  modifiedCount: number;
+  conflicts: Array<{ local: VaultItem; remote: VaultItem }>;
+}
+
+export class SyncConflictService {
+  /**
+   * Resolves conflicts between a local list and a remote list of items.
+   * Merges based on 'updated_at' timestamp.
+   */
+  static resolve(local: VaultItem[], remote: VaultItem[]): SyncConflictResult {
+    const localMap = new Map(local.map(i => [String(i.id), i]));
+    const remoteMap = new Map(remote.map(i => [String(i.id), i]));
+    
+    const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
+    const merged: VaultItem[] = [];
+    const conflicts: Array<{ local: VaultItem; remote: VaultItem }> = [];
+    let modifiedCount = 0;
+
+    allIds.forEach(id => {
+      const l = localMap.get(id);
+      const r = remoteMap.get(id);
+
+      if (l && r) {
+        // Conflict detected
+        const lTime = new Date(l.updated_at || 0).getTime();
+        const rTime = new Date(r.updated_at || 0).getTime();
+
+        // If contents differ, we log a conflict, but resolve automatically by time
+        const lSig = `${l.title}-${l.username}-${l.url}-${l.updated_at}`;
+        const rSig = `${r.title}-${r.username}-${r.url}-${r.updated_at}`;
+
+        if (lSig !== rSig) {
+            conflicts.push({ local: l, remote: r });
+        }
+
+        if (lTime >= rTime) {
+          merged.push(l);
+        } else {
+          merged.push(r);
+          modifiedCount++;
+        }
+      } else if (l) {
+        // Local only
+        merged.push(l);
+      } else if (r) {
+        // Remote only (newly added elsewhere)
+        merged.push(r);
+        modifiedCount++;
+      }
+    });
+
+    return { merged, modifiedCount, conflicts };
+  }
+
+  /**
+   * Helper to merge two maps of items (useful for state sync).
+   */
+  static mergeOne(local: VaultItem | undefined, remote: VaultItem): VaultItem {
+    if (!local) return remote;
+    const lTime = new Date(local.updated_at || 0).getTime();
+    const rTime = new Date(remote.updated_at || 0).getTime();
+    return lTime >= rTime ? local : remote;
+  }
+}

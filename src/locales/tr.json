@@ -362,26 +362,86 @@
       }
     }
   },
-  "cloud": {
-    "title": "☁️ Bulut Senkronizasyon (Opsiyonel)",
-    "url_label": "WebDAV / API URL",
-    "token_label": "Auth Token",
-    "pw_label": "Kasa Şifreleme/Çözme Parolası",
-    "pw_ph": "Bulut yedek şifresi",
-    "pin_label": "TLS Sertifika Pin'i",
-    "pin_required": "Sertifika pin zorunludur.",
-    "pin_format": "Format: sha256/<base64>",
-    "info": "💡 Kasanız buluta aktarılırken cihazdaki veritabanınızdan bağımsız AES-256-GCM ile şifrelenir. Sıfır-bilgi (Zero-Knowledge) prensibi gereği kimse sunucudaki datayı okuyamaz.",
-    "btn_up": "↑ Gönder",
-    "btn_down": "↓ İndir",
-    "err_url": "Lütfen geçerli bir URL girin (http:// veya https://)",
-    "err_len": "Cloud senkronizasyon şifresi en az 6 karakter olmalıdır.",
-    "success_up": "Kasa güvenli bir şekilde buluta yüklendi.",
-    "success_down": "Kasa senkronize edildi. {{imported}} kayıt içe aktarıldı, {{skipped}} atlandı.",
-    "err_sync": "Senkronizasyon Hatası",
-    "success": "Başarılı",
-    "error": "Hata"
-  },
+    "security_center": {
+      "title": "🛡️ Güvenlik Merkezi",
+      "subtitle": "Kasa genelindeki risk sinyallerini izleyin ve kritik bulgular için eyleme geçin.",
+      "score_label": "Genel Risk Skoru",
+      "risk_low": "Düşük Risk",
+      "risk_medium": "Orta Risk",
+      "risk_high": "Yüksek Risk",
+      "metrics": {
+        "missing_2fa": "2FA Eksik",
+        "passkey_ready": "Passkey Destekli",
+        "aging_credentials": "Eski Sırlar",
+        "sensitive_sharing": "Hassas Paylaşımlar"
+      },
+      "issue": {
+        "missing_2fa": "TOTP veya passkey koruması olmayan giriş kayıtları.",
+        "aging_credentials": "180 günden eski olan ve değiştirilmesi gereken sırlar.",
+        "sensitive_sharing": "Erişim incelemesi tamamlanmamış paylaşılan kayıtlar.",
+        "missing_identity": "Kullanıcı adı veya alan adı eksik giriş kayıtları."
+      },
+      "action": {
+        "missing_2fa": "Parolalı hesaplarda önce TOTP veya ilişkili bir passkey ekleyin.",
+        "aging_credentials": "180+ gündür değişmeyen sırları rotasyona alın.",
+        "sensitive_sharing": "Paylaşılan hassas kayıtlar için erişim incelemesini tamamlayın.",
+        "missing_identity": "Giriş kayıtlarında kullanıcı adı/e-posta ve alan adını doldurun."
+      },
+      "detail": {
+        "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
+        "aging_credentials": "Bu sır 180 günden eski görünüyor.",
+        "sensitive_sharing": "Bu paylaşılan kaydın incelemesi yapılmamış.",
+        "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik."
+      },
+      "triage_title": "Eylem Kuyruğu ({{count}})",
+      "reviewed_title": "İncelenenler ({{count}})",
+      "review_btn": "İncelendi Olarak İşaretle",
+      "reopen_btn": "Yeniden Aç",
+      "no_issues": "Güvenlik sorunu bulunamadı. Kasanız sağlıklı görünüyor!",
+      "reviewed_at": "{{date}} tarihinde incelendi",
+      "expires_in": "{{days}} gün sonra tekrar görünecek"
+    },
+    "cloud": {
+      "title": "☁️ Bulut Senkronizasyon (WebDAV)",
+      "url_label": "WebDAV URL",
+      "token_label": "Yetkilendirme Belgesi",
+      "pw_label": "Senkronizasyon Şifresi",
+      "pw_ph": "Bulut yedekleme şifresi",
+      "pin_label": "TLS Sertifika Pinleme",
+      "pin_required": "Sertifika pini gereklidir.",
+      "pin_format": "Format: sha256/<base64>",
+      "info": "💡 Kasanız yüklenmeden önce AES-256-GCM ile şifrelenir. Sıfır-Bilgi prensibi gereği, verileriniz sunucuda okunamaz.",
+      "btn_up": "↑ Yükle",
+      "btn_down": "↓ İndir",
+      "err_url": "Lütfen geçerli bir URL girin (http:// veya https://)",
+      "err_len": "Bulut senkronizasyon şifresi en az 6 karakter olmalıdır.",
+      "success_up": "Kasa buluta güvenli bir şekilde yüklendi."
+    },
+    "sync": {
+      "title": "🔄 Gelişmiş Senkronizasyon (Relay)",
+      "relay_url": "Relay Sunucu URL",
+      "session_id": "Oturum Kimliği",
+      "last_sync": "Son Senkronizasyon: {{date}}",
+      "btn_sync": "Şimdi Senkronize Et",
+      "info": "Uçtan uca şifreli relay senkronizasyonu, cihazlarınız arasında anlık veri paylaşımı sağlar.",
+      "how_title": "Nasıl çalışır?",
+      "how_body": "Relay sunucu, şifreli senkron paketlerini taşıyan aracı servistir; verinin düz halini göremez. Oturum kimliği ise aynı senkron kanalını paylaşacak cihazların ortak oda kodudur. Bu özelliği kullanmak için tüm cihazlarda aynı relay adresini ve aynı oturum kimliğini girin, kasayı açık tutun ve ardından senkronizasyon başlatın.",
+      "err_missing": "Relay sunucu adresi ve oturum kimliği zorunludur.",
+      "err_url": "Relay sunucu adresi http:// veya https:// ile başlamalıdır.",
+      "err_locked": "Senkronizasyon için önce kasanın açık olması gerekir.",
+      "err_failed": "Relay senkronizasyonu tamamlanamadı.",
+      "status_syncing": "Relay senkronizasyonu çalışıyor...",
+      "success": "Relay senkronizasyonu başarıyla tamamlandı."
+    },
+    "passkeys": {
+      "title": "🔑 Passkey Yönetimi",
+      "bindings": "Bağlı Cihazlar",
+      "btn_bind": "Yeni Passkey Ekle",
+      "btn_rotate": "Passkey Yenile",
+      "btn_revoke": "İptal Et",
+      "status_revoked": "İPTAL EDİLMİŞ",
+      "info": "FIDO2 Passkey bind kayıtlarını buradan yönetebilir, çalınan cihazların erişimini iptal edebilirsiniz."
+    },
   "backup": {
     "title": "💾 Yedekleme",
     "tab_export": "📤 Dışa Aktar",

@@ -446,10 +446,11 @@ const BASE64URL_CHARS =
 
 // ═══════════════════════════════════════════════════
 export class SecurityModule {
-  private static db: any = null;
+  public static db: any = null;
   private static autoLockTimer: ReturnType<typeof setTimeout> | null = null;
   public static isPickingFileFlag: boolean = false;
   private static deviceSalt: Buffer | null = null;
+  private static currentUnlockSecret: string | null = null;
   private static appConfig: any = null;
   private static bfState: BruteForceState = {
     failCount: 0,
@@ -830,6 +831,7 @@ export class SecurityModule {
         name: 'aegis_android_vault.sqlite',
         encryptionKey: keyHex,
       });
+      this.currentUnlockSecret = unlockSecret;
 
       // Optimize SQLite for persistence and performance
       try {
@@ -1498,11 +1500,16 @@ export class SecurityModule {
     try {
       return (this.db.executeSync(
         'SELECT * FROM vault_items WHERE is_deleted = 1 ORDER BY deleted_at DESC',
+        [],
       ).rows || []) as VaultItem[];
     } catch (e) {
       console.error('getDeletedItems:', e);
       return [];
     }
+  }
+
+  static async getAllItems(): Promise<VaultItem[]> {
+    return this.getItems();
   }
 
   static async addItem(item: Partial<VaultItem>): Promise<number | null> {
@@ -3087,10 +3094,95 @@ export class SecurityModule {
       if (this.db) this.db.close();
     } catch {}
     this.db = null;
+    this.currentUnlockSecret = null;
     AutofillService.setUnlocked(false);
     AutofillService.clearEntries();
   }
   static getDb() {
     return this.db;
+  }
+
+  /**
+   * Derives a dedicated 32-byte secret for E2E sync from the vault password.
+   * Uses Argon2id with a fixed sync salt.
+   */
+  static async getSyncRootSecret(password: string): Promise<Buffer> {
+    const salt = 'aegis_v4_sync_salt_v1';
+    const result = await Argon2Fn(password, salt, {
+        iterations: 10,
+        memory: 65536,
+        parallelism: 4,
+        hashLength: 32,
+        mode: 'argon2id',
+    });
+    // Argon2 result.rawHash is usually hex in react-native-argon2's return object if accessed directly,
+    // but the library return depends on the exact version. Checking the common return:
+    const raw = (result as any).rawHash || (result as any).hash;
+    return Buffer.from(__hexToBuf(raw));
+  }
+
+  static async getActiveSyncRootSecret(): Promise<Buffer | null> {
+    if (!this.currentUnlockSecret) return null;
+    return this.getSyncRootSecret(this.currentUnlockSecret);
+  }
+
+  static async applyMergedSyncItems(items: VaultItem[]): Promise<void> {
+    if (!this.db) {
+      throw new Error('Vault database is not open');
+    }
+
+    const validItems = items.filter(item => typeof item?.id === 'number');
+    this.db.executeSync('BEGIN TRANSACTION');
+    try {
+      for (const item of validItems) {
+        const existing = this.db.executeSync(
+          'SELECT id FROM vault_items WHERE id = ?',
+          [item.id],
+        ).rows?.[0];
+
+        const params = [
+          item.title || '',
+          item.username || '',
+          item.password || '',
+          item.url || '',
+          item.notes || '',
+          item.category || 'login',
+          item.favorite || 0,
+          item.data || '{}',
+          item.is_deleted || 0,
+          item.deleted_at || null,
+          item.created_at || new Date().toISOString(),
+          item.updated_at || new Date().toISOString(),
+        ];
+
+        if (existing) {
+          this.db.executeSync(
+            `UPDATE vault_items
+             SET title=?, username=?, password=?, url=?, notes=?, category=?, favorite=?, data=?, is_deleted=?, deleted_at=?, created_at=?, updated_at=?
+             WHERE id=?`,
+            [...params, item.id],
+          );
+        } else {
+          this.db.executeSync(
+            `INSERT INTO vault_items
+             (id, title, username, password, url, notes, category, favorite, data, is_deleted, deleted_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [item.id, ...params],
+          );
+        }
+      }
+
+      this.db.executeSync('COMMIT');
+      await this.syncAutofill();
+      await this.logSecurityEvent('cloud_sync_download', 'success', {
+        source: 'relay_sync',
+        applied: validItems.length,
+      });
+    } catch (e) {
+      try {
+        this.db.executeSync('ROLLBACK');
+      } catch {}
+      throw e;
+    }
   }
 }

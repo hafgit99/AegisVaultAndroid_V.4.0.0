@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import {
   AppStateStatus,
   KeyboardAvoidingView,
   Platform,
+  FlatList,
+  DeviceEventEmitter,
 } from 'react-native';
 import ReactNativeBiometrics from 'react-native-biometrics';
 import {
@@ -34,14 +36,20 @@ import { TOTPDisplay } from './components/TOTPDisplay';
 import { DonationModal } from './components/DonationModal';
 import { TrashModal } from './components/TrashModal';
 import { SecurityReportModal } from './components/SecurityReportModal';
+import { SecurityCenterModal } from './components/SecurityCenterModal';
 import { SharedVaultsModal } from './components/SharedVaultsModal';
+import { SearchService } from './SearchService';
+import { SecureAppSettings, SETTINGS_CHANGED_EVENT } from './SecureAppSettings';
 import { HIBPModule } from './HIBPModule';
 import { AppMonitoring, CrashReport } from './AppMonitoring';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { switchLanguage } from './i18n';
 import { AutofillService } from './AutofillService';
+import { SyncSettings } from './components/SyncSettings';
+import { PasskeySettings } from './components/PasskeySettings';
 import { IntegrityModule, IntegritySignals } from './IntegrityModule';
+import { PasskeyBindingService } from './PasskeyBindingService'; // Added for PasskeySettings
 
 const rnBiometrics = new ReactNativeBiometrics({
   allowDeviceCredentials: true,
@@ -120,16 +128,13 @@ export const Dashboard = () => {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [search, setSearch] = useState('');
   const [selCat, setSelCat] = useState('all');
-  const [settings, setSettings] = useState<VaultSettings>({
-    autoLockSeconds: 60,
-    biometricEnabled: true,
-    clipboardClearSeconds: 30,
-    passwordLength: 20,
-    darkMode: false,
-  });
+  // ── Legacy state synced with SecureAppSettings ──
+  const [settings, setSettings] = useState<VaultSettings>(SecureAppSettings.toVaultSettings());
   const palette = settings.darkMode ? CD : C;
+
   const [showAdd, setShowAdd] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [showSecurityCenter, setShowSecurityCenter] = useState(false);
   const [editItem, setEditItem] = useState<VaultItem | null>(null);
   const [count, setCount] = useState(0);
   const [showBackup, setShowBackup] = useState(false);
@@ -148,6 +153,15 @@ export const Dashboard = () => {
   const backgroundTimeRef = useRef<number | null>(null);
   const settingsRef = useRef(settings);
   const unlockedRef = useRef(unlocked);
+
+  // Sync SecureAppSettings to Local State
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(SETTINGS_CHANGED_EVENT, () => {
+      // Use the singleton method to ensure we get the correctly formatted legacy object
+      setSettings(SecureAppSettings.toVaultSettings());
+    });
+    return () => sub.remove();
+  }, []); // Removed `t` from dependency array as it's not needed for this effect
 
   // Keep refs in sync with state for use in AppState listener
   useEffect(() => {
@@ -232,7 +246,14 @@ export const Dashboard = () => {
   }, [glow, t]);
 
   const load = useCallback(async () => {
-    setItems(await SecurityModule.getItems(search, selCat));
+    // Phase 1: Score-weighted search integration
+    // 1. Fetch all items for the category
+    const allCategoryItems = await SecurityModule.getItems('', selCat);
+    
+    // 2. Filter using SearchService (High-performance score-weighted filtering)
+    const filtered = SearchService.searchDecrypted(allCategoryItems, search);
+    
+    setItems(filtered);
     setCount(await SecurityModule.getItemCount());
   }, [search, selCat]);
   const openItemById = useCallback(async (itemId: number) => {
@@ -246,7 +267,7 @@ export const Dashboard = () => {
     setShowDetail(true);
   }, []);
   const loadSettings = useCallback(
-    async () => setSettings(await SecurityModule.getAllSettings()),
+    async () => setSettings(await SecureAppSettings.toVaultSettings()), // Changed to use SecureAppSettings.toVaultSettings()
     [],
   );
   const loadSharedSpaces = useCallback(
@@ -324,6 +345,8 @@ export const Dashboard = () => {
         setAuthStatus(t('lock_screen.unlocked'));
         setFailCount(0);
         setLockoutRemaining(0);
+        // Initialize centralized settings from DB
+        await SecureAppSettings.init(SecurityModule.db);
         // Automatic cleanup of old trash items (>30 days)
         SecurityModule.cleanupOldTrash();
       } else {
@@ -650,6 +673,7 @@ export const Dashboard = () => {
           onLock={lock}
           onDonation={() => setShowDonation(true)}
           onTrash={() => setShowTrash(true)}
+          onSecurityReport={() => setShowSecurityCenter(true)}
           insets={insets}
         />
       )}
@@ -666,7 +690,7 @@ export const Dashboard = () => {
           onLock={lock}
           onBackup={() => setShowBackup(true)}
           onCloud={() => setShowCloud(true)}
-          onSecurityReport={() => setShowSecurityReport(true)}
+          onSecurityReport={() => setShowSecurityCenter(true)}
           onSharedVaults={() => setShowSharedVaults(true)}
           openLegal={(type: any) => setLegalType(type)}
           onDonation={() => setShowDonation(true)}
@@ -681,6 +705,17 @@ export const Dashboard = () => {
           onClose={() => setShowSecurityReport(false)}
           theme={palette}
           onOpenItem={openItemById}
+        />
+      )}
+      {showSecurityCenter && (
+        <SecurityCenterModal
+          visible={showSecurityCenter}
+          onClose={() => setShowSecurityCenter(false)}
+          items={items}
+          theme={palette}
+          insets={insets}
+          db={SecurityModule.db}
+          onNavigateToItem={(id) => openItemById(id)}
         />
       )}
 
@@ -850,120 +885,185 @@ const VaultView = ({
   onAdd,
   onDetail,
   onLock,
-  onDonation,
+  onDonation, // Renamed from _onDonation
   onTrash,
+  onSecurityReport,
   insets,
 }: any) => {
   const { t } = useTranslation();
-  return (
-    <View style={{ flex: 1 }}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: 100 + (insets?.bottom || 0),
-        }}
+
+  const renderItem = useCallback(({ item: i }: { item: VaultItem }) => (
+    <TouchableOpacity
+      key={i.id}
+      style={[
+        s.item,
+        { backgroundColor: theme.card, borderColor: theme.cardBorder },
+      ]}
+      onPress={() => onDetail(i)}
+      activeOpacity={0.7}
+    >
+      <View
+        style={[s.avatar, { backgroundColor: getCatColor(i.category) }]}
       >
-        <View style={s.hdr}>
-          <View>
-            <Text style={[s.hdrT, { color: theme.navy }]}>
-              {t('lock_screen.title')}
-            </Text>
-            <Text style={[s.hdrS, { color: theme.sage }]}>
-              {count} {t('vault.items_count')} • AES-256
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity
-              onPress={onTrash}
-              style={[
-                s.lockIc,
-                { backgroundColor: theme.card, borderColor: theme.cardBorder },
-              ]}
-            >
-              <Text style={{ fontSize: 20 }}>🗑️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onDonation}
-              style={[
-                s.lockIc,
-                { backgroundColor: theme.card, borderColor: theme.cardBorder },
-              ]}
-            >
-              <Text style={{ fontSize: 20 }}>❤️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onLock}
-              style={[
-                s.lockIc,
-                { backgroundColor: theme.card, borderColor: theme.cardBorder },
-              ]}
-            >
-              <Text style={{ fontSize: 20 }}>🔒</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <Text style={{ fontSize: 20 }}>{getCatIcon(i.category)}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
         <View
-          style={[
-            s.srch,
-            { backgroundColor: theme.inputBg, borderColor: theme.cardBorder },
-          ]}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
         >
-          <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
-          <TextInput
-            style={s.srchIn}
-            placeholder={t('vault.search')}
-            placeholderTextColor={theme.muted}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-            onSubmitEditing={onRefresh}
-          />
-          {search ? (
-            <TouchableOpacity
-              onPress={() => {
-                setSearch('');
-              }}
+          <Text
+            style={[s.itemT, { color: theme.navy }]}
+            numberOfLines={1}
+          >
+            {i.title}
+          </Text>
+          {i.favorite === 1 && <Text style={{ fontSize: 12 }}>⭐</Text>}
+          {SecurityModule.parseSharedAssignment(i) ? (
+            <Text
+              style={{ fontSize: 11, color: theme.sage, fontWeight: '700' }}
             >
-              <Text style={{ fontSize: 16, color: theme.muted, padding: 4 }}>
-                ✕
-              </Text>
-            </TouchableOpacity>
+              {t('shared.list_badge')}
+            </Text>
           ) : null}
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginBottom: 16, flexGrow: 0 }}
+        <Text
+          style={[s.itemS, { color: theme.muted }]}
+          numberOfLines={1}
         >
-          {getCats(t).map(c => (
-            <TouchableOpacity
-              key={c.id}
+          {i.username ||
+            i.url ||
+            getCats(t).find(x => x.id === i.category)?.label}
+        </Text>
+      </View>
+      <Text
+        style={{ fontSize: 22, color: theme.muted, fontWeight: '300' }}
+      >
+        ›
+      </Text>
+    </TouchableOpacity>
+  ), [theme, onDetail, t]);
+
+  const ListHeader = useMemo(() => (
+    <>
+      <View style={s.hdr}>
+        <View>
+          <Text style={[s.hdrT, { color: theme.navy }]}>
+            {t('lock_screen.title')}
+          </Text>
+          <Text style={[s.hdrS, { color: theme.sage }]}>
+            {count} {t('vault.items_count')} • AES-256
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            onPress={onDonation}
+            style={[
+              s.lockIc,
+              { backgroundColor: theme.card, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={{ fontSize: 20 }}>❤️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onSecurityReport}
+            style={[
+              s.lockIc,
+              { backgroundColor: theme.card, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={{ fontSize: 20 }}>🛡️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onTrash}
+            style={[
+              s.lockIc,
+              { backgroundColor: theme.card, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={{ fontSize: 20 }}>🗑️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onLock}
+            style={[
+              s.lockIc,
+              { backgroundColor: theme.card, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={{ fontSize: 20 }}>🔒</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View
+        style={[
+          s.srch,
+          { backgroundColor: theme.inputBg, borderColor: theme.cardBorder },
+        ]}
+      >
+        <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
+        <TextInput
+          style={s.srchIn}
+          placeholder={t('vault.search')}
+          placeholderTextColor={theme.muted}
+          value={search}
+          onChangeText={setSearch}
+          returnKeyType="search"
+          onSubmitEditing={onRefresh}
+        />
+        {search ? (
+          <TouchableOpacity
+            onPress={() => {
+              setSearch('');
+            }}
+          >
+            <Text style={{ fontSize: 16, color: theme.muted, padding: 4 }}>
+              ✕
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginBottom: 16, flexGrow: 0 }}
+      >
+        {getCats(t).map(c => (
+          <TouchableOpacity
+            key={c.id}
+            style={[
+              s.cat,
+              { backgroundColor: theme.card, borderColor: theme.cardBorder },
+              selCat === c.id && {
+                backgroundColor: theme.sage,
+                borderColor: theme.sage,
+              },
+            ]}
+            onPress={() => setSelCat(c.id)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14, marginRight: 5 }}>{c.icon}</Text>
+            <Text
               style={[
-                s.cat,
-                { backgroundColor: theme.card, borderColor: theme.cardBorder },
-                selCat === c.id && {
-                  backgroundColor: theme.sage,
-                  borderColor: theme.sage,
-                },
+                s.catLbl,
+                { color: theme.navy },
+                selCat === c.id && { color: '#fff' },
               ]}
-              onPress={() => setSelCat(c.id)}
-              activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 14, marginRight: 5 }}>{c.icon}</Text>
-              <Text
-                style={[
-                  s.catLbl,
-                  { color: theme.navy },
-                  selCat === c.id && { color: '#fff' },
-                ]}
-              >
-                {c.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        {items.length === 0 ? (
+              {c.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </>
+  ), [theme, count, t, onDonation, onSecurityReport, onTrash, onLock, search, setSearch, onRefresh, selCat, setSelCat]);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <FlatList
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={(item) => String(item.id)}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={
           <View style={{ alignItems: 'center', paddingVertical: 60 }}>
             <Text style={{ fontSize: 48, marginBottom: 16 }}>🔐</Text>
             <Text
@@ -977,59 +1077,16 @@ const VaultView = ({
               {t('vault.search')}
             </Text>
           </View>
-        ) : (
-          items.map((i: VaultItem) => (
-            <TouchableOpacity
-              key={i.id}
-              style={[
-                s.item,
-                { backgroundColor: theme.card, borderColor: theme.cardBorder },
-              ]}
-              onPress={() => onDetail(i)}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[s.avatar, { backgroundColor: getCatColor(i.category) }]}
-              >
-                <Text style={{ fontSize: 20 }}>{getCatIcon(i.category)}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                >
-                  <Text
-                    style={[s.itemT, { color: theme.navy }]}
-                    numberOfLines={1}
-                  >
-                    {i.title}
-                  </Text>
-                  {i.favorite === 1 && <Text style={{ fontSize: 12 }}>⭐</Text>}
-                  {SecurityModule.parseSharedAssignment(i) ? (
-                    <Text
-                      style={{ fontSize: 11, color: theme.sage, fontWeight: '700' }}
-                    >
-                      {t('shared.list_badge')}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text
-                  style={[s.itemS, { color: theme.muted }]}
-                  numberOfLines={1}
-                >
-                  {i.username ||
-                    i.url ||
-                    getCats(t).find(x => x.id === i.category)?.label}
-                </Text>
-              </View>
-              <Text
-                style={{ fontSize: 22, color: theme.muted, fontWeight: '300' }}
-              >
-                ›
-              </Text>
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
+        }
+        contentContainerStyle={{
+          padding: 20,
+          paddingBottom: 100 + (insets?.bottom || 0),
+        }}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+      />
       <TouchableOpacity
         style={[
           s.fab,
@@ -1229,7 +1286,7 @@ const SettView = ({
   integrity,
   integrityLoading,
   settings: st2,
-  setSettings,
+  _setSettings,
   onLock,
   onBackup,
   onCloud,
@@ -1246,6 +1303,7 @@ const SettView = ({
   const [auditLoading, setAuditLoading] = useState(false);
   const [crashReports, setCrashReports] = useState<CrashReport[]>([]);
   const [crashLoading, setCrashLoading] = useState(false);
+  const [bindings, setBindings] = useState<any[]>([]); // State for passkey bindings
 
   const boolLabel = (value: boolean) =>
     value ? t('settings.integrity.yes') : t('settings.integrity.no');
@@ -1281,15 +1339,20 @@ const SettView = ({
     setCrashLoading(false);
   };
 
+  const loadPasskeyBindings = async () => {
+    const allBindings = await PasskeyBindingService.loadAllBindings(SecurityModule.db);
+    setBindings(Object.values(allBindings.bindings));
+  };
+
   useEffect(() => {
     loadAudit();
     loadCrashReports();
+    loadPasskeyBindings(); // Load passkey bindings on mount
   }, []);
 
   const upd = async (k: string, v: any) => {
-    const n = { ...st2, [k]: v };
-    setSettings(n);
-    await SecurityModule.setSetting(k, String(v));
+    // Phase 1 upgrade: centralized persistence
+    await SecureAppSettings.update({ [k]: v }, SecurityModule.db);
     await loadAudit();
   };
   const ALO = [
@@ -1550,7 +1613,7 @@ const SettView = ({
               marginLeft: 12,
             }}
           >
-            â€º
+            ›
           </Text>
         </View>
       </TouchableOpacity>
@@ -2118,6 +2181,10 @@ const SettView = ({
           </Text>
         </View>
       </TouchableOpacity>
+
+      {/* ── Phase 2: Advanced Sync & Passkeys ── */}
+      <SyncSettings theme={theme} />
+      <PasskeySettings theme={theme} bindings={bindings} onRefresh={loadPasskeyBindings} /> {/* Pass bindings and onRefresh */}
 
       <Text style={[s.sec, { color: theme.navy }]}>{t('trash.title')}</Text>
       <TouchableOpacity
@@ -2704,7 +2771,7 @@ const DetailModal = ({
         {
           text: t('breach_extra.enable_and_check'),
           onPress: async () => {
-            await SecurityModule.setSetting('breachCheckEnabled', 'true');
+            await SecureAppSettings.update({ breachCheckEnabled: true }, SecurityModule.db); // Updated to use SecureAppSettings
             setBreachEnabled(true);
             await checkBreach(pw, true);
           },

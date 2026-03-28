@@ -156,6 +156,18 @@ describe('SecurityModule - Key Derivation (Anahtar Türetme)', () => {
     expect(expectedParams.parallelism).toBeGreaterThanOrEqual(2);
     expect(expectedParams.hashLength).toBe(32);
   });
+
+  test('getActiveSyncRootSecret derives a session secret only when vault is unlocked', async () => {
+    (SecurityModule as any).currentUnlockSecret = 'unit-test-unlock-secret';
+
+    const rootSecret = await SecurityModule.getActiveSyncRootSecret();
+    expect(rootSecret).toBeTruthy();
+    expect(rootSecret?.length).toBe(32);
+
+    (SecurityModule as any).currentUnlockSecret = null;
+    const missing = await SecurityModule.getActiveSyncRootSecret();
+    expect(missing).toBeNull();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
