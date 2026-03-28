@@ -1,116 +1,105 @@
 <p align="center">
-  <img src="android/app/src/main/res/mipmap-xxhdpi/ic_launcher.jpg" width="128" alt="Aegis Vault Logo">
+  <img src="android/app/src/main/res/mipmap-xxhdpi/ic_launcher.jpg" width="128" alt="Aegis Vault logo">
 </p>
 
-<h1 align="center">🛡️ Aegis Vault Android</h1>
+<h1 align="center">Aegis Vault Android</h1>
 
 <p align="center">
-  <strong>Secure. Private. Boundless.</strong><br>
-  The next generation of open-source password management and digital security for Android.
+  <strong>Offline-first password vault and security toolkit for Android.</strong><br>
+  Built with React Native, hardened for privacy, and focused on real-device security.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.1.1-blue?style=for-the-badge&logo=android" alt="Version">
-  <img src="https://img.shields.io/badge/React--Native-0.84+-61DAFB?style=for-the-badge&logo=react" alt="React Native">
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/Security-AES--256-green?style=for-the-badge" alt="Security">
+  <img src="https://img.shields.io/badge/version-4.0.2-1f6feb?style=for-the-badge&logo=android" alt="Version 4.0.2">
+  <img src="https://img.shields.io/badge/react%20native-0.84-61dafb?style=for-the-badge&logo=react" alt="React Native 0.84">
+  <img src="https://img.shields.io/badge/license-MIT-f2c94c?style=for-the-badge" alt="MIT license">
+  <img src="https://img.shields.io/badge/security-AES--256%20%7C%20Argon2id-1b8a5a?style=for-the-badge" alt="AES-256 and Argon2id">
 </p>
 
----
+## Overview
 
-## 🌟 Overview
+**Aegis Vault Android** is an Android password manager focused on local security, encrypted storage, and privacy-first workflows. The application is designed for users who want strong vault protection without depending on a cloud-first architecture.
 
-**Aegis Vault** is a high-performance, security-focused vault application designed to protect your most sensitive data. Built with **React Native** and powered by native Android security modules, it provides a premium user experience with ironclad security.
+The project combines encrypted local persistence, biometric access, TOTP, breach checks, passkey groundwork, offline sharing concepts, and relay-based sync in a single Android application.
 
-## ✨ Key Features
+## Current Status
 
-- **🔐 End-to-End Encryption:** Your data is encrypted locally using **AES-256-GCM**. No one else can access it.
-- **🛡️ Device Integrity Signals:** Native Android root, emulator, test-keys and ADB heuristics to detect degraded devices.
-- **🔑 Passkey Support:** Native Android Credential Manager helper flow for on-device passkey creation/verification and local metadata handling.
-- **👥 Family & Team Spaces:** Secure, offline-first sharing for family and team environments with member roles.
-- **🆔 Biometric Security:** Instant access with Fingerprint or Face ID integration.
-- **🕒 TOTP Support:** Integrated 2FA authenticator for all your accounts.
-- **🔍 Leak Detection:** Powered by _Have I Been Pwned_ API (k-anonimity) to check if your credentials are compromised.
-- **📥 Professional Backup:** Argon2id-enforced JSON and Encrypted Aegis export/import system with cross-platform compatibility.
-- **📈 App Monitoring:** Local-first crash monitoring and security audit logs to track sensitive operations.
-- **🗑️ Recycle Bin:** Advanced trash system with 30-day auto-cleanup.
-- **🌍 Multi-language:** Premium localization for **English** and **Turkish**.
+- Active version: `4.0.2`
+- Product state: release-capable Android build with signed APK validation and real-device testing
+- Languages: English and Turkish
+- Release posture: suitable for controlled rollout, with wider multi-device validation still recommended
 
-## 🛡️ Security Documentation
+Supporting references:
 
-Comprehensive security analysis and planning are available in the following documents:
+- [Release Readiness Report](docs/RELEASE_READINESS.md)
+- [Release Notes 4.0.2](docs/RELEASE_NOTES_4.0.2.md)
 
-- **[Security Architecture](docs/SECURITY_ARCHITECTURE.md)**: Details on encryption, key derivation, and storage.
-- **[Threat Model](docs/THREAT_MODEL.md)**: Identification of potential threats and mitigation strategies.
-- **[Device Matrix Test Plan](docs/DEVICE_MATRIX_TEST_PLAN.md)**: Multi-device validation strategy for core security flows.
-- **[Turkish Device Validation Guide](docs/CIHAZ_MATRISI_VE_SAHA_DOGRULAMA_TR.md)**: Turkish field guide for real-device validation and evidence collection.
-- **[Validation Workspace](docs/validation/README_TR.md)**: Ready-to-fill CSV matrix and evidence folder structure for field validation.
-- **[Passkey WebAuthn ADR (TR)](docs/PASSKEY_WEBAUTHN_ADR_TR.md)**: Proposed production architecture and API contract for server-verified passkeys.
-- **[Passkey Backend Checklist (TR)](docs/PASSKEY_BACKEND_IMPLEMENTATION_CHECKLIST_TR.md)**: Implementation checklist for relying-party backend endpoints.
-- **[Release Notes 0.1.1](docs/RELEASE_NOTES_0.1.1.md)**: Summary of latest security hardening and features.
+## Core Capabilities
 
-## 🛠️ Tech Stack
+- Local encrypted vault with AES-256-GCM protected data flows
+- Argon2id-based key derivation for sensitive export and recovery paths
+- Biometric unlock support for fast local access
+- Built-in TOTP support for two-factor authentication workflows
+- Password health and breach exposure checks
+- Security center and local-first risk triage flows
+- Device integrity heuristics for root, emulator, test-keys, and ADB-related risk signals
+- Relay-based synchronization settings with persistent encrypted app settings
+- Offline-first family and team space concepts
+- English and Turkish localization
 
-- **Frontend:** React Native 0.72+ (Hermes Optimized)
-- **Security Logic:** Pure JavaScript crypto-wrappers to bypass platform buffer inconsistencies.
-- **Encryption:** AES-256-GCM with Argon2id (Key Derivation).
-- **Integrity:** Native Android device-integrity heuristics with policy-based blocking or warning.
-- **Design:** Premium Glassmorphism UI with high-opacity Light Mode accessibility.
+## Security and Architecture
 
-## 📸 Screenshots
+Project security documentation is maintained in-repo:
 
-|                    Login Experience                    |                    Secure Vault                    |                     Security Center                      |
-| :----------------------------------------------------: | :------------------------------------------------: | :------------------------------------------------------: |
+- [Security Architecture](docs/SECURITY_ARCHITECTURE.md)
+- [Threat Model](docs/THREAT_MODEL.md)
+- [Device Matrix Test Plan](docs/DEVICE_MATRIX_TEST_PLAN.md)
+- [Turkish Device Validation Guide](docs/CIHAZ_MATRISI_VE_SAHA_DOGRULAMA_TR.md)
+- [Validation Workspace](docs/validation/README_TR.md)
+- [Passkey WebAuthn ADR (TR)](docs/PASSKEY_WEBAUTHN_ADR_TR.md)
+- [Passkey Backend Checklist (TR)](docs/PASSKEY_BACKEND_IMPLEMENTATION_CHECKLIST_TR.md)
+
+## Screenshots
+
+| Login | Vault | Security Center |
+| :---: | :---: | :-------------: |
 | ![Login Experience](docs/screenshots/mobile-login.png) | ![Secure Vault](docs/screenshots/mobile-vault.png) | ![Security Center](docs/screenshots/mobile-security.png) |
 
-## 🚀 Installation & Build
+## Tech Stack
 
-## 📦 F-Droid
+- React Native `0.84`
+- TypeScript
+- Hermes
+- `react-native-quick-crypto`
+- `@op-engineering/op-sqlite` with SQLCipher
+- Native Android integrations for biometrics and device security signals
 
-- F-Droid metadata file: `com.aegisandroid.yml`
-- The F-Droid build uses `subdir: android` and Gradle release APK output at `app/build/outputs/apk/release/app-release.apk`.
-- In F-Droid CI, system package installation must run under `sudo:` (root stage), while dependency installation runs in `prebuild:`.
-
-Example build flow used by metadata:
-
-```yaml
-sudo:
-  - apt-get update
-  - apt-get install -y npm openjdk-17-jdk-headless
-prebuild:
-  - npm ci
-```
-
-The metadata also pins Gradle toolchain discovery to installed JDKs to avoid auto-download failures in CI (`org.gradle.java.installations.*` in `gradleprops`).
+## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (LTS)
-- [Android SDK](https://developer.android.com/studio) & ADB
-- [React Native CLI](https://reactnative.dev/docs/environment-setup)
+- Node.js LTS
+- Android Studio / Android SDK
+- ADB
+- React Native environment configured for Android
 
-### Step-by-Step
+### Install
 
-1. **Clone the repo:**
-   ```bash
-   git clone https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0.git
-   cd AegisVaultAndroid_V.4.0.0
-   ```
-2. **Install modules:**
-   ```bash
-   npm install
-   ```
-3. **Launch on Android:**
-   ```bash
-   npx react-native run-android --mode release
-   ```
+```bash
+git clone https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0.git
+cd AegisVaultAndroid_V.4.0.0
+npm install
+```
 
-### Secure Release Signing (Optional for local builds)
+### Run on Android
 
-Release builds require release signing credentials by default.
-For local-only test builds, you can temporarily allow debug signing fallback with `-PallowDebugReleaseSigning=true`.
+```bash
+npx react-native run-android --mode release
+```
 
-Set these environment variables before building release:
+## Release Build
+
+Release builds expect signing credentials to be present. Set these environment variables before building:
 
 ```bash
 export RELEASE_STORE_FILE=/absolute/path/to/your-release.keystore
@@ -122,50 +111,67 @@ export RELEASE_KEY_PASSWORD=your_key_password
 Windows PowerShell:
 
 ```powershell
-$env:RELEASE_STORE_FILE="C:\\keys\\aegis-release.jks"
+$env:RELEASE_STORE_FILE="C:\keys\aegis-release.jks"
 $env:RELEASE_STORE_PASSWORD="your_store_password"
 $env:RELEASE_KEY_ALIAS="your_key_alias"
 $env:RELEASE_KEY_PASSWORD="your_key_password"
 ```
 
-Then build:
+Build command:
 
 ```bash
 cd android
 ./gradlew assembleRelease
 ```
 
-### Cloud Sync TLS Certificate Pinning
-
-Cloud Sync now requires:
-
-- `https://` endpoint URL
-- Certificate pin in `sha256/<base64>` format
-
-Get certificate pin from your server certificate:
-
-```bash
-openssl s_client -connect your-domain.com:443 -servername your-domain.com < /dev/null 2>/dev/null \
-  | openssl x509 -pubkey -noout \
-  | openssl pkey -pubin -outform der \
-  | openssl dgst -sha256 -binary \
-  | openssl enc -base64
-```
-
-Use result as:
+For local-only testing, debug signing fallback can be temporarily enabled with:
 
 ```text
-sha256/<generated_base64_value>
+-PallowDebugReleaseSigning=true
 ```
 
-Tip: keep at least one backup pin ready for planned certificate rotation.
+## F-Droid Notes
 
-## ⚖️ License
+- Metadata file: `com.aegisandroid.yml`
+- Expected APK output: `android/app/build/outputs/apk/release/app-release.apk`
+- CI package installation is separated between `sudo:` and `prebuild:` stages in metadata
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Example:
 
----
+```yaml
+sudo:
+  - apt-get update
+  - apt-get install -y npm openjdk-17-jdk-headless
+prebuild:
+  - npm ci
+```
+
+## Sync and Relay Notes
+
+The project includes relay-based synchronization settings for advanced use cases.
+
+- Relay URL and session ID are persisted securely
+- Single-device testing validates push/pull connectivity and encrypted payload generation
+- True device-to-device validation should be completed with a second phone or emulator
+
+## Quality Signals
+
+- Real-device signed APK installation validated
+- Relay synchronization flow validated on device
+- Lint clean
+- Targeted Jest suites passing for settings persistence, sync crypto, and device sync state
+
+## Roadmap Focus
+
+- Broader two-device and device-matrix validation
+- Continued passkey production hardening
+- More release documentation and field validation evidence
+- Further UI and text polish for wider public release
+
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE).
 
 <p align="center">
-  Developed with excellence by <a href="https://github.com/hafgit99"><strong>hafgit99</strong></a>
+  Maintained by <a href="https://github.com/hafgit99"><strong>hafgit99</strong></a>
 </p>
