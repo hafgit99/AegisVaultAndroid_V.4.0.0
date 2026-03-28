@@ -3,7 +3,11 @@ const path = require('path');
 
 const rootDir = path.resolve(__dirname, '..');
 const nodeModulesDir = path.join(rootDir, 'node_modules');
-const targetNames = new Set(['build.gradle', 'build.gradle.kts']);
+const targetNames = new Set([
+  'build.gradle',
+  'build.gradle.kts',
+  'gradle.properties',
+]);
 const reactNativeGradlePluginDir = path.join(
   nodeModulesDir,
   '@react-native',
@@ -26,9 +30,17 @@ function walk(dir, collector) {
       reactNativeGradlePluginDir,
     );
 
+    const isOpSqliteGradleProperties =
+      entry.name === 'gradle.properties' &&
+      entryPath.endsWith(
+        path.join('@op-engineering', 'op-sqlite', 'android', 'gradle.properties'),
+      );
+
     if (
       targetNames.has(entry.name) &&
-      (isAndroidGradleFile || isReactNativeGradlePluginFile)
+      (isAndroidGradleFile ||
+        isReactNativeGradlePluginFile ||
+        isOpSqliteGradleProperties)
     ) {
       collector.push(entryPath);
     }
@@ -43,6 +55,17 @@ function patchGradleRepoCalls(filePath) {
     'JavaLanguageVersion.of(21)',
   );
   patched = patched.replace(/jvmToolchain\(\s*17\s*\)/g, 'jvmToolchain(21)');
+
+  if (
+    filePath.endsWith(
+      path.join('@op-engineering', 'op-sqlite', 'android', 'gradle.properties'),
+    )
+  ) {
+    patched = patched.replace(
+      /^OPSQLite_ndkVersion=.*$/m,
+      'OPSQLite_ndkVersion=27.2.12479018',
+    );
+  }
 
   if (patched !== source) {
     fs.writeFileSync(filePath, patched, 'utf8');
