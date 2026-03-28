@@ -89,6 +89,10 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
 
     namespace "com.aegisandroid"
     defaultConfig {
@@ -159,6 +163,10 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "androidx.credentials:credentials:1.5.0"
     implementation "androidx.credentials:credentials-play-services-auth:1.5.0"
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 
 tasks.whenTaskAdded { task ->
