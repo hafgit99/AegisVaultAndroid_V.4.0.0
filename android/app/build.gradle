@@ -90,8 +90,12 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
     }
 
     namespace "com.aegisandroid"
@@ -99,8 +103,8 @@ android {
         applicationId "com.aegisandroid"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 402
-        versionName "4.0.2"
+        versionCode 420
+        versionName "4.2.0"
         manifestPlaceholders = [usesCleartextTraffic: "false"]
     }
     signingConfigs {
@@ -134,7 +138,7 @@ android {
             if (!hasReleaseSigning && !allowDebugReleaseSigning) {
                 println 'INFO: Debug signing fallback is disabled for release builds.'
             }
-            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            signingConfig hasReleaseSigning ? signingConfigs.release : (allowDebugReleaseSigning ? signingConfigs.debug : null)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             shrinkResources enableProguardInReleaseBuilds
@@ -165,7 +169,7 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
 
 tasks.whenTaskAdded { task ->

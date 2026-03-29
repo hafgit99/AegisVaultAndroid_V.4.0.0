@@ -105,6 +105,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  content: {
+    flex: 1,
+  },
   name: {
     fontSize: 14,
     fontWeight: '700',

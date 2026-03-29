@@ -11,8 +11,8 @@ RepoType: git
 Repo: https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0
 
 Builds:
-  - versionName: 4.0.2
-    versionCode: 402
+  - versionName: 4.2.0
+    versionCode: 420
     commit: bb66c600056e3f03c68661d6d994ef41a78453b2
     subdir: android
     sudo:
@@ -49,5 +49,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 4.0.2
-CurrentVersionCode: 402
+CurrentVersion: 4.2.0
+CurrentVersionCode: 420

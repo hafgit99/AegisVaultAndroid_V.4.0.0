@@ -1,5 +1,5 @@
 /**
- * SyncCryptoService — Aegis Vault Android v4.02
+ * SyncCryptoService — Aegis Vault Android v4.2.0
  * E2E Encrypted synchronization crypto primitives.
  * Uses react-native-quick-crypto (Node.js crypto compatible).
  *
@@ -17,12 +17,16 @@ export interface SyncCryptoPackage {
   nonce: string;   // Unique session nonce
 }
 
-function timingSafeEqualCompat(a: Buffer, b: Buffer): boolean {
-  if (a.length !== b.length) return false;
-  if (typeof crypto.timingSafeEqual === 'function') {
-    return crypto.timingSafeEqual(a, b);
+function timingSafeEqualCompat(a: Buffer | Uint8Array, b: Buffer | Uint8Array): boolean {
+  const ua = Uint8Array.from(a);
+  const ub = Uint8Array.from(b);
+  if (ua.length !== ub.length) return false;
+  // XOR-based constant-time comparison (works on all RN crypto libs)
+  let diff = 0;
+  for (let i = 0; i < ua.length; i++) {
+    diff |= ua[i] ^ ub[i];
   }
-  return a.every((value, index) => value === b[index]);
+  return diff === 0;
 }
 
 function toBase64(value: Buffer | Uint8Array): string {

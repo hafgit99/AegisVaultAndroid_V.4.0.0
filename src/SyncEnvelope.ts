@@ -1,5 +1,5 @@
 /**
- * SyncEnvelope — Aegis Vault Android v4.02
+ * SyncEnvelope — Aegis Vault Android v4.2.0
  * Format for synchronization packages sent to/from the relay server.
  * Interoperable with desktop v4.2.0.
  *
