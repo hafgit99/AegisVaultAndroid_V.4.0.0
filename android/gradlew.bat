@@ -40,6 +40,24 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+if not defined GRADLE_USER_HOME set GRADLE_USER_HOME=%APP_HOME%\.gradle-local
+if not exist "%GRADLE_USER_HOME%" mkdir "%GRADLE_USER_HOME%"
+set TMP=%APP_HOME%\.tmp
+set TEMP=%APP_HOME%\.tmp
+if not exist "%TMP%" mkdir "%TMP%"
+if not exist "%TEMP%" mkdir "%TEMP%"
+
+set EXISTING_GRADLE_BAT=
+for /d %%D in ("%APP_HOME%\..\.gradle-home\wrapper\dists\gradle-8.13-bin\*") do (
+  if exist "%%~fD\gradle-8.13\bin\gradle.bat" set EXISTING_GRADLE_BAT=%%~fD\gradle-8.13\bin\gradle.bat
+)
+if not defined EXISTING_GRADLE_BAT (
+  for /d %%D in ("%USERPROFILE%\.gradle\wrapper\dists\gradle-8.13-bin\*") do (
+    if exist "%%~fD\gradle-8.13\bin\gradle.bat" set EXISTING_GRADLE_BAT=%%~fD\gradle-8.13\bin\gradle.bat
+  )
+)
+if defined EXISTING_GRADLE_BAT goto useExistingGradle
+
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
@@ -57,6 +75,10 @@ echo Please set the JAVA_HOME variable in your environment to match the 1>&2
 echo location of your Java installation. 1>&2
 
 goto fail
+
+:useExistingGradle
+call "%EXISTING_GRADLE_BAT%" -p "%APP_HOME%." %*
+goto end
 
 :findJavaFromJavaHome
 set JAVA_HOME=%JAVA_HOME:"=%

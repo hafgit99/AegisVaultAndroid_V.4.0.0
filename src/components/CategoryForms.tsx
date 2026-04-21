@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import {
+  FIELD_VALIDATION_RESULTS,
+  FieldValidationService,
+} from '../FieldValidationService';
 import { Field, PasswordField, SelectChips } from './FormFields';
+import { formatPasskeyBackendError } from '../PasskeyErrorMapper';
+import { PasskeyReadinessService } from '../PasskeyReadinessService';
+import { PasskeyRpApi } from '../PasskeyRpApi';
+import { PasskeyRpService } from '../PasskeyRpService';
+import { SecureAppSettings } from '../SecureAppSettings';
 import { SecurityModule } from '../SecurityModule';
 import { PasskeyModule } from '../PasskeyModule';
 
@@ -381,6 +390,16 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
   const [importJson, setImportJson] = useState('');
   const [working, setWorking] = useState(false);
   const [nativeAvailable, setNativeAvailable] = useState<boolean | null>(null);
+  const [checkingBackend, setCheckingBackend] = useState(false);
+  const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
+  const [validationSaving, setValidationSaving] = useState(false);
+  const [validationDraft, setValidationDraft] = useState(() =>
+    FieldValidationService.createDraft(),
+  );
+  const [validationRecords, setValidationRecords] = useState(() =>
+    FieldValidationService.list().slice(0, 3),
+  );
+  const backendSummary = PasskeyRpService.getConfigurationSummary();
   const cc = {
     navy: theme?.navy || '#101828',
     sage: theme?.sage || '#72886f',
@@ -410,6 +429,26 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
     };
   }, []);
 
+  useEffect(() => {
+    setBackendReachable(null);
+  }, [backendSummary.baseUrl, backendSummary.accountId]);
+
+  useEffect(() => {
+    const latestRecord = FieldValidationService.list()[0];
+    if (!latestRecord) {
+      return;
+    }
+    setValidationDraft(current => ({
+      ...current,
+      priority: current.priority || latestRecord.priority,
+      deviceId: current.deviceId || latestRecord.deviceId,
+      vendor: current.vendor || latestRecord.vendor,
+      model: current.model || latestRecord.model,
+      androidVersion: current.androidVersion || latestRecord.androidVersion,
+      owner: current.owner || latestRecord.owner || '',
+    }));
+  }, []);
+
   const updatePasskey = (patch: any) =>
     setForm({ ...form, data: { ...form.data, ...patch } });
 
@@ -431,6 +470,23 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
       `${t('passkey.challenge_source_label')}: ${challengeSource}`,
       `${t('passkey.server_verified_label')}: ${verified}`,
     ].join('\n');
+  };
+
+  const refreshValidationRecords = () => {
+    setValidationRecords(FieldValidationService.list().slice(0, 3));
+  };
+
+  const stageValidationCapture = (
+    scenario: 'passkey_create' | 'passkey_auth' | 'passkey_prereq_failure',
+    result: 'PASS' | 'PASS-WARN' | 'FAIL' | 'BLOCKED',
+    notes?: string,
+  ) => {
+    setValidationDraft(current => ({
+      ...current,
+      scenario,
+      result,
+      notes: notes || current.notes || '',
+    }));
   };
 
   const autofillRpId = () => {
@@ -501,6 +557,11 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
       return;
     }
     if (!form.username || !(form.url || form.data?.rp_id)) {
+      stageValidationCapture(
+        'passkey_prereq_failure',
+        'BLOCKED',
+        t('passkey.validation.capture_notes.prereq_missing'),
+      );
       Alert.alert(
         t('passkey.native_create_title'),
         t('passkey.create_prereq'),
@@ -562,8 +623,18 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
           last_registration_at: new Date().toISOString(),
         },
       });
+      stageValidationCapture(
+        'passkey_create',
+        'PASS',
+        t('passkey.validation.capture_notes.native_create_success'),
+      );
       Alert.alert(t('backup.success'), t('passkey.native_create_success'));
     } catch (error: any) {
+      stageValidationCapture(
+        'passkey_create',
+        'FAIL',
+        error?.message || t('passkey.native_create_failed'),
+      );
       Alert.alert(
         t('passkey.native_create_title'),
         error?.message || t('passkey.native_create_failed'),
@@ -578,6 +649,11 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
       return;
     }
     if (!form.data?.credential_id) {
+      stageValidationCapture(
+        'passkey_prereq_failure',
+        'BLOCKED',
+        t('passkey.validation.capture_notes.credential_missing'),
+      );
       Alert.alert(t('passkey.native_auth_title'), t('passkey.auth_prereq'));
       return;
     }
@@ -599,14 +675,232 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
         server_verified: Boolean(form.data?.server_verified),
         last_auth_at: new Date().toISOString(),
       });
+      stageValidationCapture(
+        'passkey_auth',
+        'PASS',
+        t('passkey.validation.capture_notes.native_auth_success'),
+      );
       Alert.alert(t('backup.success'), t('passkey.native_auth_success'));
     } catch (error: any) {
+      stageValidationCapture(
+        'passkey_auth',
+        'FAIL',
+        error?.message || t('passkey.native_auth_failed'),
+      );
       Alert.alert(
         t('passkey.native_auth_title'),
         error?.message || t('passkey.native_auth_failed'),
       );
     } finally {
       setWorking(false);
+    }
+  };
+
+  const createWithBackend = async () => {
+    if (!ensureNativeAvailable()) {
+      return;
+    }
+    if (!form.username || !(form.url || form.data?.rp_id)) {
+      stageValidationCapture(
+        'passkey_prereq_failure',
+        'BLOCKED',
+        t('passkey.validation.capture_notes.prereq_missing'),
+      );
+      Alert.alert(
+        t('passkey.backend_create_title'),
+        t('passkey.create_prereq'),
+      );
+      return;
+    }
+
+    try {
+      setWorking(true);
+      const result = await PasskeyRpService.enrollWithBackend({
+        title: form.title,
+        username: form.username,
+        url: form.url,
+        rpId: form.data?.rp_id,
+        displayName: form.data?.display_name,
+      });
+      setForm({
+        ...form,
+        url: form.url || `https://${result.dataPatch.rp_id}`,
+        data: {
+          ...form.data,
+          ...result.dataPatch,
+        },
+      });
+      stageValidationCapture(
+        'passkey_create',
+        'PASS',
+        t('passkey.validation.capture_notes.backend_create_success'),
+      );
+      Alert.alert(t('backup.success'), t('passkey.backend_create_success'));
+    } catch (error: any) {
+      const message = formatPasskeyBackendError(error, t);
+      stageValidationCapture('passkey_create', 'FAIL', message);
+      Alert.alert(
+        t('passkey.backend_create_title'),
+        message,
+      );
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const authenticateWithBackend = async () => {
+    if (!ensureNativeAvailable()) {
+      return;
+    }
+    if (!form.data?.credential_id) {
+      stageValidationCapture(
+        'passkey_prereq_failure',
+        'BLOCKED',
+        t('passkey.validation.capture_notes.credential_missing'),
+      );
+      Alert.alert(t('passkey.backend_auth_title'), t('passkey.auth_prereq'));
+      return;
+    }
+
+    try {
+      setWorking(true);
+      const result = await PasskeyRpService.authenticateWithBackend({
+        url: form.url,
+        rpId: form.data?.rp_id,
+        credentialId: form.data?.credential_id,
+        transport: form.data?.transport,
+      });
+      updatePasskey(result.dataPatch);
+      stageValidationCapture(
+        'passkey_auth',
+        'PASS',
+        t('passkey.validation.capture_notes.backend_auth_success'),
+      );
+      Alert.alert(t('backup.success'), t('passkey.backend_auth_success'));
+    } catch (error: any) {
+      const message = formatPasskeyBackendError(error, t);
+      stageValidationCapture('passkey_auth', 'FAIL', message);
+      Alert.alert(
+        t('passkey.backend_auth_title'),
+        message,
+      );
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const checkBackendReadiness = async () => {
+    if (!backendSummary.configured) {
+      setBackendReachable(false);
+      Alert.alert(
+        t('passkey.readiness.title'),
+        t('passkey.errors.configuration_error'),
+      );
+      return;
+    }
+
+    setCheckingBackend(true);
+    try {
+      const settings = SecureAppSettings.get().passkeyRp;
+      const ok = await PasskeyRpApi.healthCheck({
+        baseUrl: (settings.baseUrl || '').trim(),
+        authToken: (settings.authToken || '').trim() || undefined,
+        headers:
+          (settings.tenantHeaderName || '').trim() &&
+          (settings.tenantHeaderValue || '').trim()
+            ? {
+                [(settings.tenantHeaderName || '').trim()]:
+                  (settings.tenantHeaderValue || '').trim(),
+              }
+            : undefined,
+      });
+      setBackendReachable(ok);
+      Alert.alert(
+        t('passkey.readiness.title'),
+        ok
+          ? t('passkeys.backend.health_ok')
+          : t('passkeys.backend.health_fail'),
+      );
+    } catch (error: any) {
+      setBackendReachable(false);
+      Alert.alert(
+        t('passkey.readiness.title'),
+        formatPasskeyBackendError(error, t),
+      );
+    } finally {
+      setCheckingBackend(false);
+    }
+  };
+
+  const readiness = PasskeyReadinessService.build({
+    backendConfigured: backendSummary.configured,
+    backendReachable,
+    nativeAvailable,
+    username: form.username,
+    url: form.url,
+    rpId: form.data?.rp_id,
+    credentialId: form.data?.credential_id,
+  });
+
+  const getReadinessTone = (item: { ready: boolean; pending: boolean }) => {
+    if (item.ready) {
+      return { icon: 'OK', color: '#16a34a' };
+    }
+    if (item.pending) {
+      return { icon: '...', color: cc.muted };
+    }
+    return { icon: '!!', color: '#dc2626' };
+  };
+
+  const applySuggestedEvidenceName = () => {
+    const suggested = FieldValidationService.buildEvidenceFileName({
+      vendor: validationDraft.vendor,
+      model: validationDraft.model,
+      androidVersion: validationDraft.androidVersion,
+      scenario: validationDraft.scenario || 'passkey_create',
+      result: validationDraft.result || 'PASS',
+    });
+    setValidationDraft(current => ({
+      ...current,
+      evidencePath: `docs/validation/kanit/${suggested}`,
+    }));
+  };
+
+  const saveValidationRecord = async () => {
+    if (!validationDraft.deviceId || !validationDraft.vendor || !validationDraft.model) {
+      Alert.alert(
+        t('passkey.validation.title'),
+        t('passkey.validation.missing_identity'),
+      );
+      return;
+    }
+
+    try {
+      setValidationSaving(true);
+      await FieldValidationService.saveRecord(validationDraft, SecurityModule.db);
+      setValidationDraft(current =>
+        FieldValidationService.createDraft({
+          priority: current.priority,
+          deviceId: current.deviceId,
+          vendor: current.vendor,
+          model: current.model,
+          androidVersion: current.androidVersion,
+          owner: current.owner,
+          scenario: current.scenario,
+          result: current.result,
+          notes: '',
+          evidencePath: '',
+        }),
+      );
+      refreshValidationRecords();
+      Alert.alert(t('backup.success'), t('passkey.validation.saved'));
+    } catch (error: any) {
+      Alert.alert(
+        t('passkey.validation.title'),
+        error?.message || t('passkey.validation.save_failed'),
+      );
+    } finally {
+      setValidationSaving(false);
     }
   };
 
@@ -674,6 +968,422 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
         >
           {getPasskeyStatusText()}
         </Text>
+        <Text
+          style={{
+            color: backendSummary.configured ? cc.sage : cc.muted,
+            fontSize: 11,
+            lineHeight: 17,
+            marginTop: 8,
+            fontWeight: '700',
+          }}
+        >
+          {backendSummary.configured
+            ? t('passkey.backend_ready', {
+                baseUrl: backendSummary.baseUrl,
+                accountId: backendSummary.accountId,
+              })
+            : t('passkey.backend_missing')}
+        </Text>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: cc.inputBg,
+          borderWidth: 1,
+          borderColor: cc.cardBorder,
+          borderRadius: 14,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{
+            color: cc.navy,
+            fontSize: 12,
+            fontWeight: '700',
+            marginBottom: 4,
+          }}
+        >
+          {t('passkey.readiness.title')}
+        </Text>
+        <Text style={{ color: cc.muted, fontSize: 12, lineHeight: 18 }}>
+          {t('passkey.readiness.subtitle')}
+        </Text>
+
+        <View style={{ marginTop: 10, gap: 8 }}>
+          {readiness.items.map(item => {
+            const tone = getReadinessTone(item);
+            return (
+              <View
+                key={item.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderWidth: 1,
+                  borderColor: cc.cardBorder,
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: cc.navy,
+                    fontSize: 12,
+                    fontWeight: '600',
+                    flex: 1,
+                    marginRight: 12,
+                  }}
+                >
+                  {t(`passkey.readiness.items.${item.id}`)}
+                </Text>
+                <Text
+                  style={{
+                    color: tone.color,
+                    fontSize: 11,
+                    fontWeight: '800',
+                  }}
+                >
+                  {item.ready
+                    ? t('passkey.readiness.states.ready')
+                    : item.pending
+                    ? t('passkey.readiness.states.pending')
+                    : t('passkey.readiness.states.missing')}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <View
+            style={{
+              flex: 1,
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 10,
+              backgroundColor: readiness.createReady
+                ? 'rgba(22,163,74,0.12)'
+                : 'rgba(220,38,38,0.08)',
+            }}
+          >
+            <Text style={{ color: cc.muted, fontSize: 11, marginBottom: 2 }}>
+              {t('passkey.readiness.create_label')}
+            </Text>
+            <Text
+              style={{
+                color: readiness.createReady ? '#16a34a' : '#dc2626',
+                fontSize: 12,
+                fontWeight: '800',
+              }}
+            >
+              {readiness.createReady
+                ? t('passkey.readiness.states.ready')
+                : t('passkey.readiness.states.blocked')}
+            </Text>
+          </View>
+          <View
+            style={{
+              flex: 1,
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 10,
+              backgroundColor: readiness.authReady
+                ? 'rgba(22,163,74,0.12)'
+                : 'rgba(220,38,38,0.08)',
+            }}
+          >
+            <Text style={{ color: cc.muted, fontSize: 11, marginBottom: 2 }}>
+              {t('passkey.readiness.auth_label')}
+            </Text>
+            <Text
+              style={{
+                color: readiness.authReady ? '#16a34a' : '#dc2626',
+                fontSize: 12,
+                fontWeight: '800',
+              }}
+            >
+              {readiness.authReady
+                ? t('passkey.readiness.states.ready')
+                : t('passkey.readiness.states.blocked')}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          onPress={checkBackendReadiness}
+          disabled={checkingBackend}
+          style={{
+            marginTop: 12,
+            backgroundColor: cc.sageLight,
+            borderWidth: 1,
+            borderColor: cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+            opacity: checkingBackend ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: cc.sage, fontSize: 12, fontWeight: '700' }}>
+            {checkingBackend
+              ? t('passkey.native_working')
+              : t('passkey.readiness.check_backend')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: cc.inputBg,
+          borderWidth: 1,
+          borderColor: cc.cardBorder,
+          borderRadius: 14,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{
+            color: cc.navy,
+            fontSize: 12,
+            fontWeight: '700',
+            marginBottom: 4,
+          }}
+        >
+          {t('passkey.validation.title')}
+        </Text>
+        <Text style={{ color: cc.muted, fontSize: 12, lineHeight: 18 }}>
+          {t('passkey.validation.subtitle')}
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          {['passkey_create', 'passkey_auth', 'passkey_prereq_failure'].map(scenario => (
+            <TouchableOpacity
+              key={scenario}
+              onPress={() =>
+                setValidationDraft(current => ({ ...current, scenario: scenario as any }))
+              }
+              style={{
+                flex: 1,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor:
+                  validationDraft.scenario === scenario ? cc.sage : cc.cardBorder,
+                backgroundColor:
+                  validationDraft.scenario === scenario ? cc.sageLight : 'transparent',
+                paddingVertical: 9,
+                paddingHorizontal: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    validationDraft.scenario === scenario ? cc.sage : cc.navy,
+                  fontSize: 11,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {t(`passkey.validation.scenarios.${scenario}`)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={{ marginTop: 12 }}>
+          <SelectChips
+            label={t('passkey.validation.result_label')}
+            options={FIELD_VALIDATION_RESULTS.map(result => ({
+              id: result,
+              label: t(`passkey.validation.results.${result}`),
+            }))}
+            value={validationDraft.result || 'PASS'}
+            onChange={(value: string) =>
+              setValidationDraft(current => ({
+                ...current,
+                result: value as any,
+              }))
+            }
+            theme={theme}
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Field
+              label={t('passkey.validation.device_id')}
+              value={validationDraft.deviceId || ''}
+              onChange={(value: string) =>
+                setValidationDraft(current => ({ ...current, deviceId: value }))
+              }
+              placeholder="pixel-8"
+              theme={theme}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <SelectChips
+              label={t('passkey.validation.priority_label')}
+              options={['P0', 'P1', 'P2'].map(value => ({ id: value, label: value }))}
+              value={validationDraft.priority || 'P0'}
+              onChange={(value: string) =>
+                setValidationDraft(current => ({
+                  ...current,
+                  priority: value as 'P0' | 'P1' | 'P2',
+                }))
+              }
+              theme={theme}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Field
+              label={t('passkey.validation.vendor')}
+              value={validationDraft.vendor || ''}
+              onChange={(value: string) =>
+                setValidationDraft(current => ({ ...current, vendor: value }))
+              }
+              placeholder="Google"
+              theme={theme}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field
+              label={t('passkey.validation.model')}
+              value={validationDraft.model || ''}
+              onChange={(value: string) =>
+                setValidationDraft(current => ({ ...current, model: value }))
+              }
+              placeholder="Pixel 8"
+              theme={theme}
+            />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Field
+              label={t('passkey.validation.android_version')}
+              value={validationDraft.androidVersion || ''}
+              onChange={(value: string) =>
+                setValidationDraft(current => ({
+                  ...current,
+                  androidVersion: value,
+                }))
+              }
+              placeholder="15"
+              theme={theme}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field
+              label={t('passkey.validation.owner')}
+              value={validationDraft.owner || ''}
+              onChange={(value: string) =>
+                setValidationDraft(current => ({ ...current, owner: value }))
+              }
+              placeholder="qa@team"
+              theme={theme}
+            />
+          </View>
+        </View>
+
+        <Field
+          label={t('passkey.validation.evidence_path')}
+          value={validationDraft.evidencePath || ''}
+          onChange={(value: string) =>
+            setValidationDraft(current => ({ ...current, evidencePath: value }))
+          }
+          placeholder="docs/validation/kanit/..."
+          theme={theme}
+        />
+
+        <TouchableOpacity
+          onPress={applySuggestedEvidenceName}
+          style={{
+            marginBottom: 12,
+            backgroundColor: cc.sageLight,
+            borderWidth: 1,
+            borderColor: cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: cc.sage, fontSize: 12, fontWeight: '700' }}>
+            {t('passkey.validation.suggest_evidence')}
+          </Text>
+        </TouchableOpacity>
+
+        <Field
+          label={t('passkey.validation.notes')}
+          value={validationDraft.notes || ''}
+          onChange={(value: string) =>
+            setValidationDraft(current => ({ ...current, notes: value }))
+          }
+          placeholder={t('passkey.validation.notes_placeholder')}
+          multiline
+          lines={3}
+          theme={theme}
+        />
+
+        <TouchableOpacity
+          onPress={saveValidationRecord}
+          disabled={validationSaving}
+          style={{
+            marginTop: 4,
+            backgroundColor: cc.sage,
+            borderWidth: 1,
+            borderColor: cc.sage,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+            opacity: validationSaving ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+            {validationSaving
+              ? t('passkey.native_working')
+              : t('passkey.validation.save')}
+          </Text>
+        </TouchableOpacity>
+
+        {validationRecords.length > 0 ? (
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <Text
+              style={{
+                color: cc.navy,
+                fontSize: 11,
+                fontWeight: '700',
+              }}
+            >
+              {t('passkey.validation.recent_title')}
+            </Text>
+            {validationRecords.map(record => (
+              <View
+                key={record.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: cc.cardBorder,
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ color: cc.navy, fontSize: 12, fontWeight: '700' }}>
+                  {record.vendor} {record.model} •{' '}
+                  {t(`passkey.validation.scenarios.${record.scenario}`)}
+                </Text>
+                <Text style={{ color: cc.muted, fontSize: 11, lineHeight: 17 }}>
+                  {t(`passkey.validation.results.${record.result}`)} • Android{' '}
+                  {record.androidVersion || '-'} • {record.deviceId}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -746,6 +1456,58 @@ export const PasskeyForm = ({ form, setForm, t, theme }: any) => {
         >
           <Text style={{ color: cc.navy, fontSize: 12, fontWeight: '700' }}>
             {working ? t('passkey.native_working') : t('passkey.native_auth')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <TouchableOpacity
+          onPress={createWithBackend}
+          disabled={working || !backendSummary.configured}
+          style={{
+            flex: 1,
+            backgroundColor: backendSummary.configured ? cc.sage : cc.inputBg,
+            borderWidth: 1,
+            borderColor: backendSummary.configured ? cc.sage : cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+            opacity: working || !backendSummary.configured ? 0.6 : 1,
+          }}
+        >
+          <Text
+            style={{
+              color: backendSummary.configured ? '#fff' : cc.navy,
+              fontSize: 12,
+              fontWeight: '700',
+            }}
+          >
+            {working
+              ? t('passkey.native_working')
+              : t('passkey.backend_create')}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={authenticateWithBackend}
+          disabled={
+            working || !backendSummary.configured || !form.data?.credential_id
+          }
+          style={{
+            flex: 1,
+            backgroundColor: cc.inputBg,
+            borderWidth: 1,
+            borderColor: cc.cardBorder,
+            borderRadius: 12,
+            paddingVertical: 10,
+            alignItems: 'center',
+            opacity:
+              working || !backendSummary.configured || !form.data?.credential_id
+                ? 0.6
+                : 1,
+          }}
+        >
+          <Text style={{ color: cc.navy, fontSize: 12, fontWeight: '700' }}>
+            {working ? t('passkey.native_working') : t('passkey.backend_auth')}
           </Text>
         </TouchableOpacity>
       </View>

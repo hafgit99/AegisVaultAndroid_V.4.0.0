@@ -19,6 +19,7 @@ class MainApplication : Application(), ReactApplication {
           add(PasskeyPackage())
           add(CloudSyncPackage())
           add(IntegrityPackage())
+          add(SecureStoragePackage())
         },
     )
   }

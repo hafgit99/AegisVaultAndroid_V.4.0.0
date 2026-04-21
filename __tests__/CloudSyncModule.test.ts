@@ -110,6 +110,41 @@ describe('CloudSyncModule', () => {
     expect(BackupModule.exportEncrypted).not.toHaveBeenCalled();
   });
 
+  test('syncToCloud accepts bare base64 pins by normalizing them to sha256/<pin>', async () => {
+    const barePin = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+
+    const result = await CloudSyncModule.syncToCloud(
+      'https://sync.example.com/vault.aegis',
+      'secret-token',
+      'Bearer',
+      'vault-password',
+      barePin,
+    );
+
+    expect(result).toBe(true);
+    expect(mockUploadFile).toHaveBeenCalledWith(
+      'https://sync.example.com/vault.aegis',
+      '/mock/documents/temp-export.aegis',
+      'Bearer secret-token',
+      validPin,
+    );
+  });
+
+  test('syncFromCloud rejects empty certificate pins before download starts', async () => {
+    await expect(
+      CloudSyncModule.syncFromCloud(
+        'https://sync.example.com/vault.aegis',
+        'base64-creds',
+        'Basic',
+        'vault-password',
+        '',
+      ),
+    ).rejects.toThrow('Certificate pin is required');
+
+    expect(mockDownloadFile).not.toHaveBeenCalled();
+    expect(BackupModule.importEncryptedAegis).not.toHaveBeenCalled();
+  });
+
   test('syncToCloud logs failed uploads and still cleans up temp export', async () => {
     mockUploadFile.mockResolvedValueOnce(500);
 
@@ -127,6 +162,27 @@ describe('CloudSyncModule', () => {
       'cloud_sync_upload',
       'failed',
       expect.objectContaining({ statusCode: 500 }),
+    );
+    expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/temp-export.aegis');
+  });
+
+  test('syncToCloud logs native bridge exceptions and still removes temp export', async () => {
+    mockUploadFile.mockRejectedValueOnce(new Error('network down'));
+
+    await expect(
+      CloudSyncModule.syncToCloud(
+        'https://sync.example.com/vault.aegis',
+        'secret-token',
+        'Bearer',
+        'vault-password',
+        validPin,
+      ),
+    ).rejects.toThrow('network down');
+
+    expect(SecurityModule.logSecurityEvent).toHaveBeenLastCalledWith(
+      'cloud_sync_upload',
+      'failed',
+      expect.objectContaining({ reason: 'network down' }),
     );
     expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/temp-export.aegis');
   });
@@ -179,6 +235,31 @@ describe('CloudSyncModule', () => {
       'cloud_sync_download',
       'failed',
       expect.objectContaining({ statusCode: 404 }),
+    );
+    expect(RNFS.unlink).toHaveBeenCalledWith(
+      '/mock/documents/aegis_cloud_import_temp.aegis',
+    );
+  });
+
+  test('syncFromCloud logs import failures and removes temp artifact', async () => {
+    (BackupModule.importEncryptedAegis as jest.Mock).mockRejectedValueOnce(
+      new Error('corrupt backup'),
+    );
+
+    await expect(
+      CloudSyncModule.syncFromCloud(
+        'https://sync.example.com/vault.aegis',
+        'base64-creds',
+        'Basic',
+        'vault-password',
+        validPin,
+      ),
+    ).rejects.toThrow('corrupt backup');
+
+    expect(SecurityModule.logSecurityEvent).toHaveBeenLastCalledWith(
+      'cloud_sync_download',
+      'failed',
+      expect.objectContaining({ reason: 'corrupt backup' }),
     );
     expect(RNFS.unlink).toHaveBeenCalledWith(
       '/mock/documents/aegis_cloud_import_temp.aegis',

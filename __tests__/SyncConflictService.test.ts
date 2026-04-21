@@ -57,4 +57,27 @@ describe('SyncConflictService', () => {
   it('handles empty lists', () => {
     expect(SyncConflictService.resolve([], [])).toEqual({ merged: [], modifiedCount: 0, conflicts: [] });
   });
+
+  it('flags conflicts when sensitive fields differ even if title and URL stay the same', () => {
+    const local = [makeItem(1, '2024-01-01T00:00:00Z', { password: 'local-secret' })];
+    const remote = [makeItem(1, '2024-01-02T00:00:00Z', { password: 'remote-secret' })];
+
+    const result = SyncConflictService.resolve(local, remote);
+
+    expect(result.merged[0].password).toBe('remote-secret');
+    expect(result.modifiedCount).toBe(1);
+    expect(result.conflicts).toHaveLength(1);
+  });
+
+  it('prefers local item when timestamps are equal', () => {
+    const local = makeItem(7, '2024-01-05T10:00:00Z', { title: 'Local Equal' });
+    const remote = makeItem(7, '2024-01-05T10:00:00Z', { title: 'Remote Equal' });
+
+    expect(SyncConflictService.mergeOne(local, remote).title).toBe('Local Equal');
+  });
+
+  it('returns remote from mergeOne when local is missing', () => {
+    const remote = makeItem(9, '2024-01-05T10:00:00Z', { title: 'Remote Only' });
+    expect(SyncConflictService.mergeOne(undefined, remote)).toBe(remote);
+  });
 });

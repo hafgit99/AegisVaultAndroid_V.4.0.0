@@ -183,7 +183,9 @@ export class ImportVersioning {
   static async decryptWithArgon2id(
     password: string,
     metadata: Partial<BackupMetadata>,
-    encryptedData: Buffer | string
+    encryptedData: Buffer | string,
+    authTag?: Buffer | string,
+    iv?: Buffer | string
   ): Promise<string | null> {
     try {
       const params = metadata.kdfParameters || {};
@@ -203,16 +205,19 @@ export class ImportVersioning {
 
       const key = Buffer.from(result.rawHash, 'hex');
 
-      // AES-256-GCM decryption
       const dataBuffer = typeof encryptedData === 'string'
         ? Buffer.from(encryptedData, 'base64')
         : encryptedData;
 
-      const ivBuffer = Buffer.alloc(12);
-      // In production, IV would be stored in metadata
-      QuickCrypto.randomFillSync(ivBuffer);
+      const ivBuffer = iv ? (typeof iv === 'string' ? Buffer.from(iv, 'hex') : iv) : Buffer.alloc(12, 0);
+      const tagBuffer = authTag ? (typeof authTag === 'string' ? Buffer.from(authTag, 'base64') : authTag) : undefined;
 
       const decipher = QuickCrypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
+
+      if (tagBuffer) {
+        decipher.setAuthTag(tagBuffer);
+      }
+
       const decrypted = Buffer.concat([
         decipher.update(dataBuffer),
         decipher.final()
@@ -267,7 +272,9 @@ export class ImportVersioning {
         decrypted = await this.decryptWithArgon2id(
           password,
           detection.metadata as BackupMetadata,
-          parsed.data
+          parsed.data,
+          parsed.authTag,
+          parsed.iv
         );
 
         if (!decrypted) {

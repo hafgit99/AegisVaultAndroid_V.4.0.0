@@ -1,5 +1,6 @@
 package com.aegisandroid
 
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -9,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -84,6 +86,69 @@ class CloudSyncSecureModule(reactContext: ReactApplicationContext) :
                 }
             } catch (e: Exception) {
                 promise.reject("CLOUD_DOWNLOAD_ERROR", e.message, e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun postJson(
+        apiUrl: String,
+        jsonBody: String,
+        certificatePin: String,
+        promise: Promise,
+    ) {
+        thread {
+            try {
+                val endpoint = java.net.URL(apiUrl)
+                val host = endpoint.host
+                val normalizedPin = normalizePin(certificatePin)
+                val client = secureClient(host, normalizedPin)
+                val request = Request.Builder()
+                    .url(apiUrl)
+                    .post(jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .header("Content-Type", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val map = Arguments.createMap().apply {
+                        putInt("statusCode", response.code)
+                        putString("body", response.body?.string() ?: "")
+                    }
+                    promise.resolve(map)
+                }
+            } catch (e: Exception) {
+                promise.reject("CLOUD_POST_JSON_ERROR", e.message, e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun getJson(
+        apiUrl: String,
+        certificatePin: String,
+        promise: Promise,
+    ) {
+        thread {
+            try {
+                val endpoint = java.net.URL(apiUrl)
+                val host = endpoint.host
+                val normalizedPin = normalizePin(certificatePin)
+                val client = secureClient(host, normalizedPin)
+                val request = Request.Builder()
+                    .url(apiUrl)
+                    .get()
+                    .header("Accept", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val map = Arguments.createMap().apply {
+                        putInt("statusCode", response.code)
+                        putString("body", response.body?.string() ?: "")
+                    }
+                    promise.resolve(map)
+                }
+            } catch (e: Exception) {
+                promise.reject("CLOUD_GET_JSON_ERROR", e.message, e)
             }
         }
     }

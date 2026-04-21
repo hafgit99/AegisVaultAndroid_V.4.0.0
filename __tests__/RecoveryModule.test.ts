@@ -14,6 +14,21 @@ jest.mock('../src/SecurityModule', () => ({
   SecurityModule: {
     logSecurityEvent: jest.fn().mockResolvedValue(undefined),
     resetBiometricKeys: jest.fn().mockResolvedValue(undefined),
+    getRecoverySessionSecret: jest.fn().mockResolvedValue('recovery-secret'),
+    encryptAES256GCM: jest.fn().mockImplementation(async (plaintext: string) => ({
+      salt: 'salt',
+      iv: 'iv',
+      authTag: 'tag',
+      ciphertext: Buffer.from(plaintext, 'utf8').toString('base64'),
+      kdf: 'Argon2id',
+      memory: 32768,
+      iterations: 4,
+      parallelism: 2,
+      hashLength: 32,
+    })),
+    decryptAES256GCM: jest.fn().mockImplementation(async (ciphertext: string) =>
+      Buffer.from(ciphertext, 'base64').toString('utf8'),
+    ),
   },
 }));
 
@@ -149,7 +164,10 @@ describe('RecoveryModule', () => {
       'utf8',
     );
     const [, savedSessionRaw] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    const savedSession = JSON.parse(savedSessionRaw);
+    const encryptedEnvelope = JSON.parse(savedSessionRaw);
+    const savedSession = JSON.parse(
+      Buffer.from(encryptedEnvelope.ciphertext, 'base64').toString('utf8'),
+    );
     expect(savedSession.status).toBe('code_verified');
     expect(savedSession.verificationCode).toBe('');
     expect(savedSession.recoveryToken).toBe(recoveryToken);
@@ -182,11 +200,93 @@ describe('RecoveryModule', () => {
 
     expect(token).toBeNull();
     const [, savedSessionRaw] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(savedSessionRaw).status).toBe('expired');
+    const encryptedEnvelope = JSON.parse(savedSessionRaw);
+    const savedSession = JSON.parse(
+      Buffer.from(encryptedEnvelope.ciphertext, 'base64').toString('utf8'),
+    );
+    expect(savedSession.status).toBe('expired');
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_verify_code_failed',
       'success',
       expect.objectContaining({ reason: 'code_expired' }),
+    );
+  });
+
+  test('verifyRecoveryCode increments failed attempts and sets lockout after threshold', async () => {
+    const hashed = require('crypto')
+      .createHash('sha256')
+      .update('123456', 'utf8')
+      .digest('hex');
+    const session = {
+      sessionId: 'session-lockout',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      verificationCode: '',
+      verificationCodeHash: hashed,
+      failedAttempts: 4,
+      lockedUntil: '',
+      status: 'initiated',
+      userEmail: 'user@example.com',
+    };
+
+    (RNFS.exists as jest.Mock).mockImplementation(async path =>
+      path === '/mock/documents/recovery_sessions/session-lockout.json',
+    );
+    (RNFS.readFile as jest.Mock).mockImplementation(async path => {
+      if (path === '/mock/documents/recovery_sessions/session-lockout.json') {
+        return JSON.stringify(session);
+      }
+      return '';
+    });
+
+    const token = await RecoveryModule.verifyRecoveryCode(
+      'session-lockout',
+      '000000',
+    );
+
+    expect(token).toBeNull();
+    const [, savedSessionRaw] = (RNFS.writeFile as jest.Mock).mock.calls[0];
+    const savedSession = JSON.parse(
+      Buffer.from(JSON.parse(savedSessionRaw).ciphertext, 'base64').toString('utf8'),
+    );
+    expect(savedSession.failedAttempts).toBe(5);
+    expect(savedSession.lockedUntil).toEqual(expect.any(String));
+  });
+
+  test('verifyRecoveryCode rejects attempts while session lockout is active', async () => {
+    const session = {
+      sessionId: 'session-locked',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      verificationCode: '',
+      verificationCodeHash: 'abc',
+      failedAttempts: 5,
+      lockedUntil: new Date(Date.now() + 60_000).toISOString(),
+      status: 'initiated',
+      userEmail: 'user@example.com',
+    };
+
+    (RNFS.exists as jest.Mock).mockImplementation(async path =>
+      path === '/mock/documents/recovery_sessions/session-locked.json',
+    );
+    (RNFS.readFile as jest.Mock).mockImplementation(async path => {
+      if (path === '/mock/documents/recovery_sessions/session-locked.json') {
+        return JSON.stringify(session);
+      }
+      return '';
+    });
+
+    const token = await RecoveryModule.verifyRecoveryCode(
+      'session-locked',
+      '123456',
+    );
+
+    expect(token).toBeNull();
+    expect(RNFS.writeFile).not.toHaveBeenCalled();
+    expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
+      'recovery_verify_code_failed',
+      'success',
+      expect.objectContaining({ reason: 'too_many_attempts' }),
     );
   });
 
@@ -276,6 +376,43 @@ describe('RecoveryModule', () => {
     );
   });
 
+  test('restoreFromRecovery expires token before import when session has timed out', async () => {
+    const session = {
+      sessionId: 'session-token-expired',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      verificationCode: '',
+      recoveryToken: 'token-1',
+      vaultBackupPath: '/mock/documents/recovery_backups/file.aegis',
+      status: 'code_verified',
+      userEmail: 'user@example.com',
+    };
+
+    (RNFS.exists as jest.Mock).mockImplementation(async path =>
+      path === '/mock/documents/recovery_sessions/session-token-expired.json',
+    );
+    (RNFS.readFile as jest.Mock).mockImplementation(async path => {
+      if (path === '/mock/documents/recovery_sessions/session-token-expired.json') {
+        return JSON.stringify(session);
+      }
+      return '';
+    });
+
+    const restored = await RecoveryModule.restoreFromRecovery(
+      'session-token-expired',
+      'token-1',
+      'backup-password',
+    );
+
+    expect(restored).toBe(false);
+    expect(BackupModule.importEncryptedAegis).not.toHaveBeenCalled();
+    expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
+      'recovery_restore_failed',
+      'success',
+      expect.objectContaining({ reason: 'token_expired' }),
+    );
+  });
+
   test('verifyBackupIntegrity hashes file contents with SHA-256', async () => {
     (RNFS.exists as jest.Mock).mockResolvedValue(true);
     const fileContent = Buffer.from('encrypted-backup-payload').toString('base64');
@@ -295,6 +432,25 @@ describe('RecoveryModule', () => {
     );
 
     expect(ok).toBe(true);
+  });
+
+  test('verifyBackupIntegrity returns false when hash file is missing', async () => {
+    (RNFS.exists as jest.Mock).mockResolvedValue(false);
+
+    await expect(
+      RecoveryModule.verifyBackupIntegrity('/mock/documents/recovery_backups/file.aegis'),
+    ).resolves.toBe(false);
+  });
+
+  test('createRecoveryBackup rejects weak backup passwords before export', async () => {
+    const ok = await RecoveryModule.createRecoveryBackup(
+      [],
+      'user@example.com',
+      'short',
+    );
+
+    expect(ok).toBe(false);
+    expect(BackupModule.exportEncrypted).not.toHaveBeenCalled();
   });
 
   test('cleanupExpiredSessions removes only sessions older than expiry buffer', async () => {

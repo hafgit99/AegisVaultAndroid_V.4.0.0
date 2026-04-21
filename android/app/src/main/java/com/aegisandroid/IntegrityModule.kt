@@ -2,12 +2,16 @@ package com.aegisandroid
 
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.IntegrityTokenRequest
 import java.io.File
+import java.security.SecureRandom
 
 class IntegrityModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -24,48 +28,212 @@ class IntegrityModule(private val reactContext: ReactApplicationContext) :
             val testKeys = (Build.TAGS ?: "").contains("test-keys")
             val adbEnabled = isAdbEnabled()
 
+            val reasons = mutableListOf<String>()
             var score = 100
-            if (rooted) score -= 55
-            if (testKeys) score -= 20
-            if (debugBuild) score -= 10
-            if (adbEnabled) score -= 10
-            if (emulator) score -= 10
-            if (score < 0) score = 0
 
-            val riskLevel = when {
-                score < 45 -> "critical"
-                score < 65 -> "high"
-                score < 80 -> "medium"
-                else -> "low"
+            if (rooted) {
+                score -= 55
+                reasons.add("root_artifacts_detected")
+            }
+            if (testKeys) {
+                score -= 20
+                reasons.add("test_keys_build")
+            }
+            if (debugBuild) {
+                score -= 10
+                reasons.add("debug_build")
+            }
+            if (adbEnabled) {
+                score -= 10
+                reasons.add("adb_enabled")
+            }
+            if (emulator) {
+                score -= 10
+                reasons.add("emulator_environment")
             }
 
-            val reasons = Arguments.createArray()
-            if (rooted) reasons.pushString("root_artifacts_detected")
-            if (testKeys) reasons.pushString("test_keys_build")
-            if (debugBuild) reasons.pushString("debug_build")
-            if (adbEnabled) reasons.pushString("adb_enabled")
-            if (emulator) reasons.pushString("emulator_environment")
+            val playIntegrityProjectNumber = BuildConfig.PLAY_INTEGRITY_PROJECT_NUMBER
+            val playIntegritySupported = playIntegrityProjectNumber > 0L
 
-            val artifacts = Arguments.createArray()
-            rootedPaths.forEach { artifacts.pushString(it) }
-
-            val result = Arguments.createMap().apply {
-                putBoolean("rooted", rooted)
-                putBoolean("emulator", emulator)
-                putBoolean("debugBuild", debugBuild)
-                putBoolean("testKeys", testKeys)
-                putBoolean("adbEnabled", adbEnabled)
-                putInt("score", score)
-                putString("riskLevel", riskLevel)
-                putArray("reasons", reasons)
-                putArray("artifacts", artifacts)
-                putString("checkedAt", System.currentTimeMillis().toString())
+            if (!playIntegritySupported) {
+                score -= 20
+                reasons.add("play_integrity_not_configured")
+                resolveResult(
+                    promise = promise,
+                    rooted = rooted,
+                    emulator = emulator,
+                    debugBuild = debugBuild,
+                    testKeys = testKeys,
+                    adbEnabled = adbEnabled,
+                    rootedPaths = rootedPaths,
+                    reasons = reasons,
+                    score = score,
+                    playServicesAvailable = true,
+                    playIntegritySupported = false,
+                    playIntegrityStatus = "not_configured",
+                    playIntegrityTokenReceived = false,
+                    playIntegrityTokenLength = 0,
+                    playIntegrityNonce = null,
+                )
+                return
             }
 
-            promise.resolve(result)
+            val nonce = generateNonce()
+            requestIntegrityToken(nonce)
+                .addOnSuccessListener { response ->
+                    val token = response.token()
+                    var finalScore = score
+                    val finalReasons = reasons.toMutableList()
+                    if (token.isBlank()) {
+                        finalScore -= 15
+                        finalReasons.add("play_integrity_empty_token")
+                    }
+                    resolveResult(
+                        promise = promise,
+                        rooted = rooted,
+                        emulator = emulator,
+                        debugBuild = debugBuild,
+                        testKeys = testKeys,
+                        adbEnabled = adbEnabled,
+                        rootedPaths = rootedPaths,
+                        reasons = finalReasons,
+                        score = finalScore,
+                        playServicesAvailable = true,
+                        playIntegritySupported = true,
+                        playIntegrityStatus = if (token.isBlank()) "request_failed" else "token_obtained",
+                        playIntegrityTokenReceived = token.isNotBlank(),
+                        playIntegrityTokenLength = token.length,
+                        playIntegrityNonce = nonce,
+                    )
+                }
+                .addOnFailureListener { e ->
+                    val finalReasons = reasons.toMutableList()
+                    finalReasons.add("play_integrity_request_failed")
+                    finalReasons.add("play_services_unavailable_or_request_blocked")
+                    finalReasons.add("request_error_detail_hidden")
+                    resolveResult(
+                        promise = promise,
+                        rooted = rooted,
+                        emulator = emulator,
+                        debugBuild = debugBuild,
+                        testKeys = testKeys,
+                        adbEnabled = adbEnabled,
+                        rootedPaths = rootedPaths,
+                        reasons = finalReasons,
+                        score = score - 15,
+                        playServicesAvailable = true,
+                        playIntegritySupported = true,
+                        playIntegrityStatus = "request_failed",
+                        playIntegrityTokenReceived = false,
+                        playIntegrityTokenLength = 0,
+                        playIntegrityNonce = nonce,
+                    )
+                }
         } catch (e: Exception) {
             promise.reject("E_INTEGRITY_CHECK", e.message, e)
         }
+    }
+
+    @ReactMethod
+    fun requestPlayIntegrityToken(nonce: String, promise: Promise) {
+        try {
+            if (nonce.isBlank() || nonce.length < 16) {
+                promise.reject("E_INVALID_NONCE", "Nonce must be at least 16 characters")
+                return
+            }
+            if (BuildConfig.PLAY_INTEGRITY_PROJECT_NUMBER <= 0L) {
+                promise.reject("E_PLAY_INTEGRITY_NOT_CONFIGURED", "PLAY_INTEGRITY_PROJECT_NUMBER is missing")
+                return
+            }
+
+            requestIntegrityToken(nonce)
+                .addOnSuccessListener { response ->
+                    val token = response.token()
+                    if (token.isBlank()) {
+                        promise.reject("E_PLAY_INTEGRITY_EMPTY_TOKEN", "Play Integrity returned an empty token")
+                        return@addOnSuccessListener
+                    }
+                    val result = Arguments.createMap().apply {
+                        putString("nonce", nonce)
+                        putString("token", token)
+                        putInt("tokenLength", token.length)
+                        putString("status", "token_obtained")
+                    }
+                    promise.resolve(result)
+                }
+                .addOnFailureListener { e ->
+                    promise.reject("E_PLAY_INTEGRITY_REQUEST_FAILED", e.message, e)
+                }
+        } catch (e: Exception) {
+            promise.reject("E_PLAY_INTEGRITY_REQUEST_FAILED", e.message, e)
+        }
+    }
+
+    private fun requestIntegrityToken(nonce: String) =
+        IntegrityManagerFactory.create(reactContext).requestIntegrityToken(
+            IntegrityTokenRequest.builder()
+                .setNonce(nonce)
+                .setCloudProjectNumber(BuildConfig.PLAY_INTEGRITY_PROJECT_NUMBER)
+                .build(),
+        )
+
+    private fun resolveResult(
+        promise: Promise,
+        rooted: Boolean,
+        emulator: Boolean,
+        debugBuild: Boolean,
+        testKeys: Boolean,
+        adbEnabled: Boolean,
+        rootedPaths: List<String>,
+        reasons: List<String>,
+        score: Int,
+        playServicesAvailable: Boolean,
+        playIntegritySupported: Boolean,
+        playIntegrityStatus: String,
+        playIntegrityTokenReceived: Boolean,
+        playIntegrityTokenLength: Int,
+        playIntegrityNonce: String?,
+    ) {
+        val boundedScore = score.coerceIn(0, 100)
+        val riskLevel = when {
+            boundedScore < 45 -> "critical"
+            boundedScore < 65 -> "high"
+            boundedScore < 80 -> "medium"
+            else -> "low"
+        }
+
+        val reasonArray = Arguments.createArray()
+        reasons.forEach { reasonArray.pushString(it) }
+
+        val artifacts = Arguments.createArray()
+        rootedPaths.forEach { artifacts.pushString(it) }
+
+        val result = Arguments.createMap().apply {
+            putBoolean("rooted", rooted)
+            putBoolean("emulator", emulator)
+            putBoolean("debugBuild", debugBuild)
+            putBoolean("testKeys", testKeys)
+            putBoolean("adbEnabled", adbEnabled)
+            putBoolean("playServicesAvailable", playServicesAvailable)
+            putBoolean("playIntegritySupported", playIntegritySupported)
+            putString("playIntegrityStatus", playIntegrityStatus)
+            putBoolean("playIntegrityTokenReceived", playIntegrityTokenReceived)
+            putInt("playIntegrityTokenLength", playIntegrityTokenLength)
+            putString("playIntegrityNonce", playIntegrityNonce)
+            putInt("score", boundedScore)
+            putString("riskLevel", riskLevel)
+            putArray("reasons", reasonArray)
+            putArray("artifacts", artifacts)
+            putString("checkedAt", System.currentTimeMillis().toString())
+        }
+
+        promise.resolve(result)
+    }
+
+    private fun generateNonce(): String {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
 
     private fun isEmulator(): Boolean {

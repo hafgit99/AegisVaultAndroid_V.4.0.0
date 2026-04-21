@@ -33,26 +33,65 @@ import androidx.annotation.RequiresApi
 class AegisAutofillService : AutofillService() {
 
     init {
-        android.util.Log.d(TAG, "AegisAutofillService instance created")
+        debugLog("AegisAutofillService instance created")
     }
 
     companion object {
         private const val TAG = "AegisAutofill"
+        // Keep the in-memory autofill session alive long enough for realistic
+        // browser/app switching, but still fail closed after prolonged inactivity.
+        private const val CACHE_TTL_MS = 15 * 60 * 1000L
+        private val cacheLock = Any()
+        private var cachedVaultEntries: List<VaultEntry> = emptyList()
+        private var cachedUnlocked: Boolean = false
+        private var lastUpdatedAtMs: Long = 0L
 
-        @Volatile
-        var vaultEntries: List<VaultEntry> = emptyList()
+        private fun debugLog(message: String) {
+            if (BuildConfig.DEBUG) {
+                android.util.Log.d(TAG, message)
+            }
+        }
 
-        @Volatile
-        var isVaultUnlocked: Boolean = false
+        private fun debugVerbose(message: String) {
+            if (BuildConfig.DEBUG) {
+                android.util.Log.v(TAG, message)
+            }
+        }
+
+        private fun debugError(message: String, error: Throwable? = null) {
+            if (BuildConfig.DEBUG) {
+                android.util.Log.e(TAG, message, error)
+            }
+        }
 
         fun updateVaultEntries(entries: List<VaultEntry>) {
-            android.util.Log.d(TAG, "Updating vault entries: ${entries.size} items")
-            vaultEntries = entries
+            debugLog("Updating vault entries: ${entries.size} items")
+            synchronized(cacheLock) {
+                cachedVaultEntries = entries
+                lastUpdatedAtMs = System.currentTimeMillis()
+            }
         }
 
         fun setUnlocked(unlocked: Boolean) {
-            android.util.Log.d(TAG, "Setting vault unlocked: $unlocked")
-            isVaultUnlocked = unlocked
+            debugLog("Setting vault unlocked: $unlocked")
+            synchronized(cacheLock) {
+                cachedUnlocked = unlocked
+                if (!unlocked) {
+                    cachedVaultEntries = emptyList()
+                }
+                lastUpdatedAtMs = System.currentTimeMillis()
+            }
+        }
+
+        fun snapshot(): Pair<Boolean, List<VaultEntry>> {
+            synchronized(cacheLock) {
+                val expired = System.currentTimeMillis() - lastUpdatedAtMs > CACHE_TTL_MS
+                if (expired) {
+                    cachedUnlocked = false
+                    cachedVaultEntries = emptyList()
+                }
+                return Pair(cachedUnlocked, cachedVaultEntries)
+            }
         }
     }
 
@@ -66,11 +105,11 @@ class AegisAutofillService : AutofillService() {
     )
 
     override fun onConnected() {
-        android.util.Log.d(TAG, "Autofill Service Connected")
+        debugLog("Autofill Service Connected")
     }
 
     override fun onDisconnected() {
-        android.util.Log.d(TAG, "Autofill Service Disconnected")
+        debugLog("Autofill Service Disconnected")
     }
 
     override fun onFillRequest(
@@ -78,34 +117,32 @@ class AegisAutofillService : AutofillService() {
         cancellationSignal: CancellationSignal,
         callback: FillCallback
     ) {
-        android.util.Log.d(TAG, "onFillRequest called, flags=${request.flags}")
+        debugLog("onFillRequest called, flags=${request.flags}")
 
         // Chrome uyumluluk modu tespiti (FLAG_COMPATIBILITY_MODE_REQUEST = 0x4)
         val isCompatibilityMode = (request.flags and 0x4) != 0
-        android.util.Log.d(TAG, "Compatibility mode: $isCompatibilityMode")
+        debugLog("Compatibility mode: $isCompatibilityMode")
 
         try {
             val structure = request.fillContexts.lastOrNull()?.structure ?: run {
-                android.util.Log.d(TAG, "No structure found")
+                debugLog("No structure found")
                 callback.onSuccess(null)
                 return
             }
 
             val fields = parseStructure(structure)
-            android.util.Log.d(
-                TAG,
-                "Parsed fields: user=${fields.usernameId != null}, pass=${fields.passwordId != null}, domains=${fields.allWebDomains.size}"
-            )
+            debugLog("Parsed fields: user=${fields.usernameId != null}, pass=${fields.passwordId != null}, domains=${fields.allWebDomains.size}")
 
             if (fields.usernameId == null && fields.passwordId == null) {
-                android.util.Log.d(TAG, "No username or password field found")
+                debugLog("No username or password field found")
                 callback.onSuccess(null)
                 return
             }
 
             // Vault kilitliyse → kimlik doğrulama ekranı
-            if (!isVaultUnlocked) {
-                android.util.Log.d(TAG, "Vault is locked, showing auth prompt")
+            val (isUnlocked, entriesSnapshot) = snapshot()
+            if (!isUnlocked) {
+                debugLog("Vault is locked, showing auth prompt")
                 val responseBuilder = FillResponse.Builder()
                 val authPresentation = RemoteViews(this@AegisAutofillService.packageName, android.R.layout.simple_list_item_1).apply {
                     setTextViewText(android.R.id.text1, getString(R.string.autofill_unlock_prompt))
@@ -130,14 +167,19 @@ class AegisAutofillService : AutofillService() {
 
             // Chrome'da asıl web domain'i bulmak için tüm toplanan domain'lerden
             // en iyi eşleşeni seçiyoruz
-            val bestDomain = chooseBestDomain(fields.allWebDomains, fields.webDomain)
-            android.util.Log.d(TAG, "Best domain selected for matching")
+            val candidateDomains = collectCandidateDomains(fields.allWebDomains, fields.webDomain)
+            debugLog("Candidate domains for matching: ${candidateDomains.joinToString()}")
 
-            val matches = findMatchingEntries(targetPackageName, bestDomain)
-            android.util.Log.d(TAG, "Found ${matches.size} matching entries")
+            val matches = findMatchingEntries(
+                targetPackageName,
+                candidateDomains,
+                entriesSnapshot,
+                isUnlocked
+            )
+            debugLog("Found ${matches.size} matching entries")
 
             if (matches.isEmpty()) {
-                android.util.Log.d(TAG, "No matches found, total entries in memory: ${vaultEntries.size}")
+                debugLog("No matches found, total entries in memory: ${entriesSnapshot.size}")
                 // Boş yanıt yerine null döndür; Chrome'da gereksiz "kayıt bulunamadı" overlay'ini önler
                 callback.onSuccess(null)
                 return
@@ -154,7 +196,7 @@ class AegisAutofillService : AutofillService() {
 
             callback.onSuccess(responseBuilder.build())
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "onFillRequest error: ${e.message}", e)
+            debugError("onFillRequest error: ${e.message}", e)
             callback.onSuccess(null)
         }
     }
@@ -188,6 +230,20 @@ class AegisAutofillService : AutofillService() {
         val text = node.text?.toString()?.lowercase() ?: ""
         val autofillHints = node.autofillHints
         val domain = node.webDomain
+        val htmlAttributes = node.htmlInfo?.attributes
+            ?.associate { (it.first ?: "").lowercase() to (it.second ?: "").lowercase() }
+            ?: emptyMap()
+        val htmlId = htmlAttributes["id"] ?: ""
+        val htmlName = htmlAttributes["name"] ?: ""
+        val htmlType = htmlAttributes["type"] ?: ""
+        val htmlAutocomplete = htmlAttributes["autocomplete"] ?: ""
+        val htmlPlaceholder = htmlAttributes["placeholder"] ?: ""
+        val heuristicId = listOf(idEntry, htmlId, htmlName, htmlAutocomplete)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+        val heuristicHint = listOf(hint, htmlType, htmlAutocomplete, htmlPlaceholder)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
 
         // Tüm web domain'lerini topla (Chrome'da farklı node'larda dağınık olabilir)
         if (!domain.isNullOrEmpty()) {
@@ -206,13 +262,13 @@ class AegisAutofillService : AutofillService() {
                     isUsernameHint(hintStr) -> {
                         if (fields.usernameId == null) {
                             fields.usernameId = autofillId
-                            android.util.Log.v(TAG, "Username via hint: id=$idEntry hint=$hintStr")
+                            debugVerbose("Username via hint: id=$idEntry hint=$hintStr")
                         }
                     }
                     isPasswordHint(hintStr) -> {
                         if (fields.passwordId == null) {
                             fields.passwordId = autofillId
-                            android.util.Log.v(TAG, "Password via hint: id=$idEntry hint=$hintStr")
+                            debugVerbose("Password via hint: id=$idEntry hint=$hintStr")
                         }
                     }
                 }
@@ -225,14 +281,29 @@ class AegisAutofillService : AutofillService() {
             val inputType = node.inputType
 
             // inputType = 0 olan view'lar genellikle container'dır, atla
-            if (inputType != 0 || idEntry.isNotEmpty() || hint.isNotEmpty()) {
-                if (fields.usernameId == null && isUsernameField(idEntry, hint, text, inputType, className)) {
+            if (
+                inputType != 0 ||
+                heuristicId.isNotEmpty() ||
+                heuristicHint.isNotEmpty() ||
+                text.isNotEmpty()
+            ) {
+                if (
+                    fields.usernameId == null &&
+                    isUsernameField(heuristicId, heuristicHint, text, inputType, className)
+                ) {
                     fields.usernameId = autofillId
-                    android.util.Log.v(TAG, "Username via heuristic: class=$className id=$idEntry hint=$hint inputType=$inputType")
+                    debugVerbose(
+                        "Username via heuristic: class=$className id=$heuristicId hint=$heuristicHint inputType=$inputType"
+                    )
                 }
-                if (fields.passwordId == null && isPasswordField(idEntry, hint, text, inputType, className)) {
+                if (
+                    fields.passwordId == null &&
+                    isPasswordField(heuristicId, heuristicHint, text, inputType, className)
+                ) {
                     fields.passwordId = autofillId
-                    android.util.Log.v(TAG, "Password via heuristic: class=$className id=$idEntry hint=$hint inputType=$inputType")
+                    debugVerbose(
+                        "Password via heuristic: class=$className id=$heuristicId hint=$heuristicHint inputType=$inputType"
+                    )
                 }
             }
         }
@@ -330,29 +401,41 @@ class AegisAutofillService : AutofillService() {
      * en uzun ve en anlamlı domain'i seçiyoruz.
      * Örn: ["google.com", "accounts.google.com"] → "accounts.google.com"
      */
-    private fun chooseBestDomain(allDomains: List<String>, lastDomain: String): String {
-        if (allDomains.isEmpty()) return lastDomain
-        if (allDomains.size == 1) return allDomains[0]
+    private fun normalizeDomain(domain: String): String {
+        return domain.lowercase()
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("www.")
+            .substringBefore("/")
+            .trim()
+    }
 
-        // En uzunu seç (genellikle en spesifik subdomain)
-        return allDomains.maxByOrNull { it.length } ?: lastDomain
+    private fun collectCandidateDomains(allDomains: List<String>, lastDomain: String): List<String> {
+        return (allDomains + listOf(lastDomain))
+            .map(::normalizeDomain)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedByDescending { it.length }
     }
 
     // ── Matching Logic ───────────────────────────────────────────────────────
 
-    private fun findMatchingEntries(packageName: String, webDomain: String): List<VaultEntry> {
-        if (!isVaultUnlocked || vaultEntries.isEmpty()) return emptyList()
+    private fun findMatchingEntries(
+        packageName: String,
+        webDomains: List<String>,
+        entriesSnapshot: List<VaultEntry>,
+        isUnlocked: Boolean
+    ): List<VaultEntry> {
+        if (!isUnlocked || entriesSnapshot.isEmpty()) return emptyList()
 
-        val domain = webDomain.lowercase()
-            .removePrefix("www.")
-            .trim()
+        val domain = webDomains.firstOrNull() ?: ""
         val pkg = packageName.lowercase()
 
         // Chrome UID'si: com.android.chrome, com.chrome.beta, com.chrome.dev vs.
         val isBrowserRequest = isBrowserPackage(pkg)
-        android.util.Log.d(TAG, "isBrowserRequest=$isBrowserRequest for pkg=$pkg")
+        debugLog("isBrowserRequest=$isBrowserRequest for pkg=$pkg")
 
-        return vaultEntries
+        return entriesSnapshot
             .filter { entry ->
                 // Tüm giriş kayıtlarını dahil et; sadece "login" veya "all" ile sınırlama
                 // (kategori boş olanlar, "web", "social" vs. olanlar da dahil edilmeli)
@@ -374,27 +457,31 @@ class AegisAutofillService : AutofillService() {
 
                 when {
                     // 1. Domain bazlı eşleşme (tarayıcı istekleri için birincil yöntem)
-                    isBrowserRequest && domain.isNotEmpty() && entryDomain.isNotEmpty() -> {
-                        entryDomain.contains(domain) ||
-                        domain.contains(entryDomain) ||
-                        entryTitle.contains(extractMainDomain(domain)) ||
-                        extractMainDomain(entryDomain).contains(extractMainDomain(domain))
+                    isBrowserRequest && webDomains.isNotEmpty() && entryDomain.isNotEmpty() -> {
+                        webDomains.any { candidate ->
+                            entryDomain.contains(candidate) ||
+                            candidate.contains(entryDomain) ||
+                            entryTitle.contains(extractMainDomain(candidate)) ||
+                            extractMainDomain(entryDomain).contains(extractMainDomain(candidate))
+                        }
                     }
                     // 2. Uygulama paketi bazlı eşleşme (native app)
                     !isBrowserRequest && pkg.isNotEmpty() -> {
                         val pkgLast = pkg.split(".").lastOrNull() ?: ""
                         pkg.contains(entryTitle) ||
                         entryTitle.contains(pkgLast) ||
-                        (domain.isNotEmpty() && (
-                            entryDomain.contains(domain) || domain.contains(entryDomain)
-                        ))
+                        (webDomains.isNotEmpty() && webDomains.any { candidate ->
+                            entryDomain.contains(candidate) || candidate.contains(entryDomain)
+                        })
                     }
                     // 3. Hem domain hem paket bazlı
                     else -> {
                         val pkgLast = pkg.split(".").lastOrNull() ?: ""
-                        (domain.isNotEmpty() && entryDomain.isNotEmpty() && (
-                            entryDomain.contains(domain) || domain.contains(entryDomain)
-                        )) ||
+                        (webDomains.isNotEmpty() &&
+                            entryDomain.isNotEmpty() &&
+                            webDomains.any { candidate ->
+                                entryDomain.contains(candidate) || candidate.contains(entryDomain)
+                            }) ||
                         (pkg.isNotEmpty() && (
                             pkg.contains(entryTitle) || entryTitle.contains(pkgLast)
                         ))
@@ -407,12 +494,15 @@ class AegisAutofillService : AutofillService() {
                     .removePrefix("http://")
                     .removePrefix("www.")
                     .split("/").firstOrNull() ?: ""
-                when {
-                    entryDomain == domain -> 100
-                    entryDomain.contains(domain) && domain.isNotEmpty() -> 80
-                    domain.contains(entryDomain) && entryDomain.isNotEmpty() -> 60
-                    else -> 0
-                }
+                webDomains.maxOfOrNull { candidate ->
+                    when {
+                        entryDomain == candidate -> 100
+                        entryDomain.contains(candidate) && candidate.isNotEmpty() -> 80
+                        candidate.contains(entryDomain) && entryDomain.isNotEmpty() -> 60
+                        extractMainDomain(entryDomain) == extractMainDomain(candidate) -> 50
+                        else -> 0
+                    }
+                } ?: 0
             }
     }
 

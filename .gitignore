@@ -88,10 +88,22 @@ scripts/relay-data.json
 
 # Reports
 docs/AEGIS_DETAYLI_ANALIZ_RAPORU.md
+reports/
+.stryker-tmp/
+.gradle-home*/
+.gradle*/
+.cache/
+build/
+android/app/build/
+android/.gradle*/
+android/.tmp/
+*.txt
+nul
 
 # Validation evidence
 docs/validation/kanit/**
-!docs/validation/kanit/
-!docs/validation/kanit/.gitkeep
-!docs/validation/kanit/*/
-!docs/validation/kanit/*/.gitkeep
+docs/test_failure_log.txt
+docs/test_out.txt
+test_failure_log.txt
+test_out.txt
+nul

@@ -86,4 +86,49 @@ describe('SharedSpaceService', () => {
     const logs = SharingAuditService.getLog();
     expect(logs.some(l => l.type === 'space_deleted')).toBe(true);
   });
+
+  it('updates an existing shared space instead of duplicating it', async () => {
+    const space = {
+      id: 'space3',
+      name: 'Team',
+      kind: 'team',
+      members: [],
+      created_at: '',
+      updated_at: '',
+    };
+
+    await SharedSpaceService.saveSpace(space as any, db);
+    await SharedSpaceService.saveSpace(
+      { ...space, name: 'Team Updated' } as any,
+      db,
+    );
+
+    const spaces = SharedSpaceService.listSpaces();
+    expect(spaces).toHaveLength(1);
+    expect(spaces[0].name).toBe('Team Updated');
+  });
+
+  it('removes a member and records an audit event', async () => {
+    const space = {
+      id: 'space4',
+      name: 'Ops',
+      kind: 'team',
+      members: [
+        { id: 'mem1', name: 'John', status: 'active' },
+        { id: 'mem2', name: 'Jane', status: 'active' },
+      ],
+      created_at: '',
+      updated_at: '',
+    };
+    await SharedSpaceService.saveSpace(space as any, db);
+
+    await SharedSpaceService.removeMember('space4', 'mem1', db);
+
+    const updated = SharedSpaceService.listSpaces()[0];
+    expect(updated.members).toHaveLength(1);
+    expect(updated.members[0].id).toBe('mem2');
+
+    const logs = SharingAuditService.getLog();
+    expect(logs.some(l => l.type === 'member_removed')).toBe(true);
+  });
 });

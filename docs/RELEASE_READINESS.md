@@ -1,78 +1,89 @@
 # Release Readiness Report
 
-Date: 2026-03-15
-Scope: Android offline password manager hardening, modern passkey support, privacy-conscious intelligence, offline shared spaces, and release confidence check.
+Date: 2026-04-16
+Scope: Android offline password manager hardening, backend-verified passkey rollout, validation workspace, sync confidence UX, sharing lifecycle, pairing bridge, and release confidence check.
 
 ## Executive Summary
 
-Status: Ready for controlled beta release.
+Status: Conditionally ready for controlled beta release after staging and real-device smoke validation.
 
 Reason:
-- Security-critical fixes were implemented in recovery, encryption, and clipboard flows.
-- Passkey, password health, breach check, crash monitoring, and shared spaces are implemented and smoke-tested.
-- Legacy test setup was consolidated into a modern, passing suite.
-- Automated checks are green for the active test scope.
-- Release APK was built, signed, installed to a real device, and manually exercised.
+- Security-sensitive fixes were applied to relay sync, integrity data exposure, plaintext export handling, password history audit export, and autofill release logging.
+- The 2026 roadmap gap-closure layer is now integrated in-product: backend passkey flow, validation workspace, sync confidence, sharing lifecycle, and pairing workspace are all present.
+- Automated regression checks and `npx tsc --noEmit` are green for the current workspace.
+- The remaining gate is staging/real-device validation of the new passkey, sync, sharing, and pairing product surfaces.
 
 ## Verification Results
 
-- `npm test -- --runInBand`: PASS
-  - 8 suites passed
-  - 69 tests passed
-  - 0 failures
+- `npm test -- --runInBand __tests__/SyncManager.test.ts`: PASS
+- `npm test -- --runInBand __tests__/PasswordHistoryModule.test.ts`: PASS
+- `npm test -- --runInBand __tests__/HardwareKeyModule.test.ts`: PASS
+- `npm test -- --runInBand __tests__/BackupModule.test.ts`: PASS
+- `npm test -- --runInBand __tests__/IntegrityModule.test.ts`: PASS
+- `npx jest __tests__/PasskeyRpService.test.ts __tests__/PasskeyRpApi.test.ts __tests__/PasskeyReadinessService.test.ts __tests__/PasskeyErrorMapper.test.ts --runInBand`: PASS
+- `npx jest __tests__/FieldValidationService.test.ts __tests__/ValidationMatrixService.test.ts __tests__/SyncHealthService.test.ts __tests__/BrowserPairingService.test.ts --runInBand`: PASS
+- `npx jest __tests__/SharedSpaceService.test.ts __tests__/SharingAuditService.test.ts __tests__/ProductRoadmapService.test.ts --runInBand`: PASS
 - `npx tsc --noEmit`: PASS
-- `:app:assembleRelease`: PASS
-- Real device install via `adb install -r`: PASS
 
-## Completed Since Last Milestone
+## Security Fixes Included In This Gate
 
-- Fixed recovery flow correctness and security issues (path/content misuse, insecure randomness, weak integrity hashing, secret logging).
-- Enforced Argon2id for encrypted export path (removed silent downgrade behavior).
-- Added plaintext export risk confirmation in UI.
-- Hardened clipboard handling in sensitive copy flows.
-- Added native Android Credential Manager passkey creation/verification support.
-- Added password health, account hardening, and optional privacy-friendly breach check.
-- Added local crash monitoring and release console suppression policy.
-- Added offline-first family/team shared spaces, member roles, and item-level sharing assignment.
-- Stabilized app smoke test to avoid timer-related hangs.
-- Consolidated old suite coverage into active modern test files:
-  - `__tests__/App.test.tsx`
-  - `__tests__/BackupModule.test.ts`
-  - `__tests__/ImportVersioning.test.ts`
-  - `__tests__/TOTPModule.test.ts`
-  - `__tests__/RecoveryModule.test.ts`
-  - `__tests__/SecurityModule.test.ts`
-  - `__tests__/HIBPModule.test.ts`
-  - `__tests__/AppMonitoring.test.ts`
+- Added native `postJson/getJson` methods to the Android certificate-pinned sync bridge.
+- Removed Play Integrity token exposure from the general JS integrity signal payload.
+- Limited autofill debug logging to debug builds only.
+- Forced plaintext CSV/JSON export to prefer app-private storage.
+- Replaced password history audit export placeholder logic with real `AES-256-GCM + Argon2id`.
+- Added localized and dark-mode-compatible plaintext export risk confirmation UI.
 
-## Current Test Topology
+## Product Readiness Layers Included In This Gate
 
-- Active suites: modernized tests listed above.
-- TypeScript compilation and release assembly are green.
-- Real-device smoke checks completed for:
-  - unlock flow
-  - passkey create/verify
-  - shared space create/edit/assign
-  - release APK install/open
+- Backend-verified passkey registration/authentication flow with readiness panel and backend health checks.
+- Validation Workspace with bilingual device matrix board and captured field evidence records.
+- Sync confidence cards that show relay reachability, certificate pin status, last successful sync, and last sync error.
+- Shared spaces lifecycle improvements including pending invites, accept/revoke actions, role changes, and emergency-only status.
+- Pairing Workspace for browser-extension or desktop bridge creation, approval, and revocation.
 
-## Residual Risks (Non-Blocking)
+## Required Release Gates
 
-- Shared spaces are intentionally offline-first metadata, not remote live sync collaboration. This is a product decision, not a defect.
-- Some UI files still contain legacy encoding artifacts and would benefit from text cleanup/polish.
-- Broader device-matrix validation is still recommended before wide rollout.
+All of the following must be PASS before production rollout:
+
+- `npm test -- --runInBand __tests__/SyncManager.test.ts`
+- `npm test -- --runInBand __tests__/PasswordHistoryModule.test.ts`
+- `npm test -- --runInBand __tests__/HardwareKeyModule.test.ts`
+- `npm test -- --runInBand __tests__/BackupModule.test.ts`
+- `npm test -- --runInBand __tests__/IntegrityModule.test.ts`
+- `npx tsc --noEmit`
+- `:app:assembleRelease`
+- Real-device validation per:
+  - [ANDROID_GUVENLIK_DOGRULAMA_PLANI_2026_04_14_TR.md](docs/ANDROID_GUVENLIK_DOGRULAMA_PLANI_2026_04_14_TR.md)
+  - [DEVICE_MATRIX_TEST_PLAN.md](docs/DEVICE_MATRIX_TEST_PLAN.md)
+  - [validation/README_TR.md](docs/validation/README_TR.md)
+
+## Manual Validation Checklist
+
+Release candidate must verify:
+
+1. Relay sync works on two Android devices with valid certificate pin.
+2. Relay sync fails closed on invalid certificate pin.
+3. General integrity signals do not expose raw Play Integrity token.
+4. Autofill still works in release build while debug logs remain suppressed.
+5. Plaintext CSV export shows warning modal in Turkish and English.
+6. Plaintext export warning is readable in dark mode.
+7. Plaintext CSV/JSON export path resolves under app-private storage.
+8. Password history audit export output is encrypted JSON, not plaintext.
+9. Passkey backend registration works against staging endpoint and maps expected error states.
+10. Validation Workspace records device evidence and matrix status updates correctly.
+11. Sync confidence UI reflects relay health check, certificate pin state, and latest sync result.
+12. Shared space pending invite can be accepted, promoted, switched to emergency-only, and revoked.
+13. Pairing Workspace can create, confirm, and revoke a browser or desktop bridge entry.
+
+## Residual Risks
+
+- Native relay bridge still needs real-server validation on at least two devices.
+- Broader device matrix coverage remains necessary before wide rollout.
+- Existing unrelated worktree changes should be preserved and evaluated independently from this release gate.
 
 ## Go/No-Go Recommendation
 
-Recommendation: GO for controlled beta, and acceptable for early production with staged rollout.
+ Recommendation: GO for controlled beta only after the manual validation checklist above is completed.
 
-## Suggested Follow-ups Before Broad Release
-
-1. Polish legacy encoding/text artifacts in a few UI files and translations.
-2. Complete wider real-device matrix coverage for biometric/passkey/cloud/recovery combinations.
-3. Consider whether future sharing should stay fully local or later gain optional encrypted remote collaboration.
-
-## Suggested Next Validation (Post-merge)
-
-1. Real-device regression pass (backup/restore/cloud sync/biometric/autofill/shared spaces).
-2. One end-to-end recovery scenario on a clean device profile.
-3. Stage rollout with monitoring of local crash reports from beta devices.
+Recommendation for production: HOLD until staging/device evidence is collected for passkey, sync, sharing, pairing, export behavior, and release autofill logging posture.

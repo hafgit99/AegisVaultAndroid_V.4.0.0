@@ -9,7 +9,7 @@ import { Buffer } from '@craftzdog/react-native-buffer';
 // ── Base32 Decoder (RFC 4648) ────────────────────────────────
 const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
-function base32Decode(input: string): Buffer {
+export function base32Decode(input: string): Buffer {
   // Clean input: remove spaces, dashes, lowercase → uppercase, strip padding
   const cleaned = input.replace(/[\s-]/g, '').toUpperCase().replace(/=+$/, '');
   const bytes: number[] = [];

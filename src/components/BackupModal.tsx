@@ -64,6 +64,10 @@ export const BackupModal = ({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [showPlainExportWarning, setShowPlainExportWarning] = useState(false);
+  const [pendingPlainExport, setPendingPlainExport] = useState<
+    ExportFormat['id'] | null
+  >(null);
 
   // Import states
 
@@ -103,6 +107,28 @@ export const BackupModal = ({
   }, [visible]);
 
   // ── Export Handlers ──────────────────────────────────────
+  const continuePlaintextExport = async (
+    formatId: Exclude<ExportFormat['id'], 'aegis_encrypted'>,
+  ) => {
+    setShowPlainExportWarning(false);
+    setPendingPlainExport(null);
+    setLoading(true);
+    try {
+      SecurityModule.isPickingFileFlag = true;
+      const path =
+        formatId === 'csv'
+          ? await BackupModule.exportToCSV()
+          : await BackupModule.exportToJSON();
+      SecurityModule.isPickingFileFlag = false;
+      setExportPath(path);
+      Alert.alert(t('backup.msg_exp_ok'), t('backup.msg_saved', { path }));
+    } catch (e: any) {
+      SecurityModule.isPickingFileFlag = false;
+      Alert.alert(t('backup.msg_err'), e?.message || t('backup.msg_plain_exp_err'));
+    }
+    setLoading(false);
+  };
+
   const handleExport = async (format: ExportFormat) => {
     if (format.id === 'aegis_encrypted') {
       setShowEncryptModal(true);
@@ -112,35 +138,8 @@ export const BackupModal = ({
       setShowEncryptConfirmPw(false);
       return;
     }
-
-    Alert.alert(
-      t('backup.msg_err'),
-      'CSV ve JSON export sifresizdir. Bu dosyalar ele gecerse tum kasa verileri okunabilir. Guvenlik icin sifreli Aegis export onerilir. Yine de devam etmek istiyor musunuz?',
-      [
-        { text: t('backup.btn_cancel'), style: 'cancel' },
-        {
-          text: 'Devam Et',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              SecurityModule.isPickingFileFlag = true;
-              const path =
-                format.id === 'csv'
-                  ? await BackupModule.exportToCSV()
-                  : await BackupModule.exportToJSON();
-              SecurityModule.isPickingFileFlag = false;
-              setExportPath(path);
-              Alert.alert(t('backup.msg_exp_ok'), t('backup.msg_saved', { path }));
-            } catch (e: any) {
-              SecurityModule.isPickingFileFlag = false;
-              Alert.alert(t('backup.msg_err'), e?.message || 'Export failed.');
-            }
-            setLoading(false);
-          },
-        },
-      ],
-    );
+    setPendingPlainExport(format.id);
+    setShowPlainExportWarning(true);
   };
 
   const handleEncryptedExport = async () => {
@@ -739,6 +738,84 @@ export const BackupModal = ({
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>
                   {t('backup.btn_enc_exp')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showPlainExportWarning} animationType="fade" transparent>
+        <View style={st.pwOverlay}>
+          <View
+            style={[
+              st.pwContainer,
+              {
+                backgroundColor: cc.bg,
+                borderWidth: 1,
+                borderColor: isDark
+                  ? 'rgba(245,158,11,0.35)'
+                  : 'rgba(245,158,11,0.2)',
+              },
+            ]}
+          >
+            <Text style={[st.pwTitle, { color: cc.navy }]}>
+              {t('backup.plain_export_title')}
+            </Text>
+            <Text style={[st.pwDesc, { color: cc.muted }]}>
+              {t('backup.plain_export_desc')}
+            </Text>
+
+            <View
+              style={[
+                st.warningBox,
+                {
+                  marginBottom: 0,
+                  backgroundColor: isDark
+                    ? 'rgba(245,158,11,0.18)'
+                    : cc.amberBg,
+                  borderColor: isDark
+                    ? 'rgba(245,158,11,0.35)'
+                    : 'rgba(245,158,11,0.15)',
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 13 }}>⚠️</Text>
+              <Text
+                style={[
+                  st.warningText,
+                  { color: isDark ? '#fcd34d' : cc.amber },
+                ]}
+              >
+                {t('backup.plain_export_private_note')}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                style={[st.pwBtn, { backgroundColor: cc.sageLight }]}
+                onPress={() => {
+                  setShowPlainExportWarning(false);
+                  setPendingPlainExport(null);
+                }}
+              >
+                <Text style={{ color: cc.navy, fontWeight: '700' }}>
+                  {t('backup.btn_cancel')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[st.pwBtn, { backgroundColor: cc.amber, flex: 2 }]}
+                onPress={() => {
+                  if (pendingPlainExport === 'csv') {
+                    continuePlaintextExport('csv');
+                  } else if (pendingPlainExport === 'json') {
+                    continuePlaintextExport('json');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                  {t('backup.btn_plain_continue')}
                 </Text>
               </TouchableOpacity>
             </View>

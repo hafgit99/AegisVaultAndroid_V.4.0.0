@@ -106,6 +106,10 @@ android {
         versionCode 420
         versionName "4.2.0"
         manifestPlaceholders = [usesCleartextTraffic: "false"]
+        def playIntegrityProjectNumber = (project.findProperty('PLAY_INTEGRITY_PROJECT_NUMBER')
+            ?: System.getenv('PLAY_INTEGRITY_PROJECT_NUMBER')
+            ?: "0").toString()
+        buildConfigField "long", "PLAY_INTEGRITY_PROJECT_NUMBER", "${playIntegrityProjectNumber}L"
     }
     signingConfigs {
         debug {
@@ -166,6 +170,8 @@ dependencies {
     implementation "net.zetetic:sqlcipher-android:4.5.6@aar"
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "androidx.credentials:credentials:1.5.0"
+    implementation "com.google.android.play:integrity:1.4.0"
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
 }
 
 kotlin {

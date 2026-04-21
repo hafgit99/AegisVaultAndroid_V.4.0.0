@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Clipboard } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { generateTOTP, isValidTOTPSecret } from '../TOTPModule';
 
 const C = {
@@ -26,8 +27,9 @@ export const TOTPDisplay = ({
   algorithm = 'sha1',
   issuer,
   compact = false,
-  clipboardClearSeconds = 30,
+  clipboardClearSeconds = 20,
 }: Props) => {
+  const { t } = useTranslation();
   const [code, setCode] = useState('------');
   const [remaining, setRemaining] = useState(period);
   const [progress, setProgress] = useState(0);
@@ -86,7 +88,7 @@ export const TOTPDisplay = ({
   if (!valid) {
     return (
       <View style={[st.container, compact && st.containerCompact]}>
-        <Text style={st.invalidText}>⚠️ Geçersiz TOTP anahtarı</Text>
+        <Text style={st.invalidText}>{t('totp.invalid')}</Text>
       </View>
     );
   }
@@ -104,38 +106,53 @@ export const TOTPDisplay = ({
 
   if (compact) {
     return (
-      <TouchableOpacity style={st.compactContainer} onPress={copyCode} activeOpacity={0.7}>
+      <TouchableOpacity 
+        style={st.compactContainer} 
+        onPress={copyCode} 
+        activeOpacity={0.7}
+        accessibilityLabel={`${issuer || ''} TOTP ${t('fields.copy')}. ${remaining} ${t('settings.sec')} ${t('lock_screen.verifying')}`}
+        accessibilityRole="button"
+      >
         <View style={st.compactLeft}>
-          <View style={[st.compactTimer, { borderColor: timerColor }]}>
+          <View style={[st.compactTimer, { borderColor: timerColor }]} accessibilityLabel={`${remaining} ${t('settings.sec')}`}>
             <Text style={[st.compactTimerText, { color: timerColor }]}>{remaining}</Text>
           </View>
           <Animated.Text style={[st.compactCode, { transform: [{ scale: pulseAnim }] }]}>
             {formattedCode}
           </Animated.Text>
         </View>
-        <Text style={{ fontSize: 13, color: copied ? C.green : C.muted }}>
-          {copied ? '✓' : '📋'}
+        <Text style={[st.compactStatus, { color: copied ? C.green : C.muted }]}>
+          {copied ? t('fields.copied_symbol') : t('fields.copy_symbol')}
         </Text>
       </TouchableOpacity>
     );
   }
 
   return (
-    <TouchableOpacity style={st.container} onPress={copyCode} activeOpacity={0.7}>
+    <TouchableOpacity 
+      style={st.container} 
+      onPress={copyCode} 
+      activeOpacity={0.7}
+      accessibilityLabel={`${issuer || t('totp.title')} TOTP ${t('fields.copy')}. ${remaining} saniye kaldı`}
+      accessibilityRole="button"
+    >
       {/* Header */}
       <View style={st.header}>
         <View style={st.headerLeft}>
-          <Text style={st.totpIcon}>🔑</Text>
-          <Text style={st.headerLabel}>TOTP Doğrulama Kodu</Text>
+          <Text style={st.totpIcon} accessibilityRole="image">🔑</Text>
+          <Text style={st.headerLabel}>{t('totp.title')}</Text>
         </View>
-        <Text style={{ fontSize: 13, color: copied ? C.green : C.muted, fontWeight: '600' }}>
-          {copied ? '✓ Kopyalandı' : 'Kopyala'}
+        <Text style={[st.copyStatus, { color: copied ? C.green : C.muted }]}>
+          {copied ? `${t('fields.copied_symbol')} ${t('fields.copied')}` : t('fields.copy')}
         </Text>
       </View>
 
       {/* Code Display */}
       <View style={st.codeRow}>
-        <Animated.Text style={[st.codeText, { transform: [{ scale: pulseAnim }] }]}>
+        <Animated.Text 
+          style={[st.codeText, { transform: [{ scale: pulseAnim }] }]}
+          accessibilityLabel={`${t('totp.title')}: ${code}`}
+        >
           {formattedCode}
         </Animated.Text>
       </View>
@@ -152,7 +169,7 @@ export const TOTPDisplay = ({
 
         {/* Countdown */}
         <View style={[st.timerBadge, { borderColor: timerColor }]}>
-          <Text style={[st.timerText, { color: timerColor }]}>{remaining}s</Text>
+          <Text style={[st.timerText, { color: timerColor }]}>{remaining}{t('settings.sec')}</Text>
         </View>
       </View>
 
@@ -186,6 +203,13 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  compactStatus: {
+    fontSize: 13,
+  },
+  copyStatus: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   totpIcon: {
     fontSize: 16,

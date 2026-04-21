@@ -38,8 +38,12 @@ import { TrashModal } from './components/TrashModal';
 import { SecurityReportModal } from './components/SecurityReportModal';
 import { SecurityCenterModal } from './components/SecurityCenterModal';
 import { SharedVaultsModal } from './components/SharedVaultsModal';
+import { RoadmapCenterModal } from './components/RoadmapCenterModal';
+import { ValidationWorkspaceModal } from './components/ValidationWorkspaceModal';
+import { PairingWorkspaceModal } from './components/PairingWorkspaceModal';
 import { SearchService } from './SearchService';
 import { SecureAppSettings, SETTINGS_CHANGED_EVENT } from './SecureAppSettings';
+import { WearOSModule } from './WearOSModule';
 import { HIBPModule } from './HIBPModule';
 import { AppMonitoring, CrashReport } from './AppMonitoring';
 import { useTranslation } from 'react-i18next';
@@ -49,7 +53,7 @@ import { AutofillService } from './AutofillService';
 import { SyncSettings } from './components/SyncSettings';
 import { PasskeySettings } from './components/PasskeySettings';
 import { IntegrityModule, IntegritySignals } from './IntegrityModule';
-import { PasskeyBindingService } from './PasskeyBindingService'; // Added for PasskeySettings
+import { PasskeyBindingService } from './PasskeyBindingService';
 
 const rnBiometrics = new ReactNativeBiometrics({
   allowDeviceCredentials: true,
@@ -118,7 +122,6 @@ const getCats = (t: any) => [
 ];
 type Tab = 'vault' | 'generator' | 'settings';
 
-// ═══════════════════════════════════════════════════
 export const Dashboard = () => {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -128,7 +131,6 @@ export const Dashboard = () => {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [search, setSearch] = useState('');
   const [selCat, setSelCat] = useState('all');
-  // ── Legacy state synced with SecureAppSettings ──
   const [settings, setSettings] = useState<VaultSettings>(SecureAppSettings.toVaultSettings());
   const palette = settings.darkMode ? CD : C;
 
@@ -143,27 +145,26 @@ export const Dashboard = () => {
   const [showSharedVaults, setShowSharedVaults] = useState(false);
   const [showDonation, setShowDonation] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [showRoadmapCenter, setShowRoadmapCenter] = useState(false);
+  const [showValidationWorkspace, setShowValidationWorkspace] = useState(false);
+  const [showPairingWorkspace, setShowPairingWorkspace] = useState(false);
   const [sharedSpaces, setSharedSpaces] = useState<SharedVaultSpace[]>([]);
   const [legalType, setLegalType] = useState<'terms' | 'privacy' | null>(null);
   const [integrity, setIntegrity] = useState<IntegritySignals | null>(null);
   const [integrityLoading, setIntegrityLoading] = useState(true);
   const glow = useRef(new Animated.Value(0.4)).current;
 
-  const [_isPickingFile, _setIsPickingFile] = useState(false);
   const backgroundTimeRef = useRef<number | null>(null);
   const settingsRef = useRef(settings);
   const unlockedRef = useRef(unlocked);
 
-  // Sync SecureAppSettings to Local State
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(SETTINGS_CHANGED_EVENT, () => {
-      // Use the singleton method to ensure we get the correctly formatted legacy object
       setSettings(SecureAppSettings.toVaultSettings());
     });
     return () => sub.remove();
-  }, []); // Removed `t` from dependency array as it's not needed for this effect
+  }, []);
 
-  // Keep refs in sync with state for use in AppState listener
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
@@ -190,22 +191,12 @@ export const Dashboard = () => {
     const sub = AppState.addEventListener(
       'change',
       (nextState: AppStateStatus) => {
-        // Skip if picking a file (file picker briefly backgrounds the app)
         if (SecurityModule.isPickingFileFlag) return;
-
-        if (!unlockedRef.current) return; // already locked, no action needed
+        if (!unlockedRef.current) return;
 
         if (nextState === 'background' || nextState === 'inactive') {
-          // App going to background → record timestamp
           backgroundTimeRef.current = Date.now();
-
-          // If auto-lock is disabled (0), don't lock at all on background
-          // The vault stays open until manual lock
           if (settingsRef.current.autoLockSeconds === 0) return;
-
-          // Start a background timeout: if the user doesn't return within the
-          // configured duration, lock the vault. This handles cases where
-          // setTimeout continues to run briefly after backgrounding.
           SecurityModule.startAutoLockTimer(
             settingsRef.current.autoLockSeconds,
             () => {
@@ -215,21 +206,16 @@ export const Dashboard = () => {
             },
           );
         } else if (nextState === 'active') {
-          // App coming back to foreground → check elapsed time
           if (backgroundTimeRef.current !== null) {
             const elapsedSeconds =
               (Date.now() - backgroundTimeRef.current) / 1000;
             backgroundTimeRef.current = null;
-
             const lockSeconds = settingsRef.current.autoLockSeconds;
-
             if (lockSeconds > 0 && elapsedSeconds >= lockSeconds) {
-              // Elapsed time exceeded auto-lock duration → lock now
               SecurityModule.lockVault();
               setUnlocked(false);
               setAuthStatus(t('lock_screen.auto_locked'));
             } else {
-              // Still within time limit → stay unlocked, reset foreground timer
               if (lockSeconds > 0) {
                 SecurityModule.resetAutoLockTimer(lockSeconds, () => {
                   SecurityModule.lockVault();
@@ -239,6 +225,8 @@ export const Dashboard = () => {
               }
             }
           }
+
+          AutofillService.setUnlocked(true);
         }
       },
     );
@@ -246,13 +234,8 @@ export const Dashboard = () => {
   }, [glow, t]);
 
   const load = useCallback(async () => {
-    // Phase 1: Score-weighted search integration
-    // 1. Fetch all items for the category
     const allCategoryItems = await SecurityModule.getItems('', selCat);
-    
-    // 2. Filter using SearchService (High-performance score-weighted filtering)
     const filtered = SearchService.searchDecrypted(allCategoryItems, search);
-    
     setItems(filtered);
     setCount(await SecurityModule.getItemCount());
   }, [search, selCat]);
@@ -267,7 +250,7 @@ export const Dashboard = () => {
     setShowDetail(true);
   }, []);
   const loadSettings = useCallback(
-    async () => setSettings(await SecureAppSettings.toVaultSettings()), // Changed to use SecureAppSettings.toVaultSettings()
+    async () => setSettings(await SecureAppSettings.toVaultSettings()),
     [],
   );
   const loadSharedSpaces = useCallback(
@@ -282,6 +265,21 @@ export const Dashboard = () => {
       loadSharedSpaces();
     }
   }, [unlocked, load, loadSettings, loadSharedSpaces]);
+
+  useEffect(() => {
+    if (!unlocked) {
+      return;
+    }
+
+    // Keep the native autofill session alive while the vault stays open.
+    AutofillService.setUnlocked(true);
+
+    const interval = setInterval(() => {
+      AutofillService.setUnlocked(true);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [unlocked]);
 
   useEffect(() => {
     (async () => {
@@ -317,37 +315,29 @@ export const Dashboard = () => {
 
   const auth = async () => {
     try {
-      // Check brute force lockout
       const remaining = await SecurityModule.getRemainingLockout();
       if (remaining > 0) {
         setLockoutRemaining(remaining);
         setAuthStatus(t('lock_screen.locked_out', { seconds: remaining }));
         return;
       }
-
       const { available } = await rnBiometrics.isSensorAvailable();
       if (!available) {
         setAuthStatus(t('lock_screen.bio_not_found'));
         return;
       }
       setAuthStatus(t('lock_screen.verifying'));
-
-      // Biometric gate + stable unlock secret derivation
       const unlockSecret = await SecurityModule.deriveKeyFromBiometric();
-
       if (!unlockSecret) {
         setAuthStatus(t('lock_screen.cancelled'));
         return;
       }
-
       if (await SecurityModule.unlockVault(unlockSecret)) {
         setUnlocked(true);
         setAuthStatus(t('lock_screen.unlocked'));
         setFailCount(0);
         setLockoutRemaining(0);
-        // Initialize centralized settings from DB
         await SecureAppSettings.init(SecurityModule.db);
-        // Automatic cleanup of old trash items (>30 days)
         SecurityModule.cleanupOldTrash();
       } else {
         const fails = await SecurityModule.getFailedAttempts();
@@ -370,7 +360,6 @@ export const Dashboard = () => {
     }
   };
 
-  // Lockout countdown timer
   useEffect(() => {
     if (lockoutRemaining <= 0) return;
     const interval = setInterval(() => {
@@ -387,15 +376,12 @@ export const Dashboard = () => {
     return () => clearInterval(interval);
   }, [lockoutRemaining, t]);
 
-  // Check lockout on mount
   useEffect(() => {
     (async () => {
-      // Sync native autofill state on startup: if app starts locked, ensure service is locked
       if (!unlockedRef.current) {
         AutofillService.setUnlocked(false);
         AutofillService.clearEntries();
       }
-
       const remaining = await SecurityModule.getRemainingLockout();
       const fails = await SecurityModule.getFailedAttempts();
       if (remaining > 0) {
@@ -406,7 +392,6 @@ export const Dashboard = () => {
     })();
   }, [t]);
 
-  // Lock screen
   if (!unlocked)
     return (
       <View style={[s.loginBox, { backgroundColor: palette.bg }]}>
@@ -692,6 +677,9 @@ export const Dashboard = () => {
           onCloud={() => setShowCloud(true)}
           onSecurityReport={() => setShowSecurityCenter(true)}
           onSharedVaults={() => setShowSharedVaults(true)}
+          onRoadmap={() => setShowRoadmapCenter(true)}
+          onValidationWorkspace={() => setShowValidationWorkspace(true)}
+          onPairingWorkspace={() => setShowPairingWorkspace(true)}
           openLegal={(type: any) => setLegalType(type)}
           onDonation={() => setShowDonation(true)}
           onTrash={() => setShowTrash(true)}
@@ -716,6 +704,52 @@ export const Dashboard = () => {
           insets={insets}
           db={SecurityModule.db}
           onNavigateToItem={(id) => openItemById(id)}
+        />
+      )}
+      {showRoadmapCenter && (
+        <RoadmapCenterModal
+          visible={showRoadmapCenter}
+          onClose={() => setShowRoadmapCenter(false)}
+          items={items}
+          theme={palette}
+          insets={insets}
+          autofillSupported={Platform.OS === 'android' && Number(Platform.Version) >= 26}
+          onAction={(target) => {
+            setShowRoadmapCenter(false);
+            if (target === 'security_center') {
+              setShowSecurityCenter(true);
+              return;
+            }
+            if (target === 'shared_spaces') {
+              setShowSharedVaults(true);
+              return;
+            }
+            if (target === 'validation_workspace') {
+              setShowValidationWorkspace(true);
+              return;
+            }
+            if (target === 'pairing_workspace') {
+              setShowPairingWorkspace(true);
+              return;
+            }
+            AutofillService.openSettings();
+          }}
+        />
+      )}
+      {showValidationWorkspace && (
+        <ValidationWorkspaceModal
+          visible={showValidationWorkspace}
+          onClose={() => setShowValidationWorkspace(false)}
+          theme={palette}
+          insets={insets}
+        />
+      )}
+      {showPairingWorkspace && (
+        <PairingWorkspaceModal
+          visible={showPairingWorkspace}
+          onClose={() => setShowPairingWorkspace(false)}
+          theme={palette}
+          insets={insets}
         />
       )}
 
@@ -771,7 +805,6 @@ export const Dashboard = () => {
           if (id && pending.length) {
             for (const f of pending) {
               if (f.base64) {
-                // Use pre-cached base64 data (from pending files)
                 await SecurityModule.addAttachmentFromBase64(
                   id,
                   f.name,
@@ -780,7 +813,6 @@ export const Dashboard = () => {
                   f.size,
                 );
               } else {
-                // Fallback: try reading from URI directly
                 await SecurityModule.addAttachment(id, f.name, f.type, f.uri);
               }
             }
@@ -872,7 +904,6 @@ export const Dashboard = () => {
   );
 };
 
-// ── Vault ──
 const VaultView = ({
   theme,
   items,
@@ -885,7 +916,7 @@ const VaultView = ({
   onAdd,
   onDetail,
   onLock,
-  onDonation, // Renamed from _onDonation
+  onDonation,
   onTrash,
   onSecurityReport,
   insets,
@@ -1008,6 +1039,8 @@ const VaultView = ({
           onChangeText={setSearch}
           returnKeyType="search"
           onSubmitEditing={onRefresh}
+          accessibilityLabel={t('vault.search')}
+          accessibilityRole="search"
         />
         {search ? (
           <TouchableOpacity
@@ -1094,6 +1127,8 @@ const VaultView = ({
         ]}
         onPress={onAdd}
         activeOpacity={0.8}
+        accessibilityLabel={t('vault.add_new')}
+        accessibilityRole="button"
       >
         <Text style={s.fabT}>+</Text>
       </TouchableOpacity>
@@ -1101,7 +1136,6 @@ const VaultView = ({
   );
 };
 
-// ── Generator ──
 const GenView = ({ theme, settings, insets }: any) => {
   const { t } = useTranslation();
   const [pw, setPw] = useState('');
@@ -1280,18 +1314,19 @@ const GenView = ({ theme, settings, insets }: any) => {
   );
 };
 
-// ── Settings ──
 const SettView = ({
   theme,
   integrity,
   integrityLoading,
   settings: st2,
-  _setSettings,
   onLock,
   onBackup,
   onCloud,
   onSecurityReport,
   onSharedVaults,
+  onRoadmap,
+  onValidationWorkspace,
+  onPairingWorkspace,
   openLegal,
   onDonation,
   onTrash,
@@ -1303,7 +1338,7 @@ const SettView = ({
   const [auditLoading, setAuditLoading] = useState(false);
   const [crashReports, setCrashReports] = useState<CrashReport[]>([]);
   const [crashLoading, setCrashLoading] = useState(false);
-  const [bindings, setBindings] = useState<any[]>([]); // State for passkey bindings
+  const [bindings, setBindings] = useState<any[]>([]);
 
   const boolLabel = (value: boolean) =>
     value ? t('settings.integrity.yes') : t('settings.integrity.no');
@@ -1312,7 +1347,11 @@ const SettView = ({
 
   const integrityReasonLabel = (reason: string) => {
     const key = `settings.integrity.reason_${reason}`;
-    return i18n.exists(key) ? t(key) : reason;
+    if (i18n.exists(key)) return t(key);
+    if (/exception|error/i.test(reason)) {
+      return t('settings.integrity.reason_request_error_detail_hidden');
+    }
+    return reason;
   };
 
   const auditEventLabel = (eventType: string) => {
@@ -1347,11 +1386,10 @@ const SettView = ({
   useEffect(() => {
     loadAudit();
     loadCrashReports();
-    loadPasskeyBindings(); // Load passkey bindings on mount
+    loadPasskeyBindings();
   }, []);
 
   const upd = async (k: string, v: any) => {
-    // Phase 1 upgrade: centralized persistence
     await SecureAppSettings.update({ [k]: v }, SecurityModule.db);
     await loadAudit();
   };
@@ -1366,6 +1404,7 @@ const SettView = ({
   const CLO = [
     { l: t('settings.off'), v: 0 },
     { l: `15 ${t('settings.sec')}`, v: 15 },
+    { l: `20 ${t('settings.sec')}`, v: 20 },
     { l: `30 ${t('settings.sec')}`, v: 30 },
     { l: `1 ${t('settings.min')}`, v: 60 },
   ];
@@ -1435,7 +1474,6 @@ const SettView = ({
         </View>
       </View>
 
-      {/* ── Autofill Section ── */}
       <Text style={[s.sec, { color: theme.navy }]}>
         {t('settings.autofill.title')}
       </Text>
@@ -1470,39 +1508,7 @@ const SettView = ({
             >
               {t('settings.autofill.enable_desc')}
             </Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginTop: 8,
-                gap: 6,
-              }}
-            >
-              <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: theme.sage,
-                }}
-              />
-              <Text
-                style={{ fontSize: 11, color: theme.sage, fontWeight: '700' }}
-              >
-                {t('settings.autofill.support')}
-              </Text>
-            </View>
           </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >
-            ›
-          </Text>
         </View>
       </TouchableOpacity>
 
@@ -1531,8 +1537,184 @@ const SettView = ({
       </View>
 
       <Text style={[s.sec, { color: theme.navy }]}>
+        {t('wear_os.title')}
+      </Text>
+      <TouchableOpacity
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        onPress={async () => {
+          const items = await SecurityModule.getAllItems();
+          const ok = await WearOSModule.syncFavoritesToWatch(items);
+          if (ok) Alert.alert(t('wear_os.sync_success'), t('wear_os.security_warning'));
+          else Alert.alert(t('wear_os.sync_error'), t('wear_os.no_watch'));
+        }}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('reset.vault_title')}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
+              {t('wear_os.sync')}
+            </Text>
+            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
+              {t('wear_os.desc')}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 20 }}>⌚</Text>
+        </View>
+      </TouchableOpacity>
+
+      <Text style={[s.sec, { color: theme.navy }]}>
+        {t('settings.security.title')}
+      </Text>
+      <View
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+      >
+        <ToggleRow
+          label={t('settings.security.biometric')}
+          value={st2.biometricEnabled}
+          onToggle={(v: boolean) => upd('biometricEnabled', v)}
+          theme={theme}
+        />
+        </View>
+
+
+
+      <Text style={[s.sec, { color: theme.navy }]}>
         {t('settings.security')}
       </Text>
+      <TouchableOpacity
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        onPress={onRoadmap}
+        activeOpacity={0.7}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
+              {t('roadmap_center.title')}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.muted,
+                marginTop: 4,
+                lineHeight: 17,
+              }}
+            >
+              {t('roadmap_center.subtitle')}
+            </Text>
+          </View>
+          <Text
+            style={{
+              fontSize: 22,
+              color: theme.muted,
+              fontWeight: '300',
+              marginLeft: 12,
+            }}
+          >
+            ›
+          </Text>
+        </View>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        onPress={onPairingWorkspace}
+        activeOpacity={0.7}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
+              {t('pairing_workspace.title')}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.muted,
+                marginTop: 4,
+                lineHeight: 17,
+              }}
+            >
+              {t('pairing_workspace.entrypoint_desc')}
+            </Text>
+          </View>
+          <Text
+            style={{
+              fontSize: 22,
+              color: theme.muted,
+              fontWeight: '300',
+              marginLeft: 12,
+            }}
+          >
+            ›
+          </Text>
+        </View>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          s.sCard,
+          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+        ]}
+        onPress={onValidationWorkspace}
+        activeOpacity={0.7}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
+              {t('validation_workspace.title')}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.muted,
+                marginTop: 4,
+                lineHeight: 17,
+              }}
+            >
+              {t('validation_workspace.entrypoint_desc')}
+            </Text>
+          </View>
+          <Text
+            style={{
+              fontSize: 22,
+              color: theme.muted,
+              fontWeight: '300',
+              marginLeft: 12,
+            }}
+          >
+            â€º
+          </Text>
+        </View>
+      </TouchableOpacity>
       <TouchableOpacity
         style={[
           s.sCard,
@@ -2182,9 +2364,8 @@ const SettView = ({
         </View>
       </TouchableOpacity>
 
-      {/* ── Phase 2: Advanced Sync & Passkeys ── */}
       <SyncSettings theme={theme} />
-      <PasskeySettings theme={theme} bindings={bindings} onRefresh={loadPasskeyBindings} /> {/* Pass bindings and onRefresh */}
+      <PasskeySettings theme={theme} bindings={bindings} onRefresh={loadPasskeyBindings} />
 
       <Text style={[s.sec, { color: theme.navy }]}>{t('trash.title')}</Text>
       <TouchableOpacity
@@ -2318,6 +2499,8 @@ const SettView = ({
           ]);
         }}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('reset.factory_title')}
       >
         <Text style={{ fontSize: 14, fontWeight: '700', color: theme.red }}>
           {t('reset.vault_title')}
@@ -2341,8 +2524,6 @@ const SettView = ({
               onPress: async () => {
                 await SecurityModule.factoryReset();
                 Alert.alert(t('reset.factory_success'));
-                // In a real app we might use RNExitApp or similar,
-                // but here we just lock and let them restart
               },
             },
           ]);
@@ -2366,11 +2547,43 @@ const SettView = ({
 
       <TouchableOpacity
         style={[
+          s.sCard,
+          { backgroundColor: theme.redBg, borderColor: theme.red },
+        ]}
+        onPress={() => {
+          Alert.alert(t('reset.panic_title'), t('reset.panic_confirm'), [
+            { text: t('vault.cancel'), style: 'cancel' },
+            {
+              text: t('reset.panic_title'),
+              style: 'destructive',
+              onPress: async () => {
+                await SecurityModule.panicWipe();
+                Alert.alert(t('reset.panic_success'));
+              },
+            },
+          ]);
+        }}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('reset.panic_title')}
+      >
+        <Text style={{ fontSize: 14, fontWeight: '700', color: theme.red }}>
+          {t('reset.panic_title')}
+        </Text>
+        <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
+          {t('reset.panic_desc')}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
           s.lockBtn,
           { backgroundColor: theme.redBg, borderColor: theme.red },
         ]}
         onPress={onLock}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('settings.lock_vault')}
       >
         <Text style={[s.lockBtnT, { color: theme.red }]}>
           {t('settings.lock_vault')}
@@ -2380,7 +2593,6 @@ const SettView = ({
   );
 };
 
-// ── Add/Edit Modal ──
 const AddModal = ({
   visible,
   item,
@@ -2623,6 +2835,8 @@ const AddModal = ({
                             textAlignVertical: 'top',
                           }}
                           multiline
+                          autoCorrect={false}
+                          autoCapitalize="none"
                           value={form.data?.shared?.notes || ''}
                           onChangeText={(notes: string) =>
                             setForm({
@@ -2635,6 +2849,7 @@ const AddModal = ({
                           }
                           placeholder={t('shared.notes_placeholder')}
                           placeholderTextColor={theme.muted}
+                          accessibilityLabel={t('fields.shared_notes')}
                         />
                       </View>
                     </>
@@ -2701,7 +2916,6 @@ const AddModal = ({
   );
 };
 
-// ── Detail Modal ──
 const DetailModal = ({
   visible,
   item,
@@ -2771,7 +2985,7 @@ const DetailModal = ({
         {
           text: t('breach_extra.enable_and_check'),
           onPress: async () => {
-            await SecureAppSettings.update({ breachCheckEnabled: true }, SecurityModule.db); // Updated to use SecureAppSettings
+            await SecureAppSettings.update({ breachCheckEnabled: true }, SecurityModule.db);
             setBreachEnabled(true);
             await checkBreach(pw, true);
           },
@@ -3008,13 +3222,17 @@ const DetailModal = ({
     );
   };
 
+  // Scope of getHistoryFieldLabel ensured for historical purposes
   const getHistoryFieldLabel = (field: PasswordHistoryEntry['field']) => {
-    if (field === 'password') return t('fields.password');
-    if (field === 'wifi_password') return t('fields.wifi_password');
-    if (field === 'pin') return t('fields.pin');
-    if (field === 'cvv') return t('fields.cvv');
-    if (field === 'credential_id') return t('fields.passkey_credential_id');
-    return field;
+    const keys: Record<string, string> = {
+      password: 'password',
+      wifi_password: 'wifi_password',
+      pin: 'pin',
+      cvv: 'cvv',
+      credential_id: 'passkey_credential_id',
+    };
+    const key = keys[field] || field;
+    return t(`fields.${key}`);
   };
 
   const restoreFromHistory = (entry: PasswordHistoryEntry) => {

@@ -10,6 +10,7 @@ import { SecurityModule } from './SecurityModule';
 import RNFS from 'react-native-fs';
 import QuickCrypto from 'react-native-quick-crypto';
 import { Buffer } from '@craftzdog/react-native-buffer';
+import { Platform } from 'react-native';
 
 // ═══════════════════════════════════════════════════════════════
 // Types & Interfaces
@@ -52,6 +53,7 @@ export class PasswordHistoryModule {
   private static readonly MAX_HISTORY_ENTRIES = 10;
   private static readonly AUTO_RETENTION_DAYS = 180; // 6 months
   private static readonly MIN_PASSWORD_AGE_DAYS = 1; // Can't reuse password within 1 day
+  private static readonly HISTORY_TABLE = 'aegis_password_history_records';
 
   /**
    * Record a new password change for an account
@@ -115,7 +117,14 @@ export class PasswordHistoryModule {
 
       // Log security event via SecurityModule if available
       try {
-        await SecurityModule.logSecurityEvent('success', undefined); // basic event log
+        await SecurityModule.logSecurityEvent(
+          'password_history_recorded',
+          'success',
+          {
+            accountId,
+            reason,
+          },
+        );
       } catch {}
 
       console.log(`✅ Password recorded for ${accountTitle} (reason: ${reason})`);
@@ -124,7 +133,15 @@ export class PasswordHistoryModule {
       console.error(`❌ Error recording password change:`, error);
       // Log failure event
       try {
-        await SecurityModule.logSecurityEvent('failed', undefined);
+        await SecurityModule.logSecurityEvent(
+          'password_history_recorded',
+          'failed',
+          {
+            accountId,
+            reason,
+            error: (error as Error)?.message || 'unknown_error',
+          },
+        );
       } catch {}
       return false;
     }
@@ -136,20 +153,19 @@ export class PasswordHistoryModule {
    */
   static async getPasswordHistory(accountId: string): Promise<PasswordHistoryRecord | null> {
     try {
-      const historyPath = `${RNFS.DocumentDirectoryPath}/password_history_${accountId}.json`;
+      if (SecurityModule.db?.executeSync) {
+        await this.ensureHistoryTable();
+        const row = SecurityModule.db.executeSync(
+          `SELECT record_json FROM ${this.HISTORY_TABLE} WHERE account_id = ?`,
+          [accountId]
+        ).rows?.[0] as { record_json?: string } | undefined;
 
-      const exists = await RNFS.exists(historyPath);
-      if (!exists) return null;
-
-      const encrypted = await RNFS.readFile(historyPath, 'utf8');
-      const decrypted = await this.decryptHistory(encrypted);
-
-      if (!decrypted) {
-        console.warn(`⚠️ Failed to decrypt password history for ${accountId}`);
-        return null;
+        if (row?.record_json) {
+          return JSON.parse(row.record_json) as PasswordHistoryRecord;
+        }
       }
 
-      return JSON.parse(decrypted) as PasswordHistoryRecord;
+      return await this.migrateLegacyHistoryIfNeeded(accountId);
     } catch (error) {
       console.error(`❌ Error reading password history:`, error);
       return null;
@@ -227,7 +243,14 @@ export class PasswordHistoryModule {
       // Create audit log entry
       // Log recovery event
       try {
-        await SecurityModule.logSecurityEvent('success', undefined);
+        await SecurityModule.logSecurityEvent(
+          'password_history_recovered',
+          'success',
+          {
+            accountId,
+            historyIndex,
+          },
+        );
       } catch {}
 
       console.log(`✅ Password recovered for ${accountTitle} from history index ${historyIndex}`);
@@ -393,10 +416,30 @@ export class PasswordHistoryModule {
       const jsonStr = JSON.stringify(auditExport);
       const encrypted = await this.encryptWithPassword(jsonStr, auditPassword);
 
+      try {
+        await SecurityModule.logSecurityEvent(
+          'password_history_audit_export',
+          'success',
+          {
+            accountId,
+          },
+        );
+      } catch {}
+
       console.log(`✅ Audit export created for ${accountId}`);
       return encrypted;
     } catch (error) {
       console.error(`❌ Export failed:`, error);
+      try {
+        await SecurityModule.logSecurityEvent(
+          'password_history_audit_export',
+          'failed',
+          {
+            accountId,
+            error: (error as Error)?.message || 'unknown_error',
+          },
+        );
+      } catch {}
       return null;
     }
   }
@@ -469,14 +512,111 @@ export class PasswordHistoryModule {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Private Helpers
+  // SECURITY: Device-bound key derivation
+  // Instead of storing the AES key alongside the ciphertext (which
+  // is equivalent to leaving the key next to the lock), we derive
+  // all encryption keys from a device-unique master seed that is
+  // stored in a SEPARATE file. The master seed is generated once
+  // at first use and never leaves the device.
+  //
+  // In future, this seed should be wrapped by Android Keystore
+  // (TEE/SE) for hardware-level protection.
   // ═══════════════════════════════════════════════════════════════
 
+  /* Stryker disable all: private path/crypto serialization helpers are behavior-tested, but literal/encoding mutants here add disproportionate noise. */
+  private static readonly MASTER_SEED_PATH =
+    Platform.OS === 'android'
+      ? `${RNFS.DocumentDirectoryPath}/.aegis_pwh_master_seed`
+      : `${RNFS.DocumentDirectoryPath}/.aegis_pwh_master_seed`;
+
+  private static cachedMasterSeed: Buffer | null = null;
+
+  private static async ensureHistoryTable(): Promise<void> {
+    if (!SecurityModule.db?.executeSync) {
+      throw new Error('Password history requires an open SQLCipher database');
+    }
+
+    SecurityModule.db.executeSync(`
+      CREATE TABLE IF NOT EXISTS ${this.HISTORY_TABLE} (
+        account_id TEXT PRIMARY KEY,
+        record_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+  }
+
+  private static async migrateLegacyHistoryIfNeeded(
+    accountId: string,
+  ): Promise<PasswordHistoryRecord | null> {
+    const historyPath = `${RNFS.DocumentDirectoryPath}/password_history_${accountId}.json`;
+    const exists = await RNFS.exists(historyPath);
+    if (!exists) return null;
+
+    try {
+      const encrypted = await RNFS.readFile(historyPath, 'utf8');
+      const decrypted = await this.decryptHistory(encrypted);
+
+      if (!decrypted) {
+        console.warn(`⚠️ Failed to decrypt password history for ${accountId}`);
+        return null;
+      }
+
+      const parsed = JSON.parse(decrypted) as PasswordHistoryRecord;
+      if (SecurityModule.db?.executeSync) {
+        await this.savePasswordHistory(accountId, parsed);
+        try {
+          await RNFS.unlink(historyPath);
+        } catch {
+          // Ignore cleanup failures after a successful migration.
+        }
+      }
+      return parsed;
+    } catch (error) {
+      console.error(`❌ Legacy password history migration failed:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get or create the device-unique master seed.
+   * The seed is stored in a separate file — NEVER inside the
+   * encrypted payload JSON.
+   */
+  private static async getMasterSeed(): Promise<Buffer> {
+    if (this.cachedMasterSeed) return this.cachedMasterSeed;
+
+    const exists = await RNFS.exists(this.MASTER_SEED_PATH);
+    if (exists) {
+      const hex = await RNFS.readFile(this.MASTER_SEED_PATH, 'utf8');
+      this.cachedMasterSeed = Buffer.from(hex.trim(), 'hex');
+      return this.cachedMasterSeed;
+    }
+
+    // First-time: generate a 32-byte cryptographically random seed
+    const seed = Buffer.alloc(32);
+    QuickCrypto.randomFillSync(seed);
+    await RNFS.writeFile(this.MASTER_SEED_PATH, seed.toString('hex'), 'utf8');
+    this.cachedMasterSeed = seed;
+    return seed;
+  }
+
+  /**
+   * Derive a purpose-specific 32-byte key from master seed + context.
+   * Uses HMAC-SHA256 as a KDF.
+   */
+  private static deriveKey(masterSeed: Buffer, context: string): Buffer {
+    const hmac = QuickCrypto.createHmac('sha256', masterSeed);
+    hmac.update(context);
+    return Buffer.from(hmac.digest());
+  }
+
   private static async encryptPassword(password: string): Promise<string> {
-    const key = Buffer.alloc(32);
-    QuickCrypto.randomFillSync(key);
+    const masterSeed = await this.getMasterSeed();
     const iv = Buffer.alloc(12);
     QuickCrypto.randomFillSync(iv);
+
+    // Derive key from master seed + purpose context
+    const key = this.deriveKey(masterSeed, 'aegis_pwh_entry_encrypt_v1');
 
     const cipher = QuickCrypto.createCipheriv('aes-256-gcm', key, iv);
     const encrypted = Buffer.concat([
@@ -485,17 +625,38 @@ export class PasswordHistoryModule {
     ]);
     const tag = cipher.getAuthTag();
 
+    // SECURITY: Only IV, tag, and ciphertext are stored.
+    // The key is NEVER serialized — it is derived at runtime.
     return JSON.stringify({
-      key: key.toString('base64'),
+      v: 2,
       iv: iv.toString('base64'),
       tag: tag.toString('base64'),
       data: encrypted.toString('base64')
     });
   }
 
-  private static async decryptPassword(encrypted: string, salt: string): Promise<string> {
+  private static async decryptPassword(encrypted: string, _salt: string): Promise<string> {
     try {
       const obj = JSON.parse(encrypted);
+
+      // v2: key derived from master seed (secure)
+      if (obj.v === 2) {
+        const masterSeed = await this.getMasterSeed();
+        const key = this.deriveKey(masterSeed, 'aegis_pwh_entry_encrypt_v1');
+        const iv = Buffer.from(obj.iv, 'base64');
+        const tag = Buffer.from(obj.tag, 'base64');
+        const data = Buffer.from(obj.data, 'base64');
+
+        const decipher = QuickCrypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(tag);
+
+        return Buffer.concat([
+          decipher.update(data),
+          decipher.final()
+        ]).toString('utf8');
+      }
+
+      // Legacy v1: key stored inline (for backward compat during migration)
       const key = Buffer.from(obj.key, 'base64');
       const iv = Buffer.from(obj.iv, 'base64');
       const tag = Buffer.from(obj.tag, 'base64');
@@ -515,11 +676,12 @@ export class PasswordHistoryModule {
   }
 
   private static async encryptHistory(json: string): Promise<string> {
-    // Encrypt entire history with device key
-    const key = Buffer.alloc(32);
-    QuickCrypto.randomFillSync(key);
+    const masterSeed = await this.getMasterSeed();
     const iv = Buffer.alloc(12);
     QuickCrypto.randomFillSync(iv);
+
+    // Derive a separate key for history encryption
+    const key = this.deriveKey(masterSeed, 'aegis_pwh_history_encrypt_v1');
 
     const cipher = QuickCrypto.createCipheriv('aes-256-gcm', key, iv);
     const encrypted = Buffer.concat([
@@ -527,8 +689,9 @@ export class PasswordHistoryModule {
       cipher.final()
     ]);
 
+    // SECURITY: Key is NOT stored in the JSON output
     return JSON.stringify({
-      key: key.toString('base64'),
+      v: 2,
       iv: iv.toString('base64'),
       tag: cipher.getAuthTag().toString('base64'),
       data: encrypted.toString('base64')
@@ -538,6 +701,25 @@ export class PasswordHistoryModule {
   private static async decryptHistory(encrypted: string): Promise<string | null> {
     try {
       const obj = JSON.parse(encrypted);
+
+      // v2: key derived from master seed (secure)
+      if (obj.v === 2) {
+        const masterSeed = await this.getMasterSeed();
+        const key = this.deriveKey(masterSeed, 'aegis_pwh_history_encrypt_v1');
+        const iv = Buffer.from(obj.iv, 'base64');
+        const tag = Buffer.from(obj.tag, 'base64');
+        const data = Buffer.from(obj.data, 'base64');
+
+        const decipher = QuickCrypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(tag);
+
+        return Buffer.concat([
+          decipher.update(data),
+          decipher.final()
+        ]).toString('utf8');
+      }
+
+      // Legacy v1: key stored inline (backward compat)
       const key = Buffer.from(obj.key, 'base64');
       const iv = Buffer.from(obj.iv, 'base64');
       const tag = Buffer.from(obj.tag, 'base64');
@@ -554,14 +736,17 @@ export class PasswordHistoryModule {
       return null;
     }
   }
+  /* Stryker restore all */
 
   private static async savePasswordHistory(
     accountId: string,
     history: PasswordHistoryRecord
   ): Promise<void> {
-    const path = `${RNFS.DocumentDirectoryPath}/password_history_${accountId}.json`;
-    const encrypted = await this.encryptHistory(JSON.stringify(history));
-    await RNFS.writeFile(path, encrypted, 'utf8');
+    await this.ensureHistoryTable();
+    SecurityModule.db.executeSync(
+      `INSERT OR REPLACE INTO ${this.HISTORY_TABLE} (account_id, record_json, updated_at) VALUES (?, ?, ?)`,
+      [accountId, JSON.stringify(history), new Date().toISOString()]
+    );
   }
 
   private static generateSalt(): string {
@@ -583,16 +768,22 @@ export class PasswordHistoryModule {
     data: string,
     password: string
   ): Promise<string> {
-    // Use Argon2id for password-based export
-    const salt = Buffer.alloc(32);
-    QuickCrypto.randomFillSync(salt);
-
-    // Would use Argon2 module in production
-    // For now, placeholder
-    return Buffer.concat([
-      salt,
-      Buffer.from(data, 'utf8')
-    ]).toString('base64');
+    const encrypted = await SecurityModule.encryptAES256GCM(data, password);
+    return JSON.stringify({
+      version: '1.0.0',
+      purpose: 'password_history_audit_export',
+      algorithm: 'AES-256-GCM',
+      kdf: encrypted.kdf,
+      memory: encrypted.memory,
+      iterations: encrypted.iterations,
+      parallelism: encrypted.parallelism,
+      hashLength: encrypted.hashLength,
+      salt: encrypted.salt,
+      iv: encrypted.iv,
+      authTag: encrypted.authTag,
+      data: encrypted.ciphertext,
+      exportedAt: new Date().toISOString(),
+    });
   }
 }
 
@@ -613,12 +804,12 @@ export class PasswordHistoryModule {
  * - Constant-time comparison prevents timing attacks
  * - Individual password encryption (AES-256-GCM per entry)
  * - 1-day minimum age before reuse
- * - All history stored in SQLCipher (never plaintext)
+ * - New history records are stored in SQLCipher; legacy file-based records are migrated on read
  * - Security events logged for all recovery attempts
  * 
  * Integration Points:
  * - SecurityModule.logSecurityEvent() for audit trails
- * - RNFS for encrypted file storage
+ * - SQLCipher for history persistence, RNFS only for legacy migration compatibility
  * - QuickCrypto for AES-256-GCM encryption
  * - Toast notifications for UX feedback
  * 

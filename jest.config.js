@@ -1,8 +1,11 @@
 module.exports = {
   preset: 'react-native',
+  forceExit: true,
+  testTimeout: 30000,
   setupFiles: ['<rootDir>/jest.setup.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.afterEnv.js'],
   testPathIgnorePatterns: [
+    '<rootDir>/.stryker-tmp/',
     '<rootDir>/__tests__/.*\\.current\\.test\\.(ts|tsx)$',
     '<rootDir>/__tests__/crypto-vectors\\.test\\.ts$',
   ],

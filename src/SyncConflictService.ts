@@ -15,6 +15,24 @@ export interface SyncConflictResult {
 }
 
 export class SyncConflictService {
+  private static buildSignature(item: VaultItem): string {
+    return JSON.stringify({
+      id: item.id ?? null,
+      title: item.title ?? '',
+      username: item.username ?? '',
+      password: item.password ?? '',
+      url: item.url ?? '',
+      notes: item.notes ?? '',
+      category: item.category ?? '',
+      favorite: item.favorite ?? 0,
+      data: item.data ?? '{}',
+      is_deleted: item.is_deleted ?? 0,
+      deleted_at: item.deleted_at ?? null,
+      updated_at: item.updated_at ?? null,
+      created_at: item.created_at ?? null,
+    });
+  }
+
   /**
    * Resolves conflicts between a local list and a remote list of items.
    * Merges based on 'updated_at' timestamp.
@@ -38,8 +56,8 @@ export class SyncConflictService {
         const rTime = new Date(r.updated_at || 0).getTime();
 
         // If contents differ, we log a conflict, but resolve automatically by time
-        const lSig = `${l.title}-${l.username}-${l.url}-${l.updated_at}`;
-        const rSig = `${r.title}-${r.username}-${r.url}-${r.updated_at}`;
+        const lSig = this.buildSignature(l);
+        const rSig = this.buildSignature(r);
 
         if (lSig !== rSig) {
             conflicts.push({ local: l, remote: r });

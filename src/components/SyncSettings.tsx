@@ -13,22 +13,40 @@ import { SecurityModule } from '../SecurityModule';
 export const SyncSettings = ({ theme }: any) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [checkingRelay, setCheckingRelay] = useState(false);
+  const [creatingRelay, setCreatingRelay] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const settings = SecureAppSettings.get();
   
   const [relayUrl, setRelayUrl] = useState(settings.relayUrl);
   const [sessionId, setSessionId] = useState(settings.syncSessionId);
+  const [relayCertificatePin, setRelayCertificatePin] = useState(
+    settings.relayCertificatePin || '',
+  );
+
+  const normalizePin = (value: string) => value.trim();
+
+  const isPinFormatValid = (value: string) =>
+    /^sha256\/[A-Za-z0-9+/=_-]+$/.test(value);
+
+  const createSessionId = () =>
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
   const onSave = async () => {
+    const normalizedRelayUrl = relayUrl.trim();
+    const normalizedSessionId = sessionId.trim();
+    const normalizedPin = normalizePin(relayCertificatePin);
     await SecureAppSettings.update({
-        relayUrl,
-        syncSessionId: sessionId
+      relayUrl: normalizedRelayUrl,
+      syncSessionId: normalizedSessionId,
+      relayCertificatePin: normalizedPin,
     }, SecurityModule.db);
   };
 
   const onSync = async () => {
     const normalizedRelayUrl = relayUrl.trim();
     const normalizedSessionId = sessionId.trim();
+    const normalizedPin = normalizePin(relayCertificatePin);
 
     if (!normalizedRelayUrl || !normalizedSessionId) {
       setStatus({ type: 'error', message: t('sync.err_missing') });
@@ -39,13 +57,28 @@ export const SyncSettings = ({ theme }: any) => {
       setStatus({ type: 'error', message: t('sync.err_url') });
       return;
     }
+    if (!normalizedPin) {
+      setStatus({ type: 'error', message: t('sync.err_pin_required') });
+      return;
+    }
+    if (!isPinFormatValid(normalizedPin)) {
+      setStatus({ type: 'error', message: t('sync.err_pin_format') });
+      return;
+    }
 
     setLoading(true);
     setStatus({ type: 'info', message: t('sync.status_syncing') });
+    const attemptAt = new Date().toISOString();
     try {
         await SecureAppSettings.update({
           relayUrl: normalizedRelayUrl,
           syncSessionId: normalizedSessionId,
+          relayCertificatePin: normalizedPin,
+          syncHealth: {
+            ...SecureAppSettings.get().syncHealth,
+            lastSyncAttemptAt: attemptAt,
+            lastSyncError: '',
+          },
         }, SecurityModule.db);
 
         const rootSecret = await SecurityModule.getActiveSyncRootSecret();
@@ -54,22 +87,159 @@ export const SyncSettings = ({ theme }: any) => {
         }
 
         const itemsBeforeSync = await SecurityModule.getAllItems();
-        await SyncManager.pullAndMerge(rootSecret, itemsBeforeSync, SecurityModule.db);
+        await SyncManager.pullAndMerge(rootSecret as any, itemsBeforeSync, SecurityModule.db);
 
         const latestItems = await SecurityModule.getAllItems();
-        const pushed = await SyncManager.push(rootSecret, latestItems, SecurityModule.db);
+        const pushed = await SyncManager.push(rootSecret as any, latestItems, SecurityModule.db);
         if (!pushed) {
           throw new Error(t('sync.err_failed'));
         }
 
         setStatus({ type: 'success', message: t('sync.success') });
+        await SecureAppSettings.update({
+          syncHealth: {
+            ...SecureAppSettings.get().syncHealth,
+            relayReachable: true,
+            relayCheckedAt: new Date().toISOString(),
+            lastSyncAttemptAt: attemptAt,
+            lastSyncSuccessAt: new Date().toISOString(),
+            lastSyncError: '',
+          },
+        }, SecurityModule.db);
         Alert.alert(t('sync.title'), t('sync.success'));
     } catch (e) {
         console.error('[SyncSettings] Sync failed:', e);
         const message = e instanceof Error ? e.message : t('sync.err_failed');
         setStatus({ type: 'error', message });
+        await SecureAppSettings.update({
+          syncHealth: {
+            ...SecureAppSettings.get().syncHealth,
+            relayReachable: false,
+            relayCheckedAt: new Date().toISOString(),
+            lastSyncAttemptAt: attemptAt,
+            lastSyncError: message,
+          },
+        }, SecurityModule.db);
     } finally {
         setLoading(false);
+    }
+  };
+
+  const onCreateRelayServer = async () => {
+    const normalizedRelayUrl = relayUrl.trim();
+    const normalizedPin = normalizePin(relayCertificatePin);
+    if (!/^https?:\/\//i.test(normalizedRelayUrl)) {
+      setStatus({ type: 'error', message: t('sync.err_url') });
+      return;
+    }
+    if (!normalizedPin) {
+      setStatus({ type: 'error', message: t('sync.err_pin_required') });
+      return;
+    }
+    if (!isPinFormatValid(normalizedPin)) {
+      setStatus({ type: 'error', message: t('sync.err_pin_format') });
+      return;
+    }
+
+    const generatedSessionId = createSessionId();
+    setCreatingRelay(true);
+    setStatus({ type: 'info', message: t('sync.status_creating_server') });
+    try {
+      const res = await fetch(`${normalizedRelayUrl}/v1/sync/session/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: generatedSessionId }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`relay_create_failed_${res.status}`);
+      }
+
+      const payload = (await res.json()) as { sessionId?: string };
+      const createdSessionId = (payload?.sessionId || generatedSessionId).trim();
+      setSessionId(createdSessionId);
+
+      await SecureAppSettings.update(
+        {
+          relayUrl: normalizedRelayUrl,
+          syncSessionId: createdSessionId,
+          relayCertificatePin: normalizedPin,
+          syncLastSequence: 0,
+        },
+        SecurityModule.db,
+      );
+
+      setStatus({
+        type: 'success',
+        message: t('sync.server_create_success', { sessionId: createdSessionId }),
+      });
+    } catch {
+      try {
+        const healthRes = await fetch(`${normalizedRelayUrl}/health`);
+        if (!healthRes.ok) {
+          throw new Error(t('sync.self_hosted_health_fail'));
+        }
+
+        setSessionId(generatedSessionId);
+        await SecureAppSettings.update(
+          {
+            relayUrl: normalizedRelayUrl,
+            syncSessionId: generatedSessionId,
+            relayCertificatePin: normalizedPin,
+            syncLastSequence: 0,
+          },
+          SecurityModule.db,
+        );
+
+        setStatus({
+          type: 'info',
+          message: t('sync.server_create_fallback', { sessionId: generatedSessionId }),
+        });
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : t('sync.server_create_failed');
+        setStatus({ type: 'error', message });
+      }
+    } finally {
+      setCreatingRelay(false);
+    }
+  };
+
+  const onCheckRelay = async () => {
+    const normalizedRelayUrl = relayUrl.trim();
+    if (!/^https?:\/\//i.test(normalizedRelayUrl)) {
+      setStatus({ type: 'error', message: t('sync.err_url') });
+      return;
+    }
+    setCheckingRelay(true);
+    try {
+      const res = await fetch(`${normalizedRelayUrl}/health`);
+      if (!res.ok) {
+        throw new Error(`${t('sync.self_hosted_health_fail')} (${res.status})`);
+      }
+      await SecureAppSettings.update({
+        syncHealth: {
+          ...SecureAppSettings.get().syncHealth,
+          relayReachable: true,
+          relayCheckedAt: new Date().toISOString(),
+          lastSyncError: '',
+        },
+      }, SecurityModule.db);
+      setStatus({ type: 'success', message: t('sync.self_hosted_health_ok') });
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : t('sync.self_hosted_health_fail');
+      await SecureAppSettings.update({
+        syncHealth: {
+          ...SecureAppSettings.get().syncHealth,
+          relayReachable: false,
+          relayCheckedAt: new Date().toISOString(),
+          lastSyncError: message,
+        },
+      }, SecurityModule.db);
+      setStatus({ type: 'error', message });
+    } finally {
+      setCheckingRelay(false);
     }
   };
 
@@ -80,6 +250,9 @@ export const SyncSettings = ({ theme }: any) => {
       <View style={[styles.helpCard, { backgroundColor: theme.inputBg, borderColor: theme.cardBorder }]}>
         <Text style={[styles.helpTitle, { color: theme.navy }]}>{t('sync.how_title')}</Text>
         <Text style={[styles.helpText, { color: theme.muted }]}>{t('sync.how_body')}</Text>
+        <Text style={[styles.helpText, styles.helpTextSecondary, { color: theme.muted }]}>
+          {t('sync.self_hosted_hint')}
+        </Text>
       </View>
       
       <Text style={[styles.label, { color: theme.navy }]}>{t('sync.relay_url')}</Text>
@@ -91,6 +264,20 @@ export const SyncSettings = ({ theme }: any) => {
         placeholder="https://..."
         placeholderTextColor={theme.muted}
         autoCapitalize="none"
+        accessibilityLabel={t('sync.relay_url')}
+      />
+
+      <Text style={[styles.label, { color: theme.navy }]}>{t('sync.certificate_pin')}</Text>
+      <TextInput
+        style={[styles.input, { backgroundColor: theme.inputBg, color: theme.navy, borderColor: theme.cardBorder }]}
+        value={relayCertificatePin}
+        onChangeText={setRelayCertificatePin}
+        onBlur={onSave}
+        placeholder="sha256/..."
+        placeholderTextColor={theme.muted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        accessibilityLabel={t('sync.certificate_pin')}
       />
 
       <Text style={[styles.label, { color: theme.navy }]}>{t('sync.session_id')}</Text>
@@ -102,6 +289,7 @@ export const SyncSettings = ({ theme }: any) => {
         placeholder="UUID..."
         placeholderTextColor={theme.muted}
         autoCapitalize="none"
+        accessibilityLabel={t('sync.session_id')}
       />
 
       {settings.syncLastSequence > 0 && (
@@ -132,11 +320,53 @@ export const SyncSettings = ({ theme }: any) => {
          style={[styles.btn, { backgroundColor: theme.sage }]}
          onPress={onSync}
          disabled={loading}
+         accessibilityRole="button"
+         accessibilityLabel={t('sync.btn_sync')}
       >
         {loading ? (
             <ActivityIndicator color={theme.white || '#fff'} />
         ) : (
             <Text style={[styles.btnText, { color: theme.white || '#fff' }]}>{t('sync.btn_sync')}</Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.btn,
+          styles.secondaryBtn,
+          { backgroundColor: theme.inputBg, borderColor: theme.cardBorder },
+        ]}
+        onPress={onCreateRelayServer}
+        disabled={creatingRelay}
+        accessibilityRole="button"
+        accessibilityLabel={t('sync.create_server')}
+      >
+        {creatingRelay ? (
+          <ActivityIndicator color={theme.navy} />
+        ) : (
+          <Text style={[styles.btnText, { color: theme.navy }]}>
+            {t('sync.create_server')}
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.btn,
+          styles.secondaryBtn,
+          { backgroundColor: theme.inputBg, borderColor: theme.cardBorder },
+        ]}
+        onPress={onCheckRelay}
+        disabled={checkingRelay}
+        accessibilityRole="button"
+        accessibilityLabel={t('sync.self_hosted_health_check')}
+      >
+        {checkingRelay ? (
+          <ActivityIndicator color={theme.navy} />
+        ) : (
+          <Text style={[styles.btnText, { color: theme.navy }]}>
+            {t('sync.self_hosted_health_check')}
+          </Text>
         )}
       </TouchableOpacity>
     </View>
@@ -175,6 +405,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  helpTextSecondary: {
+    marginTop: 8,
+  },
   label: {
     fontSize: 12,
     fontWeight: '600',
@@ -200,6 +433,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
+  },
+  secondaryBtn: {
+    borderWidth: 1,
+    marginTop: 10,
   },
   btnText: {
     color: '#fff',

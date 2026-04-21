@@ -24,6 +24,7 @@ function timingSafeEqualCompat(a: Buffer | Uint8Array, b: Buffer | Uint8Array): 
   // XOR-based constant-time comparison (works on all RN crypto libs)
   let diff = 0;
   for (let i = 0; i < ua.length; i++) {
+    // eslint-disable-next-line no-bitwise
     diff |= ua[i] ^ ub[i];
   }
   return diff === 0;
@@ -40,23 +41,39 @@ function fromBase64(value: string): Buffer {
 export class SyncCryptoService {
   /**
    * Derive encryption and authentication keys from a root secret using HKDF.
+   * SECURITY: The salt parameter should be per-installation unique.
+   * The rootSecret itself is already derived with a per-installation salt
+   * in SecurityModule.getSyncRootSecret(), providing defense-in-depth.
+   *
+   * @param rootSecret - The per-installation root secret from Argon2id
+   * @param installSalt - Optional per-installation salt; if omitted, a fixed
+   *                      domain separator is used (safe because rootSecret
+   *                      is already installation-unique).
    */
-  static deriveSubKeys(rootSecret: Buffer): { encryptionKey: Buffer, authKey: Buffer } {
-    const salt = Buffer.from('aegis_sync_v1_hkdf');
+  static deriveSubKeys(
+    rootSecret: Buffer,
+    installSalt?: Buffer,
+  ): { encryptionKey: Buffer, authKey: Buffer } {
+    // Use provided per-installation salt, or fall back to a domain separator.
+    // Because rootSecret is already per-installation unique (via device salt
+    // in Argon2id), this fixed fallback is safe against cross-user collisions.
+    const salt = installSalt ?? Buffer.from('aegis_sync_v2_hkdf');
     
-    // Manual HKDF-Extract and Expand if hkdfSync is missing
-    const hmacExtract = crypto.createHmac('sha256', salt);
-    hmacExtract.update(rootSecret);
-    const prk = hmacExtract.digest();
-
-    const derive = (info: string) => {
-        const hmacExpand = crypto.createHmac('sha256', prk);
-        hmacExpand.update(Buffer.concat([Buffer.from(info), Buffer.from([1])]));
-        return hmacExpand.digest().subarray(0, 32);
-    };
-
-    const encryptionKey = derive('encryption');
-    const authKey = derive('authentication');
+    const hkdfSync = (crypto as any).hkdfSync;
+    if (typeof hkdfSync !== 'function') {
+      throw new Error('[SyncCrypto] hkdfSync is unavailable on this build.');
+    }
+    const okm = Buffer.from(
+      hkdfSync(
+        'sha256',
+        rootSecret,
+        salt,
+        Buffer.from('aegis_sync_subkeys_v1'),
+        64,
+      ) as ArrayBuffer,
+    );
+    const encryptionKey = okm.subarray(0, 32);
+    const authKey = okm.subarray(32, 64);
 
     return { encryptionKey: Buffer.from(encryptionKey), authKey: Buffer.from(authKey) };
   }
@@ -134,7 +151,8 @@ export class SyncCryptoService {
 
       const parsed = JSON.parse(decrypted) as { data: T; nonce: string };
       if (pkg.nonce && parsed.nonce !== pkg.nonce) {
-        console.warn('[SyncCrypto] Nonce mismatch');
+        console.error('[SyncCrypto] Nonce mismatch');
+        return null;
       }
 
       return parsed.data;

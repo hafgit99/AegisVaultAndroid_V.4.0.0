@@ -4,7 +4,7 @@ Date: 2026-03-15
 
 ## Purpose
 
-This matrix standardizes backup, recovery, passkey, autofill, and crash-monitoring validation across a broader Android device set before wider rollout.
+This matrix standardizes backup, recovery, passkey, autofill, crash-monitoring, sharing, sync-confidence, and pairing validation across a broader Android device set before wider rollout.
 
 ## Coverage Goals
 
@@ -58,6 +58,7 @@ This matrix standardizes backup, recovery, passkey, autofill, and crash-monitori
 3. Reopen entry and confirm stored credential metadata
 4. Attempt passkey flow without prerequisites
 5. Cancel native passkey sheet and confirm graceful recovery
+6. Run backend-verified passkey create/auth on staging
 
 ### Autofill
 
@@ -65,6 +66,28 @@ This matrix standardizes backup, recovery, passkey, autofill, and crash-monitori
 2. Fill login in browser
 3. Fill login in third-party app
 4. Confirm locked vault blocks fill
+
+### Sharing Lifecycle
+
+1. Create shared space
+2. Add pending member
+3. Accept invite
+4. Switch role and emergency-only mode
+5. Revoke invite or remove member
+
+### Pairing Bridge
+
+1. Create browser pairing code
+2. Confirm pairing as paired
+3. Revoke pairing
+4. Repeat with desktop pairing
+
+### Validation Workspace / Sync Confidence
+
+1. Save field-validation record from passkey flow
+2. Confirm matrix row status updates
+3. Run relay health check
+4. Confirm sync confidence card reflects latest relay/sync state
 
 ### Crash Monitoring
 
@@ -86,6 +109,7 @@ This matrix standardizes backup, recovery, passkey, autofill, and crash-monitori
 - No fatal crash in backup, recovery, unlock, or passkey flows
 - No data loss report during import, restore, or recovery
 - Crash monitoring writes and clears reports correctly
+- New roadmap surfaces (passkey backend, validation workspace, sync confidence, sharing lifecycle, pairing workspace) show correct state on at least all P0 devices
 
 ## Workspace
 

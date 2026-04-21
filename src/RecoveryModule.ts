@@ -21,6 +21,9 @@ export interface RecoverySession {
   createdAt: string;        // ISO8601
   expiresAt: string;        // ISO8601 (15 minutes from creation)
   verificationCode: string; // 6-digit code (not exposed to client after creation)
+  verificationCodeHash?: string;
+  failedAttempts?: number;
+  lockedUntil?: string;
   recoveryToken?: string;   // One-time token (generated after code verify)
   vaultBackupPath?: string; // Path to encrypted vault backup
   status: 'initiated' | 'code_verified' | 'completed' | 'expired';
@@ -35,6 +38,20 @@ export interface RecoveryFlowState {
   backupRestored: boolean;
 }
 
+interface RecoverySessionEnvelope {
+  v: 2;
+  enc: 'aes-256-gcm';
+  kdf: 'Argon2id' | 'PBKDF2-SHA256';
+  salt: string;
+  iv: string;
+  authTag: string;
+  ciphertext: string;
+  iterations: number;
+  memory?: number;
+  parallelism?: number;
+  hashLength: number;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
@@ -44,6 +61,9 @@ const RECOVERY_BACKUP_DIR = `${RNFS.DocumentDirectoryPath}/recovery_backups`;
 const CODE_EXPIRATION_MS = 15 * 60 * 1000; // 15 minutes
 const TOKEN_EXPIRATION_MS = 30 * 60 * 1000; // 30 minutes
 const VERIFICATION_CODE_LENGTH = 6;
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = [1, 5, 15];
+const RECOVERY_SESSION_FORMAT_VERSION = 2;
 const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
 
 const secureRandomBytes = (size: number): Uint8Array => {
@@ -93,6 +113,7 @@ export class RecoveryModule {
       // Generate recovery session
       const sessionId = this.generateSecureRandomString(32);
       const verificationCode = this.generateVerificationCode(VERIFICATION_CODE_LENGTH);
+      const verificationCodeHash = this.hashVerificationCode(verificationCode);
       const now = new Date();
       const expiresAt = new Date(now.getTime() + CODE_EXPIRATION_MS);
 
@@ -100,18 +121,16 @@ export class RecoveryModule {
         sessionId,
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
-        verificationCode, // Will be cleared after sending
+        verificationCode: '',
+        verificationCodeHash,
+        failedAttempts: 0,
+        lockedUntil: '',
         status: 'initiated',
         userEmail,
       };
 
       // Save session to secure storage
-      const sessionPath = `${RECOVERY_SESSION_DIR}/${sessionId}.json`;
-      await RNFS.writeFile(
-        sessionPath,
-        JSON.stringify(session),
-        'utf8'
-      );
+      await this.saveRecoverySession(session);
 
       // Never log recovery codes or tokens in app logs.
       debugLog('[Recovery] Verification code generated for recovery session');
@@ -163,10 +182,37 @@ export class RecoveryModule {
         return null;
       }
 
-      // Verify code using constant-time comparison (prevents timing attacks)
-      if (!this.constantTimeCompare(codeEntered, session.verificationCode)) {
+      const lockedUntil = session.lockedUntil ? new Date(session.lockedUntil) : null;
+      if (lockedUntil && now < lockedUntil) {
         await this.logRecoveryEvent('verify_code_failed', {
-          reason: 'wrong_code'
+          reason: 'too_many_attempts',
+          sessionId,
+        });
+        return null;
+      }
+
+      const enteredHash = this.hashVerificationCode(codeEntered);
+      const expectedHash = session.verificationCodeHash || '';
+      const legacyCode = session.verificationCode || '';
+      const isValidCode = expectedHash
+        ? this.constantTimeCompare(enteredHash, expectedHash)
+        : this.constantTimeCompare(codeEntered, legacyCode);
+
+      // Verify code using constant-time comparison (prevents timing attacks)
+      if (!isValidCode) {
+        session.failedAttempts = (session.failedAttempts || 0) + 1;
+        if (session.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+          const stage = Math.min(
+            session.failedAttempts - MAX_FAILED_ATTEMPTS,
+            LOCKOUT_MINUTES.length - 1,
+          );
+          const lockMs = LOCKOUT_MINUTES[stage] * 60 * 1000;
+          session.lockedUntil = new Date(now.getTime() + lockMs).toISOString();
+        }
+        await this.saveRecoverySession(session);
+        await this.logRecoveryEvent('verify_code_failed', {
+          reason: 'wrong_code',
+          attempts: session.failedAttempts,
         });
         return null;
       }
@@ -179,6 +225,9 @@ export class RecoveryModule {
 
       // Clear verification code from memory
       session.verificationCode = '';
+      session.verificationCodeHash = '';
+      session.failedAttempts = 0;
+      session.lockedUntil = '';
 
       // Save updated session
       await this.saveRecoverySession(session);
@@ -204,7 +253,10 @@ export class RecoveryModule {
     try {
       // Load and validate session
       const session = await this.getRecoverySession(sessionId);
-      if (!session || session.recoveryToken !== recoveryToken) {
+      // SECURITY: Constant-time comparison prevents timing attacks
+      // on recovery tokens (attacker cannot brute-force by measuring
+      // response time differences).
+      if (!session || !session.recoveryToken || !this.constantTimeCompare(recoveryToken, session.recoveryToken)) {
         await this.logRecoveryEvent('restore_failed', {
           reason: 'invalid_token'
         });
@@ -363,7 +415,9 @@ export class RecoveryModule {
       const storedHash = await RNFS.readFile(hashPath, 'utf8');
       const currentHash = await this.secureHashFile(backupPath);
 
-      return storedHash === currentHash;
+      // SECURITY: Constant-time comparison prevents timing-based
+      // manipulation of backup integrity verification.
+      return this.constantTimeCompare(storedHash, currentHash);
     } catch (e) {
       console.error('[Recovery] verifyBackupIntegrity error:', e);
       return false;
@@ -384,8 +438,8 @@ export class RecoveryModule {
       
       if (!exists) return null;
 
-      const json = await RNFS.readFile(sessionPath, 'utf8');
-      return JSON.parse(json);
+      const raw = await RNFS.readFile(sessionPath, 'utf8');
+      return this.deserializeRecoverySession(raw);
     } catch (e) {
       console.error('[Recovery] getRecoverySession error:', e);
       return null;
@@ -398,13 +452,71 @@ export class RecoveryModule {
   private static async saveRecoverySession(session: RecoverySession): Promise<void> {
     try {
       const sessionPath = `${RECOVERY_SESSION_DIR}/${session.sessionId}.json`;
+      const serialized = await this.serializeRecoverySession(session);
       await RNFS.writeFile(
         sessionPath,
-        JSON.stringify(session),
+        serialized,
         'utf8'
       );
     } catch (e) {
       console.error('[Recovery] saveRecoverySession error:', e);
+    }
+  }
+
+  private static async serializeRecoverySession(
+    session: RecoverySession,
+  ): Promise<string> {
+    const secret = await SecurityModule.getRecoverySessionSecret();
+    const encrypted = await SecurityModule.encryptAES256GCM(
+      JSON.stringify(session),
+      secret,
+    );
+    const envelope: RecoverySessionEnvelope = {
+      v: RECOVERY_SESSION_FORMAT_VERSION,
+      enc: 'aes-256-gcm',
+      kdf: encrypted.kdf,
+      salt: encrypted.salt,
+      iv: encrypted.iv,
+      authTag: encrypted.authTag,
+      ciphertext: encrypted.ciphertext,
+      iterations: encrypted.iterations,
+      memory: encrypted.memory,
+      parallelism: encrypted.parallelism,
+      hashLength: encrypted.hashLength,
+    };
+    return JSON.stringify(envelope);
+  }
+
+  private static async deserializeRecoverySession(
+    raw: string,
+  ): Promise<RecoverySession | null> {
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed?.v === RECOVERY_SESSION_FORMAT_VERSION &&
+        parsed?.enc === 'aes-256-gcm' &&
+        typeof parsed?.ciphertext === 'string'
+      ) {
+        const secret = await SecurityModule.getRecoverySessionSecret();
+        const decrypted = await SecurityModule.decryptAES256GCM(
+          parsed.ciphertext,
+          secret,
+          parsed.salt,
+          parsed.iv,
+          parsed.authTag,
+          {
+            kdf: parsed.kdf,
+            iterations: parsed.iterations,
+            memory: parsed.memory,
+            parallelism: parsed.parallelism,
+            hashLength: parsed.hashLength,
+          },
+        );
+        return JSON.parse(decrypted) as RecoverySession;
+      }
+      return parsed as RecoverySession;
+    } catch {
+      return null;
     }
   }
 
@@ -419,6 +531,10 @@ export class RecoveryModule {
       code += (bytes[i] % 10).toString();
     }
     return code;
+  }
+
+  private static hashVerificationCode(code: string): string {
+    return secureCreateHash('sha256').update(code, 'utf8').digest('hex');
   }
 
   /**
@@ -499,7 +615,8 @@ export class RecoveryModule {
 
         try {
           const content = await RNFS.readFile(file.path, 'utf8');
-          const session: RecoverySession = JSON.parse(content);
+          const session = await this.deserializeRecoverySession(content);
+          if (!session) continue;
           const expiresAt = new Date(session.expiresAt);
 
           // Delete if expired (add 1 hour buffer)

@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { SecurityModule } from '../SecurityModule';
 import { IntegrityModule } from '../IntegrityModule';
+import { SecureAppSettings } from '../SecureAppSettings';
 
 interface DeviceTrustState {
   deviceTrustPolicy: 'strict' | 'moderate' | 'permissive';
@@ -196,12 +197,19 @@ export const DeviceTrustSettings: React.FC<DeviceTrustSettingsProps> = ({
   const handleSaveSettings = async () => {
     try {
       setSaving(true);
-      // Settings persistence would be implemented when SecurityModule API is available
-      // For now, just call the onSave callback
-      onSave?.(settings);
       
+      // PERSISTENCE: Save to SecureAppSettings (SQLCipher) via SecureAppSettings module
+      await SecureAppSettings.update({
+        deviceTrustPolicy: settings.deviceTrustPolicy,
+        rootDetectionEnabled: settings.rootDetectionEnabled,
+        rootBlocksVault: settings.rootBlocksVault,
+        degradedDeviceAction: settings.degradedDeviceAction,
+      }, SecurityModule.db);
+
+      onSave?.(settings);
       Alert.alert(t.saved);
     } catch (error) {
+      console.error('[DeviceTrust] Save failed:', error);
       Alert.alert(t.error, t.errorMessage);
     } finally {
       setSaving(false);

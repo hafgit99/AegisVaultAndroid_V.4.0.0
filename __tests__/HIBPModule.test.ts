@@ -66,6 +66,71 @@ describe('HIBPModule', () => {
     expect(migratedPayload).not.toContain('5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8');
   });
 
+  test('returns safe immediately for empty passwords even when enabled', async () => {
+    const result = await HIBPModule.checkPassword('', { enabled: true });
+
+    expect(result).toEqual({
+      status: 'safe',
+      count: 0,
+      checkedAt: null,
+      cached: false,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('returns unavailable when API responds with non-2xx status', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => '',
+    });
+
+    const result = await HIBPModule.checkPassword('password', { enabled: true });
+
+    expect(result.status).toBe('unavailable');
+    expect(result.cached).toBe(false);
+  });
+
+  test('forceRefresh bypasses valid cache and performs a fresh range query', async () => {
+    (RNFS.exists as jest.Mock).mockImplementation(async (path: string) =>
+      path.includes('aegis_breach_cache.json'),
+    );
+    (RNFS.readFile as jest.Mock).mockResolvedValue(
+      JSON.stringify({
+        '5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8': {
+          count: 12,
+          checkedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      text: async () => '',
+    });
+
+    const result = await HIBPModule.checkPassword('password', {
+      enabled: true,
+      forceRefresh: true,
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(result.cached).toBe(false);
+    expect(result.status).toBe('safe');
+  });
+
+  test('falls back to stale cache miss as unavailable when network throws', async () => {
+    (global.fetch as jest.Mock).mockRejectedValue(new Error('network down'));
+
+    const result = await HIBPModule.checkPassword('password', { enabled: true });
+
+    expect(result).toEqual({
+      status: 'unavailable',
+      count: 0,
+      checkedAt: null,
+      cached: false,
+    });
+  });
+
   test('clearCache removes both cache and device secret files when present', async () => {
     (RNFS.exists as jest.Mock).mockResolvedValue(true);
 

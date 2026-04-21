@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "jest",
+  "concurrency": "50%",
+  "checkers": [],
+  "jest": {
+    "projectType": "custom",
+    "configFile": "jest.mutation.config.js",
+    "enableFindRelatedTests": true
+  },
+  "mutate": [
+    "src/DeltaSyncModule.ts",
+    "src/EmergencyAccessModule.ts"
+  ],
+  "incremental": false,
+  "ignoreStatic": true,
+  "reporters": [
+    "clear-text",
+    "json"
+  ],
+  "coverageAnalysis": "perTest",
+  "allowConsoleColors": true,
+  "timeoutMS": 60000,
+  "tempDirName": ".stryker-tmp"
+}

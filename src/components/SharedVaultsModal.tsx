@@ -52,6 +52,11 @@ const STATUS_OPTIONS = [
   { id: 'emergency_only', label: 'Emergency' },
 ];
 
+const createInviteCode = () =>
+  Math.random().toString(36).slice(2, 6).toUpperCase() +
+  '-' +
+  Math.random().toString(36).slice(2, 6).toUpperCase();
+
 export const SharedVaultsModal = ({
   visible,
   onClose,
@@ -120,12 +125,18 @@ export const SharedVaultsModal = ({
     if (!(draftMember.name || '').trim() && !(draftMember.email || '').trim()) {
       return;
     }
+    const now = new Date().toISOString();
+    const nextStatus =
+      (draftMember.status || 'active') as SharedVaultMember['status'];
     const member: SharedVaultMember = {
       id: draftMember.id || `member_${Date.now()}`,
       name: (draftMember.name || '').trim(),
       email: (draftMember.email || '').trim(),
       role: (draftMember.role || 'viewer') as SharedVaultMember['role'],
-      status: (draftMember.status || 'active') as SharedVaultMember['status'],
+      status: nextStatus,
+      inviteCode: nextStatus === 'pending' ? createInviteCode() : undefined,
+      invitedAt: nextStatus === 'pending' ? now : undefined,
+      acceptedAt: nextStatus === 'active' ? now : undefined,
       deviceLabel: (draftMember.deviceLabel || '').trim() || undefined,
       notes: (draftMember.notes || '').trim() || undefined,
       lastVerifiedAt: new Date().toISOString(),
@@ -135,6 +146,52 @@ export const SharedVaultsModal = ({
       members: [...(draftSpace.members || []), member],
     });
     setDraftMember({ role: draftSpace.defaultRole || 'viewer', status: 'active' });
+  };
+
+  const updateDraftMember = (
+    memberId: string,
+    updater: (member: SharedVaultMember) => SharedVaultMember,
+  ) => {
+    setDraftSpace({
+      ...draftSpace,
+      members: (draftSpace.members || []).map(member =>
+        member.id === memberId ? updater(member) : member,
+      ),
+    });
+  };
+
+  const acceptInvite = (memberId: string) => {
+    const now = new Date().toISOString();
+    updateDraftMember(memberId, member => ({
+      ...member,
+      status: 'active',
+      acceptedAt: now,
+      lastVerifiedAt: now,
+    }));
+  };
+
+  const revokeInvite = (memberId: string) => {
+    removeMember(memberId);
+  };
+
+  const setMembershipRole = (
+    memberId: string,
+    role: SharedVaultMember['role'],
+  ) => {
+    updateDraftMember(memberId, member => ({ ...member, role }));
+  };
+
+  const setMembershipStatus = (
+    memberId: string,
+    status: SharedVaultMember['status'],
+  ) => {
+    const now = new Date().toISOString();
+    updateDraftMember(memberId, member => ({
+      ...member,
+      status,
+      acceptedAt: status === 'active' ? member.acceptedAt || now : member.acceptedAt,
+      lastVerifiedAt: status === 'active' ? now : member.lastVerifiedAt,
+    }));
   };
 
   const removeMember = (memberId: string) => {
@@ -154,6 +211,17 @@ export const SharedVaultsModal = ({
     await load();
     await onUpdated?.();
     beginEdit(saved);
+  };
+
+  const membershipSummary = {
+    total: (draftSpace.members || []).length,
+    active: (draftSpace.members || []).filter(member => member.status === 'active')
+      .length,
+    pending: (draftSpace.members || []).filter(member => member.status === 'pending')
+      .length,
+    emergency: (draftSpace.members || []).filter(
+      member => member.status === 'emergency_only',
+    ).length,
   };
 
   const deleteSpace = async (spaceId: string) => {
@@ -408,6 +476,54 @@ export const SharedVaultsModal = ({
                 {t('shared.members')}
               </Text>
 
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  marginBottom: 12,
+                }}
+              >
+                {[
+                  { key: 'total', value: membershipSummary.total },
+                  { key: 'active', value: membershipSummary.active },
+                  { key: 'pending', value: membershipSummary.pending },
+                  { key: 'emergency', value: membershipSummary.emergency },
+                ].map(metric => (
+                  <View
+                    key={metric.key}
+                    style={{
+                      minWidth: 88,
+                      backgroundColor: theme.inputBg,
+                      borderWidth: 1,
+                      borderColor: theme.cardBorder,
+                      borderRadius: 12,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.muted,
+                        fontSize: 11,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {t(`shared.lifecycle.metrics.${metric.key}`)}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.navy,
+                        fontSize: 16,
+                        fontWeight: '800',
+                      }}
+                    >
+                      {metric.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
               {(draftSpace.members || []).map(member => (
                 <View
                   key={member.id}
@@ -441,12 +557,95 @@ export const SharedVaultsModal = ({
                         {t(`shared.roles.${member.role}`)} -{' '}
                         {t(`shared.status.${member.status}`)}
                       </Text>
+                      {member.inviteCode ? (
+                        <Text style={{ color: theme.muted, fontSize: 11, marginTop: 4 }}>
+                          {t('shared.invite_code', { code: member.inviteCode })}
+                        </Text>
+                      ) : null}
+                      {member.invitedAt ? (
+                        <Text style={{ color: theme.muted, fontSize: 11, marginTop: 2 }}>
+                          {t('shared.invited_at', {
+                            date: new Date(member.invitedAt).toLocaleDateString(),
+                          })}
+                        </Text>
+                      ) : null}
+                      {member.acceptedAt ? (
+                        <Text style={{ color: theme.muted, fontSize: 11, marginTop: 2 }}>
+                          {t('shared.accepted_at', {
+                            date: new Date(member.acceptedAt).toLocaleDateString(),
+                          })}
+                        </Text>
+                      ) : null}
                     </View>
                     <TouchableOpacity onPress={() => removeMember(member.id)}>
                       <Text style={{ color: theme.red || '#dc2626', fontWeight: '700' }}>
                         {t('shared.remove')}
                       </Text>
                     </TouchableOpacity>
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      marginTop: 10,
+                    }}
+                  >
+                    {member.status === 'pending' ? (
+                      <>
+                        <TouchableOpacity onPress={() => acceptInvite(member.id)}>
+                          <Text style={{ color: theme.sage, fontWeight: '700', fontSize: 12 }}>
+                            {t('shared.lifecycle.accept_invite')}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => revokeInvite(member.id)}>
+                          <Text
+                            style={{
+                              color: theme.red || '#dc2626',
+                              fontWeight: '700',
+                              fontSize: 12,
+                            }}
+                          >
+                            {t('shared.lifecycle.revoke_invite')}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                    {member.status !== 'pending' ? (
+                      <>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setMembershipRole(
+                              member.id,
+                              member.role === 'viewer' ? 'editor' : 'viewer',
+                            )
+                          }
+                        >
+                          <Text style={{ color: theme.sage, fontWeight: '700', fontSize: 12 }}>
+                            {member.role === 'viewer'
+                              ? t('shared.lifecycle.promote_editor')
+                              : t('shared.lifecycle.set_viewer')}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setMembershipStatus(
+                              member.id,
+                              member.status === 'emergency_only'
+                                ? 'active'
+                                : 'emergency_only',
+                            )
+                          }
+                        >
+                          <Text style={{ color: theme.navy, fontWeight: '700', fontSize: 12 }}>
+                            {member.status === 'emergency_only'
+                              ? t('shared.lifecycle.restore_active')
+                              : t('shared.lifecycle.emergency_mode')}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
                   </View>
                 </View>
               ))}

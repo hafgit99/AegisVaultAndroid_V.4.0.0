@@ -13,6 +13,8 @@ jest.mock('react-native-quick-crypto', () => ({
     mockCrypto.pbkdf2(password, salt, iterations, keyLen, digest, callback),
   pbkdf2Sync: (password, salt, iterations, keyLen, digest) =>
     mockCrypto.pbkdf2Sync(password, salt, iterations, keyLen, digest),
+  hkdfSync: (digest, ikm, salt, info, keylen) =>
+    mockCrypto.hkdfSync(digest, ikm, salt, info, keylen),
 }));
 
 jest.mock('react-native-argon2', () =>
