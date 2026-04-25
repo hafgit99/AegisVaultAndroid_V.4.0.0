@@ -700,8 +700,10 @@
         "self_hosted_health_check": "Relay Sağlığını Kontrol Et",
         "self_hosted_health_ok": "Relay sunucusuna erişim başarılı, servis sağlıklı.",
         "self_hosted_health_fail": "Relay sağlık kontrolü başarısız.",
+        "security_notice_title": "Taşıma katmanı güvenliği",
+        "security_notice_body": "Yalnızca HTTPS relay adresi ve geçerli sha256 sertifika pini kullanın. Güvenli taşıma yoksa senkronizasyon engellenir.",
         "err_missing": "Relay sunucu adresi ve oturum kimliği zorunludur.",
-        "err_url": "Relay sunucu adresi http:// veya https:// ile başlamalıdır.",
+        "err_url": "Relay sunucu adresi https:// ile başlamalıdır.",
         "err_locked": "Senkronizasyon için önce kasanın açık olması gerekir.",
         "err_failed": "Relay senkronizasyonu tamamlanamadı.",
         "status_syncing": "Relay senkronizasyonu çalışıyor...",
@@ -767,7 +769,9 @@
             "saved": "Passkey backend yapilandirmasi kaydedildi.",
             "health_check": "Backend sagligini kontrol et",
             "health_ok": "Passkey backend erisilebilir.",
-            "health_fail": "Passkey backend saglik kontrolu basarisiz oldu."
+            "health_fail": "Passkey backend saglik kontrolu basarisiz oldu.",
+            "https_only_notice": "Passkey kaydi ve dogrulamasi icin yalnizca HTTPS backend URL kabul edilir.",
+            "err_url_https": "Passkey backend URL https:// ile baslamalidir."
         }
     },
     "backup": {

@@ -1,5 +1,3 @@
-import RNFS from 'react-native-fs';
-
 jest.mock('react-native-fs', () => ({
   exists: jest.fn().mockResolvedValue(true),
   readFile: jest.fn().mockResolvedValue(''),
@@ -10,8 +8,8 @@ jest.mock('react-native-fs', () => ({
 
 const mockCrypto = {
   randomBytes: jest.fn((size) => Buffer.alloc(size, 0x42)),
-  pbkdf2: jest.fn((p, s, i, l, a, cb) => cb(null, Buffer.alloc(l, 0xdd))),
-  pbkdf2Sync: jest.fn((p, s, i, l, a) => Buffer.alloc(l, 0xee)),
+  pbkdf2: jest.fn((_p, _s, _i, l, _a, cb) => cb(null, Buffer.alloc(l, 0xdd))),
+  pbkdf2Sync: jest.fn((_p, _s, _i, l, _a) => Buffer.alloc(l, 0xee)),
   createCipheriv: jest.fn(() => ({ update: jest.fn(), final: jest.fn(), getAuthTag: jest.fn() })),
   createDecipheriv: jest.fn(() => ({ update: jest.fn(), final: jest.fn(), setAuthTag: jest.fn() })),
 };
@@ -35,8 +33,8 @@ describe('SecurityAdvanced', () => {
     (SecurityModule as any).appConfig = null;
     (SecurityModule as any).bfState = { failCount: 0, lockUntil: 0, lastAttempt: 0 };
     
-    mockCrypto.pbkdf2 = jest.fn((p, s, i, l, a, cb) => cb(null, Buffer.alloc(l, 0xdd)));
-    mockCrypto.pbkdf2Sync = jest.fn((p, s, i, l, a) => Buffer.alloc(l, 0xee));
+    mockCrypto.pbkdf2 = jest.fn((_p, _s, _i, l, _a, cb) => cb(null, Buffer.alloc(l, 0xdd)));
+    mockCrypto.pbkdf2Sync = jest.fn((_p, _s, _i, l, _a) => Buffer.alloc(l, 0xee));
   });
 
   describe('Utility Hardening', () => {

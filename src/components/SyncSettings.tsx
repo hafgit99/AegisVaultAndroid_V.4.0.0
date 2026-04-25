@@ -53,7 +53,7 @@ export const SyncSettings = ({ theme }: any) => {
       return;
     }
 
-    if (!/^https?:\/\//i.test(normalizedRelayUrl)) {
+    if (!/^https:\/\//i.test(normalizedRelayUrl)) {
       setStatus({ type: 'error', message: t('sync.err_url') });
       return;
     }
@@ -128,7 +128,7 @@ export const SyncSettings = ({ theme }: any) => {
   const onCreateRelayServer = async () => {
     const normalizedRelayUrl = relayUrl.trim();
     const normalizedPin = normalizePin(relayCertificatePin);
-    if (!/^https?:\/\//i.test(normalizedRelayUrl)) {
+    if (!/^https:\/\//i.test(normalizedRelayUrl)) {
       setStatus({ type: 'error', message: t('sync.err_url') });
       return;
     }
@@ -207,7 +207,7 @@ export const SyncSettings = ({ theme }: any) => {
 
   const onCheckRelay = async () => {
     const normalizedRelayUrl = relayUrl.trim();
-    if (!/^https?:\/\//i.test(normalizedRelayUrl)) {
+    if (!/^https:\/\//i.test(normalizedRelayUrl)) {
       setStatus({ type: 'error', message: t('sync.err_url') });
       return;
     }
@@ -243,6 +243,36 @@ export const SyncSettings = ({ theme }: any) => {
     }
   };
 
+  const statusCardDynamicStyle =
+    status
+      ? {
+          backgroundColor:
+            status.type === 'error'
+              ? theme.redBg || 'rgba(239,68,68,0.10)'
+              : status.type === 'success'
+              ? theme.sageLight
+              : theme.inputBg,
+          borderColor:
+            status.type === 'error'
+              ? 'rgba(239,68,68,0.28)'
+              : status.type === 'success'
+              ? theme.sageMid
+              : theme.cardBorder,
+        }
+      : null;
+
+  const statusTextDynamicStyle =
+    status
+      ? {
+          color:
+            status.type === 'error'
+              ? theme.red || '#ef4444'
+              : status.type === 'success'
+              ? theme.navy
+              : theme.muted,
+        }
+      : null;
+
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
       <Text style={[styles.title, { color: theme.navy }]}>{t('sync.title')}</Text>
@@ -252,6 +282,23 @@ export const SyncSettings = ({ theme }: any) => {
         <Text style={[styles.helpText, { color: theme.muted }]}>{t('sync.how_body')}</Text>
         <Text style={[styles.helpText, styles.helpTextSecondary, { color: theme.muted }]}>
           {t('sync.self_hosted_hint')}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.securityNotice,
+          {
+            backgroundColor: theme.inputBg,
+            borderColor: theme.cardBorder,
+          },
+        ]}
+      >
+        <Text style={[styles.securityNoticeTitle, { color: theme.navy }]}>
+          {t('sync.security_notice_title')}
+        </Text>
+        <Text style={[styles.securityNoticeText, { color: theme.muted }]}>
+          {t('sync.security_notice_body')}
         </Text>
       </View>
       
@@ -299,21 +346,11 @@ export const SyncSettings = ({ theme }: any) => {
       )}
 
       {status && (
-        <Text
-          style={[
-            styles.status,
-            {
-              color:
-                status.type === 'error'
-                  ? theme.red || '#ef4444'
-                  : status.type === 'success'
-                    ? theme.sage
-                    : theme.muted,
-            },
-          ]}
-        >
-          {status.message}
-        </Text>
+        <View style={[styles.statusCard, statusCardDynamicStyle]}>
+          <Text style={[styles.status, statusTextDynamicStyle]}>
+            {status.message}
+          </Text>
+        </View>
       )}
 
       <TouchableOpacity 
@@ -408,6 +445,21 @@ const styles = StyleSheet.create({
   helpTextSecondary: {
     marginTop: 8,
   },
+  securityNotice: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  securityNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  securityNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
   label: {
     fontSize: 12,
     fontWeight: '600',
@@ -426,8 +478,14 @@ const styles = StyleSheet.create({
   },
   status: {
     fontSize: 12,
-    marginBottom: 12,
     lineHeight: 18,
+  },
+  statusCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 12,
   },
   btn: {
     padding: 14,

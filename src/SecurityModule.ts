@@ -455,7 +455,9 @@ const SALT_FILE = `${RNFS.DocumentDirectoryPath}/aegis_device_salt.bin`;
 const BRUTE_FORCE_FILE = `${RNFS.DocumentDirectoryPath}/aegis_bf_state.json`;
 const LEGACY_BIOMETRIC_MATERIAL_FILE = `${RNFS.DocumentDirectoryPath}/aegis_km.dat`;
 const BIOMETRIC_MATERIAL_SECURE_KEY = 'aegis_biometric_public_key_v1';
+const BIOMETRIC_UNLOCK_SECRET_SECURE_KEY = 'aegis_biometric_unlock_secret_v2';
 const AUDIT_BUFFER_FILE = `${RNFS.DocumentDirectoryPath}/aegis_audit_buffer.json`;
+const AUDIT_BUFFER_SECURE_KEY = 'aegis_audit_buffer_secure_v1';
 const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
 const SHARED_SPACES_SETTING_KEY = 'sharedVaultSpaces';
 
@@ -491,6 +493,7 @@ export class SecurityModule {
   public static isPickingFileFlag: boolean = false;
   private static deviceSalt: Buffer | null = null;
   private static currentUnlockSecret: string | null = null;
+  private static biometricLegacyFallbackSecret: string | null = null;
   private static appConfig: any = null;
   private static bfState: BruteForceState = {
     failCount: 0,
@@ -726,6 +729,65 @@ export class SecurityModule {
    * - Biometric verification required before secret derivation
    * - Key material zeroed after use
    */
+  private static generateBiometricUnlockSecret(): string {
+    return randomBytesSafe(32).toString('hex');
+  }
+
+  private static async readBiometricUnlockSecret(): Promise<string | null> {
+    if (!SecureStorage?.getItem) return null;
+    try {
+      const secret = await SecureStorage.getItem(BIOMETRIC_UNLOCK_SECRET_SECURE_KEY);
+      if (typeof secret === 'string' && secret.length >= 32) {
+        return secret;
+      }
+    } catch {}
+    return null;
+  }
+
+  private static async writeBiometricUnlockSecret(secret: string): Promise<void> {
+    if (!secret || secret.length < 32) return;
+    if (SecureStorage?.setItem) {
+      try {
+        await SecureStorage.setItem(BIOMETRIC_UNLOCK_SECRET_SECURE_KEY, secret);
+        return;
+      } catch {}
+    }
+  }
+
+  private static async deriveLegacyBiometricUnlockSecret(): Promise<string | null> {
+    try {
+      const rnBiometrics = new ReactNativeBiometrics({
+        allowDeviceCredentials: true,
+      });
+      let publicKey = await this.getStoredKeyMaterial();
+      if (!publicKey) {
+        const { keysExist } = await rnBiometrics.biometricKeysExist();
+        if (keysExist) {
+          await rnBiometrics.deleteKeys();
+        }
+        const result = await rnBiometrics.createKeys();
+        publicKey = result.publicKey;
+        await this.storeKeyMaterial(publicKey);
+      }
+
+      const salt = await this.getDeviceSalt();
+      const argon2Result = await Argon2Fn(publicKey!, salt.toString('hex'), {
+        mode: 'argon2id',
+        memory: VAULT_KDF_STRONG.memory,
+        iterations: VAULT_KDF_STRONG.iterations,
+        parallelism: VAULT_KDF_STRONG.parallelism,
+        hashLength: VAULT_KDF_STRONG.hashLength,
+        saltEncoding: 'hex',
+      });
+      if (!argon2Result || !argon2Result.rawHash) return null;
+      return typeof argon2Result.rawHash === 'string'
+        ? argon2Result.rawHash
+        : Buffer.from(argon2Result.rawHash).toString('hex');
+    } catch {
+      return null;
+    }
+  }
+
   static async deriveKeyFromBiometric(): Promise<string | null> {
     try {
       const rnBiometrics = new ReactNativeBiometrics({
@@ -745,57 +807,22 @@ export class SecurityModule {
         return null;
       }
 
-      // Step 2: Get or create the Keystore-backed key material
-      let publicKey = await this.getStoredKeyMaterial();
-
-      if (!publicKey) {
-        // First time setup: create keys in Android Keystore
-        debugLog(
-          '[Security] First-time setup: creating Android Keystore keys...',
-        );
-        const { keysExist } = await rnBiometrics.biometricKeysExist();
-
-        if (keysExist) {
-          // Keys exist but we don't have the public key stored
-          // Delete and recreate to capture the public key
-          await rnBiometrics.deleteKeys();
-        }
-
-        const result = await rnBiometrics.createKeys();
-        publicKey = result.publicKey;
-
-        // Store the public key for deterministic derivation
-        await this.storeKeyMaterial(publicKey);
-        debugLog('[Security] Keystore keys created and public key stored');
+      // Step 2: Preferred v2 path (secure random secret in SecureStorage)
+      const storedSecret = await this.readBiometricUnlockSecret();
+      if (storedSecret) {
+        this.biometricLegacyFallbackSecret = null;
+        return storedSecret;
       }
 
-      // Step 3: Derive deterministic vault key
-      // Argon2id(publicKey, deviceSalt, 32MB, 4 iter, 2 threads)
-      const salt = await this.getDeviceSalt();
-      debugLog('[Security] Salt and public key ready for Argon2');
-
-      const argon2Result = await Argon2Fn(publicKey!, salt.toString('hex'), {
-        mode: 'argon2id',
-        memory: VAULT_KDF_STRONG.memory,
-        iterations: VAULT_KDF_STRONG.iterations,
-        parallelism: VAULT_KDF_STRONG.parallelism,
-        hashLength: VAULT_KDF_STRONG.hashLength,
-        saltEncoding: 'hex',
-      });
-
-      if (!argon2Result || !argon2Result.rawHash) {
-        throw new Error('Argon2 derivation failed: No result or hash');
+      // Step 3: Legacy migration fallback to keep existing installs accessible
+      const legacySecret = await this.deriveLegacyBiometricUnlockSecret();
+      if (legacySecret) {
+        this.biometricLegacyFallbackSecret = legacySecret;
+        return legacySecret;
       }
 
-      const keyHex =
-        typeof argon2Result.rawHash === 'string'
-          ? argon2Result.rawHash
-          : Buffer.from(argon2Result.rawHash).toString('hex');
-
-      debugLog(
-        '[Security] Biometric-gated unlock secret derived successfully using Argon2id',
-      );
-      return keyHex;
+      // No legacy path and no stored secret means biometric unlock cannot proceed yet.
+      return null;
     } catch (e) {
       console.error('[Security] Biometric unlock secret derivation error:', e);
       return null;
@@ -812,6 +839,9 @@ export class SecurityModule {
       await rnBiometrics.deleteKeys();
       if (SecureStorage?.removeItem) {
         await SecureStorage.removeItem(BIOMETRIC_MATERIAL_SECURE_KEY).catch(
+          () => {},
+        );
+        await SecureStorage.removeItem(BIOMETRIC_UNLOCK_SECRET_SECURE_KEY).catch(
           () => {},
         );
       }
@@ -966,6 +996,37 @@ export class SecurityModule {
       this.db = openedDb;
       this.currentUnlockSecret = unlockSecret;
 
+      // One-time migration: if unlock succeeded with legacy biometric derivation,
+      // rotate vault unlock secret to a random secret protected by SecureStorage.
+      if (
+        this.biometricLegacyFallbackSecret &&
+        unlockSecret === this.biometricLegacyFallbackSecret
+      ) {
+        try {
+          const migratedSecret = this.generateBiometricUnlockSecret();
+          const migratedStrongKeyHex = await this.deriveVaultDatabaseKeyHex(
+            migratedSecret,
+            salt,
+            'strong',
+          );
+          const escapedMigratedKey = migratedStrongKeyHex.replace(/'/g, "''");
+          this.db.executeSync(`PRAGMA rekey = '${escapedMigratedKey}';`);
+          await this.writeBiometricUnlockSecret(migratedSecret);
+          this.currentUnlockSecret = migratedSecret;
+          this.biometricLegacyFallbackSecret = null;
+          await this.logSecurityEvent('biometric_secret_migrated', 'success', {
+            model: 'secure_storage_random_secret_v2',
+          });
+        } catch (migrationError) {
+          await this.logSecurityEvent('biometric_secret_migrated', 'failed', {
+            reason:
+              migrationError instanceof Error
+                ? migrationError.message
+                : String(migrationError),
+          });
+        }
+      }
+
       // Optimize SQLite for persistence and performance
       try {
         this.db.executeSync('PRAGMA synchronous = NORMAL;');
@@ -1095,37 +1156,105 @@ export class SecurityModule {
   }
 
   // ── Items CRUD ────────────────────────────────────
+  private static async readBufferedAuditEvents(): Promise<
+    Array<{
+      event_type: string;
+      event_status: AuditEvent['event_status'];
+      details: string;
+      created_at: string;
+    }>
+  > {
+    if (SecureStorage?.getItem) {
+      try {
+        const raw = await SecureStorage.getItem(AUDIT_BUFFER_SECURE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        }
+      } catch {}
+    }
+
+    try {
+      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
+      if (!exists) return [];
+      const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private static async writeBufferedAuditEvents(
+    events: Array<{
+      event_type: string;
+      event_status: AuditEvent['event_status'];
+      details: string;
+      created_at: string;
+    }>,
+  ): Promise<void> {
+    const safeEvents = events.slice(-200);
+    if (SecureStorage?.setItem) {
+      try {
+        await SecureStorage.setItem(
+          AUDIT_BUFFER_SECURE_KEY,
+          JSON.stringify(safeEvents),
+        );
+        await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
+        return;
+      } catch {}
+    }
+
+    const redacted = safeEvents.map(ev => ({
+      ...ev,
+      details: '{}',
+    }));
+    await RNFS.writeFile(AUDIT_BUFFER_FILE, JSON.stringify(redacted), 'utf8');
+  }
+
+  private static async clearBufferedAuditEvents(): Promise<void> {
+    if (SecureStorage?.removeItem) {
+      await SecureStorage.removeItem(AUDIT_BUFFER_SECURE_KEY).catch(() => {});
+    }
+    await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
+  }
+
+  private static sanitizeAuditDetails(
+    details?: Record<string, any>,
+  ): Record<string, any> {
+    const source = details || {};
+    const sensitiveKeyPattern =
+      /password|pass|token|secret|authorization|credential|private|key|seed/i;
+    const sanitized: Record<string, any> = {};
+    Object.keys(source).forEach(key => {
+      const value = source[key];
+      if (sensitiveKeyPattern.test(key)) {
+        sanitized[key] = '[redacted]';
+      } else if (typeof value === 'string' && value.length > 512) {
+        sanitized[key] = `${value.slice(0, 256)}...[truncated]`;
+      } else {
+        sanitized[key] = value;
+      }
+    });
+    return sanitized;
+  }
+
   private static async appendAuditBuffer(
     eventType: string,
     eventStatus: AuditEvent['event_status'],
     details?: Record<string, any>,
   ): Promise<void> {
     try {
-      let events: Array<{
-        event_type: string;
-        event_status: AuditEvent['event_status'];
-        details: string;
-        created_at: string;
-      }> = [];
-
-      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
-      if (exists) {
-        const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
-        events = raw ? JSON.parse(raw) : [];
-      }
+      let events = await this.readBufferedAuditEvents();
 
       events.push({
         event_type: eventType,
         event_status: eventStatus,
-        details: JSON.stringify(details || {}),
+        details: JSON.stringify(this.sanitizeAuditDetails(details)),
         created_at: new Date().toISOString(),
       });
 
-      if (events.length > 200) {
-        events = events.slice(events.length - 200);
-      }
-
-      await RNFS.writeFile(AUDIT_BUFFER_FILE, JSON.stringify(events), 'utf8');
+      await this.writeBufferedAuditEvents(events);
     } catch (e) {
       console.error('appendAuditBuffer:', e);
     }
@@ -1134,16 +1263,8 @@ export class SecurityModule {
   private static async flushBufferedAuditEvents(): Promise<void> {
     if (!this.db) return;
     try {
-      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
-      if (!exists) return;
-
-      const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
-      const events = (raw ? JSON.parse(raw) : []) as Array<{
-        event_type: string;
-        event_status: AuditEvent['event_status'];
-        details: string;
-        created_at: string;
-      }>;
+      const events = await this.readBufferedAuditEvents();
+      if (!events.length) return;
 
       for (const ev of events) {
         this.db.executeSync(
@@ -1152,7 +1273,7 @@ export class SecurityModule {
         );
       }
 
-      await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
+      await this.clearBufferedAuditEvents();
     } catch (e) {
       console.error('flushBufferedAuditEvents:', e);
     }
@@ -1170,7 +1291,11 @@ export class SecurityModule {
     try {
       this.db.executeSync(
         'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
-        [eventType, eventStatus, JSON.stringify(details || {})],
+        [
+          eventType,
+          eventStatus,
+          JSON.stringify(this.sanitizeAuditDetails(details)),
+        ],
       );
     } catch (e) {
       console.error('logSecurityEvent:', e);
@@ -1200,26 +1325,16 @@ export class SecurityModule {
 
     const fromBuffer: AuditEvent[] = [];
     try {
-      const exists = await RNFS.exists(AUDIT_BUFFER_FILE);
-      if (exists) {
-        const raw = await RNFS.readFile(AUDIT_BUFFER_FILE, 'utf8');
-        const events = (raw ? JSON.parse(raw) : []) as Array<{
-          event_type: string;
-          event_status: AuditEvent['event_status'];
-          details: string;
-          created_at: string;
-        }>;
-
-        events.forEach((ev, index) => {
-          fromBuffer.push({
-            id: -(index + 1),
-            event_type: ev.event_type,
-            event_status: ev.event_status,
-            details: ev.details || '{}',
-            created_at: ev.created_at || new Date().toISOString(),
-          });
+      const events = await this.readBufferedAuditEvents();
+      events.forEach((ev, index) => {
+        fromBuffer.push({
+          id: -(index + 1),
+          event_type: ev.event_type,
+          event_status: ev.event_status,
+          details: ev.details || '{}',
+          created_at: ev.created_at || new Date().toISOString(),
         });
-      }
+      });
     } catch (e) {
       console.error('getAuditEvents(buffer):', e);
     }
@@ -1236,6 +1351,7 @@ export class SecurityModule {
     if (!this.db) return false;
     try {
       this.db.executeSync('DELETE FROM vault_audit_log');
+      await this.clearBufferedAuditEvents();
       await this.logSecurityEvent('audit_log_cleared', 'info', {});
       return true;
     } catch (e) {
@@ -3275,6 +3391,7 @@ export class SecurityModule {
     } catch {}
     this.db = null;
     this.currentUnlockSecret = null;
+    this.biometricLegacyFallbackSecret = null;
     AutofillService.setUnlocked(false);
     AutofillService.clearEntries();
   }

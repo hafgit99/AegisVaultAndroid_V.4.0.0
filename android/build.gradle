@@ -19,3 +19,34 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+allprojects {
+    // Ensure kotlinVersion is available to all subprojects
+    project.ext.set("kotlinVersion", rootProject.ext.kotlinVersion)
+
+    if (project.state.executed) {
+        configureAndroid(project)
+    } else {
+        project.afterEvaluate {
+            configureAndroid(project)
+        }
+    }
+}
+
+def configureAndroid(project) {
+    if (project.hasProperty("android")) {
+        project.android {
+            if (namespace == null && project.hasProperty("group") && project.group != "") {
+                namespace = project.group
+            }
+            compileSdkVersion rootProject.ext.compileSdkVersion
+            buildToolsVersion rootProject.ext.buildToolsVersion
+
+            defaultConfig {
+                minSdkVersion rootProject.ext.minSdkVersion
+                targetSdkVersion rootProject.ext.targetSdkVersion
+            }
+        }
+    }
+}
+

@@ -1,6 +1,7 @@
 module.exports = {
   root: true,
   extends: '@react-native',
+  ignorePatterns: ['coverage/**'],
   overrides: [
     {
       files: ['jest.setup.js', 'jest.afterEnv.js', '__tests__/**/*.{js,ts,tsx}'],

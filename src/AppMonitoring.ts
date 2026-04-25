@@ -13,6 +13,13 @@ export interface CrashReport {
 
 const CRASH_REPORT_FILE = `${RNFS.DocumentDirectoryPath}/aegis_crash_reports.json`;
 const MAX_CRASH_REPORTS = 25;
+const MAX_STORED_TEXT_LENGTH = 1200;
+const MAX_CONTEXT_DEPTH = 3;
+const MAX_CONTEXT_KEYS = 40;
+const SENSITIVE_KEY_PATTERN =
+  /pass(word)?|token|secret|authorization|cookie|credential|private.?key|seed|mnemonic|pin|cvv/i;
+const SENSITIVE_VALUE_PATTERN =
+  /(bearer\s+[a-z0-9\-._~+/]+=*|api[_-]?key|access[_-]?token|refresh[_-]?token|password=|secret=)/i;
 
 const originalConsole = {
   log: console.log.bind(console),
@@ -25,19 +32,74 @@ let initialized = false;
 let previousGlobalHandler: ((error: any, isFatal?: boolean) => void) | null =
   null;
 
+const truncate = (value: string, max = MAX_STORED_TEXT_LENGTH): string =>
+  value.length > max ? `${value.slice(0, max)}...[truncated]` : value;
+
+const sanitizeText = (value: unknown): string => {
+  const raw = typeof value === 'string' ? value : String(value ?? '');
+  const redacted = raw.replace(
+    /(bearer\s+)[a-z0-9\-._~+/]+=*/gi,
+    '$1[redacted]',
+  );
+  const masked = SENSITIVE_VALUE_PATTERN.test(redacted)
+    ? '[redacted-sensitive-value]'
+    : redacted;
+  return truncate(masked);
+};
+
+const sanitizeContextValue = (
+  value: unknown,
+  depth: number = 0,
+): unknown => {
+  if (value === null || value === undefined) return value;
+  if (depth >= MAX_CONTEXT_DEPTH) return '[truncated-depth]';
+
+  if (typeof value === 'string') {
+    return sanitizeText(value);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (value instanceof Error) {
+    return {
+      name: sanitizeText(value.name || 'Error'),
+      message: sanitizeText(value.message || 'Unknown error'),
+    };
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map(entry => sanitizeContextValue(entry, depth + 1));
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).slice(
+      0,
+      MAX_CONTEXT_KEYS,
+    );
+    const output: Record<string, unknown> = {};
+    entries.forEach(([key, entryValue]) => {
+      if (SENSITIVE_KEY_PATTERN.test(key)) {
+        output[key] = '[redacted]';
+      } else {
+        output[key] = sanitizeContextValue(entryValue, depth + 1);
+      }
+    });
+    return output;
+  }
+  return sanitizeText(value);
+};
+
 const serializeError = (error: unknown) => {
   if (error instanceof Error) {
     return {
-      name: error.name || 'Error',
-      message: error.message || 'Unknown error',
-      stack: error.stack,
+      name: sanitizeText(error.name || 'Error'),
+      message: sanitizeText(error.message || 'Unknown error'),
+      stack: __DEV__ ? sanitizeText(error.stack || '') : undefined,
     };
   }
 
   if (typeof error === 'string') {
     return {
       name: 'Error',
-      message: error,
+      message: sanitizeText(error),
       stack: undefined,
     };
   }
@@ -45,13 +107,13 @@ const serializeError = (error: unknown) => {
   try {
     return {
       name: 'Error',
-      message: JSON.stringify(error),
+      message: sanitizeText(JSON.stringify(error)),
       stack: undefined,
     };
   } catch {
     return {
       name: 'Error',
-      message: String(error),
+      message: sanitizeText(String(error)),
       stack: undefined,
     };
   }
@@ -63,10 +125,11 @@ const serializeContext = (value: unknown): Record<string, any> | undefined => {
   }
 
   try {
-    return JSON.parse(JSON.stringify(value));
+    JSON.stringify(value);
+    return sanitizeContextValue(value) as Record<string, any>;
   } catch {
     return {
-      raw: String(value),
+      raw: sanitizeText(String(value)),
     };
   }
 };
@@ -98,12 +161,14 @@ const writeReports = async (reports: CrashReport[]) => {
 const toConsoleErrorMessage = (args: any[]) =>
   args
     .map(arg => {
-      if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
-      if (typeof arg === 'string') return arg;
+      if (arg instanceof Error) {
+        return `${sanitizeText(arg.name)}: ${sanitizeText(arg.message)}`;
+      }
+      if (typeof arg === 'string') return sanitizeText(arg);
       try {
-        return JSON.stringify(arg);
+        return sanitizeText(JSON.stringify(sanitizeContextValue(arg)));
       } catch {
-        return String(arg);
+        return sanitizeText(String(arg));
       }
     })
     .join(' ');
@@ -119,7 +184,6 @@ export const AppMonitoring = {
       console.warn = () => {};
       console.debug = () => {};
       console.error = (...args: any[]) => {
-        originalConsole.error(...args);
         this.recordHandledError('console.error', toConsoleErrorMessage(args)).catch(() => {});
       };
     }

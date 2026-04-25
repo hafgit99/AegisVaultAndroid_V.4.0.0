@@ -700,8 +700,10 @@
         "self_hosted_health_check": "Check Relay Health",
         "self_hosted_health_ok": "Relay server is reachable and healthy.",
         "self_hosted_health_fail": "Relay health check failed.",
+        "security_notice_title": "Transport security",
+        "security_notice_body": "Use only HTTPS relay endpoints and a valid sha256 certificate pin. Sync is blocked when secure transport is unavailable.",
         "err_missing": "Relay server URL and session ID are required.",
-        "err_url": "Relay server URL must start with http:// or https://.",
+        "err_url": "Relay server URL must start with https://.",
         "err_locked": "The vault must be unlocked before synchronization can run.",
         "err_failed": "Relay synchronization could not be completed.",
         "status_syncing": "Relay synchronization is in progress...",
@@ -767,7 +769,9 @@
             "saved": "Passkey backend configuration saved.",
             "health_check": "Check backend health",
             "health_ok": "Passkey backend is reachable.",
-            "health_fail": "Passkey backend health check failed."
+            "health_fail": "Passkey backend health check failed.",
+            "https_only_notice": "Only HTTPS backend URLs are accepted for passkey registration and verification.",
+            "err_url_https": "Passkey backend URL must start with https://."
         }
     },
     "backup": {

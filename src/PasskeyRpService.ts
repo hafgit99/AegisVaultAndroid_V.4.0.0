@@ -35,8 +35,8 @@ const resolveRequestOptions = (): BackendRequestOptions & { accountId: string } 
   if (!baseUrl) {
     throw new Error('Passkey RP backend URL is required.');
   }
-  if (!/^https?:\/\//i.test(baseUrl)) {
-    throw new Error('Passkey RP backend URL must start with http:// or https://.');
+  if (!/^https:\/\//i.test(baseUrl)) {
+    throw new Error('Passkey RP backend URL must start with https://.');
   }
   if (!accountId) {
     throw new Error('Passkey RP account ID is required.');

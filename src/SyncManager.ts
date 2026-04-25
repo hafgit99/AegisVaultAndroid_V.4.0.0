@@ -43,6 +43,17 @@ interface PinnedResponse {
   body: string;
 }
 
+const isInsecureFallbackAllowed = (): boolean => {
+  if (!__DEV__) return false;
+  if (
+    typeof process !== 'undefined' &&
+    process?.env?.NODE_ENV === 'test'
+  ) {
+    return true;
+  }
+  return (globalThis as any)?.__AEGIS_ALLOW_INSECURE_SYNC_FALLBACK === true;
+};
+
 function createAttestationNonce(): string {
   const randomBytes = QC?.randomBytes?.(24);
   if (!randomBytes) {
@@ -109,8 +120,14 @@ async function pinnedPost(
     };
   }
 
-  // Non-Android fallback (development only — NOT for production)
-  console.warn('[SyncManager] ⚠️ Certificate pinning unavailable — using plain fetch (non-Android)');
+  if (!isInsecureFallbackAllowed()) {
+    throw new Error(
+      '[SyncManager] Certificate-pinned transport is unavailable. Plain fetch fallback is blocked.',
+    );
+  }
+  console.warn(
+    '[SyncManager] Insecure sync fallback enabled for development test run.',
+  );
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -144,8 +161,14 @@ async function pinnedGet(
     };
   }
 
-  // Non-Android fallback (development only)
-  console.warn('[SyncManager] ⚠️ Certificate pinning unavailable — using plain fetch (non-Android)');
+  if (!isInsecureFallbackAllowed()) {
+    throw new Error(
+      '[SyncManager] Certificate-pinned transport is unavailable. Plain fetch fallback is blocked.',
+    );
+  }
+  console.warn(
+    '[SyncManager] Insecure sync fallback enabled for development test run.',
+  );
   const response = await fetch(url);
   return {
     ok: response.ok,

@@ -2,7 +2,7 @@
  * SyncCryptoService.test.ts — Aegis Vault Android v4.2.0
  * Hardened mutation-killing tests for E2E sync crypto primitives.
  */
-import { SyncCryptoService, SyncCryptoPackage } from '../src/SyncCryptoService';
+import { SyncCryptoService } from '../src/SyncCryptoService';
 import { Buffer } from 'buffer';
 
 jest.mock('react-native-quick-crypto', () => require('crypto'));

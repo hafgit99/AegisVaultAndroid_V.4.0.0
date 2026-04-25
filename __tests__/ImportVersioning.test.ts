@@ -250,7 +250,6 @@ describe('ImportVersioning current behavior', () => {
 
   test('importBackupWithMigration handles argon2id', async () => {
     const password = 'argon-password';
-    const metadata = { kdfParameters: { salt: 'argonsalt' } };
     const mockCrypto = require('crypto');
     const rawHash = mockCrypto.createHash('sha256').update(`argon-password:argonsalt:argon2id`).digest('hex').slice(0, 64).padEnd(64, '0');
     const key = Buffer.from(rawHash, 'hex');

@@ -83,10 +83,19 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
   };
 
   const saveRpSettings = async () => {
+    const normalizedBaseUrl = rpBaseUrl.trim();
+    if (normalizedBaseUrl && !/^https:\/\//i.test(normalizedBaseUrl)) {
+      setNotice({
+        type: 'error',
+        message: t('passkeys.backend.err_url_https'),
+      });
+      return;
+    }
+
     await SecureAppSettings.update(
       {
         passkeyRp: {
-          baseUrl: rpBaseUrl.trim(),
+          baseUrl: normalizedBaseUrl,
           accountId: rpAccountId.trim(),
           authToken: rpAuthToken.trim(),
           tenantHeaderName: rpTenantHeaderName.trim(),
@@ -203,6 +212,19 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
         <Text style={[styles.info, { color: theme.muted, marginBottom: 12 }]}>
           {t('passkeys.backend.desc')}
         </Text>
+        <View
+          style={[
+            styles.securityTip,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.cardBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.securityTipText, { color: theme.muted }]}>
+            {t('passkeys.backend.https_only_notice')}
+          </Text>
+        </View>
 
         <View
           style={[
@@ -592,6 +614,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     marginBottom: 6,
+  },
+  securityTip: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  securityTipText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   secondaryAction: {
     marginTop: 10,
