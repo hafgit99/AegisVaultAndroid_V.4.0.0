@@ -85,6 +85,8 @@ build_log.txt
 lint_report.txt
 lint_report_utf8.txt
 scripts/relay-data.json
+.secrets/
+release-keystore.properties
 
 # Reports
 docs/AEGIS_DETAYLI_ANALIZ_RAPORU.md

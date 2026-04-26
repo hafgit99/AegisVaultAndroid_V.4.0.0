@@ -6,6 +6,7 @@ const baseSettings: SecureAppSettingsState = {
   biometricEnabled: true,
   clipboardClearSeconds: 20,
   passwordLength: 20,
+  excludeAmbiguousCharacters: false,
   darkMode: false,
   themeMode: 'light',
   breachCheckEnabled: false,

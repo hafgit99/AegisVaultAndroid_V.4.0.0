@@ -62,10 +62,21 @@ react {
  */
 def enableProguardInReleaseBuilds = true
 
-def releaseStoreFile = project.findProperty('RELEASE_STORE_FILE') ?: System.getenv('RELEASE_STORE_FILE')
-def releaseStorePassword = project.findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD')
-def releaseKeyAlias = project.findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS')
-def releaseKeyPassword = project.findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD')
+def releaseSigningProps = new Properties()
+def releaseSigningFiles = [
+    rootProject.file('../.secrets/release-keystore.properties'),
+    rootProject.file('../release-keystore.properties')
+]
+releaseSigningFiles.findAll { it.exists() }.each { file ->
+    file.withInputStream { releaseSigningProps.load(it) }
+}
+def secureReleaseProperty = { name ->
+    releaseSigningProps.getProperty(name) ?: project.findProperty(name) ?: System.getenv(name)
+}
+def releaseStoreFile = secureReleaseProperty('RELEASE_STORE_FILE')
+def releaseStorePassword = secureReleaseProperty('RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = secureReleaseProperty('RELEASE_KEY_ALIAS')
+def releaseKeyPassword = secureReleaseProperty('RELEASE_KEY_PASSWORD')
 def debugKeystoreFile = file('debug.keystore')
 def hasReleaseSigning =
     releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
@@ -172,7 +183,7 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "androidx.credentials:credentials:1.5.0"
     implementation "com.google.android.play:integrity:1.4.0"
-    implementation "androidx.security:security-crypto:1.1.0-alpha06"
+    implementation "androidx.security:security-crypto:1.1.0"
 }
 
 kotlin {

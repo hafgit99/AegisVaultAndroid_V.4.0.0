@@ -9,7 +9,7 @@
 import RNFS from 'react-native-fs';
 import QuickCrypto from 'react-native-quick-crypto';
 import { SecurityModule, VaultItem } from './SecurityModule';
-import { BackupModule } from './BackupModule';
+import { BackupModule, MIN_BACKUP_PASSWORD_LENGTH } from './BackupModule';
 import i18n from './i18n';
 
 // ═══════════════════════════════════════════════════════════════
@@ -64,6 +64,7 @@ const VERIFICATION_CODE_LENGTH = 6;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = [1, 5, 15];
 const RECOVERY_SESSION_FORMAT_VERSION = 2;
+const SAFE_RECOVERY_SESSION_ID = /^[A-Za-z0-9_-]{1,96}$/;
 const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
 
 const secureRandomBytes = (size: number): Uint8Array => {
@@ -345,8 +346,11 @@ export class RecoveryModule {
   ): Promise<boolean> {
     try {
       // Ensure backup password is strong
-      if (!backupPassword || backupPassword.length < 8) {
+      if (!backupPassword || backupPassword.length < MIN_BACKUP_PASSWORD_LENGTH) {
         console.error('[Recovery] Backup password too weak');
+        await this.logRecoveryEvent('backup_creation_failed', {
+          reason: 'weak_backup_password',
+        });
         return false;
       }
 
@@ -433,6 +437,12 @@ export class RecoveryModule {
    */
   private static async getRecoverySession(sessionId: string): Promise<RecoverySession | null> {
     try {
+      if (!this.isSafeSessionId(sessionId)) {
+        await this.logRecoveryEvent('session_load_failed', {
+          reason: 'invalid_session_id',
+        });
+        return null;
+      }
       const sessionPath = `${RECOVERY_SESSION_DIR}/${sessionId}.json`;
       const exists = await RNFS.exists(sessionPath);
       
@@ -451,6 +461,9 @@ export class RecoveryModule {
    */
   private static async saveRecoverySession(session: RecoverySession): Promise<void> {
     try {
+      if (!this.isSafeSessionId(session.sessionId)) {
+        throw new Error('Invalid recovery session id');
+      }
       const sessionPath = `${RECOVERY_SESSION_DIR}/${session.sessionId}.json`;
       const serialized = await this.serializeRecoverySession(session);
       await RNFS.writeFile(
@@ -556,13 +569,19 @@ export class RecoveryModule {
    * Zamanlamaya karşı duyarlı karşılaştırma
    */
   private static constantTimeCompare(a: string, b: string): boolean {
-    if (a.length !== b.length) return false;
-    
-    let equal = 0;
-    for (let i = 0; i < a.length; i++) {
-      equal |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    const left = secureCreateHash('sha256').update(String(a), 'utf8').digest();
+    const right = secureCreateHash('sha256').update(String(b), 'utf8').digest();
+    const leftBytes = new Uint8Array(left as ArrayBuffer);
+    const rightBytes = new Uint8Array(right as ArrayBuffer);
+    let diff = leftBytes.length ^ rightBytes.length;
+    for (let i = 0; i < Math.max(leftBytes.length, rightBytes.length); i++) {
+      diff |= (leftBytes[i] || 0) ^ (rightBytes[i] || 0);
     }
-    return equal === 0;
+    return diff === 0;
+  }
+
+  private static isSafeSessionId(sessionId: string): boolean {
+    return SAFE_RECOVERY_SESSION_ID.test(sessionId);
   }
 
   /**
@@ -595,7 +614,16 @@ export class RecoveryModule {
     details: Record<string, any>
   ): Promise<void> {
     try {
-      await SecurityModule.logSecurityEvent('recovery_' + eventType, 'success', details);
+      const status = /failed|error|expired|invalid|denied|lock|weak|not_found/i.test(
+        eventType,
+      )
+        ? 'failed'
+        : 'success';
+      await SecurityModule.logSecurityEvent(
+        'recovery_' + eventType,
+        status,
+        details,
+      );
     } catch (e) {
       console.error('[Recovery] logRecoveryEvent error:', e);
     }

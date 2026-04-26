@@ -16,6 +16,7 @@ import RNFS from 'react-native-fs';
 import { SecurityModule } from '../SecurityModule';
 import {
   BackupModule,
+  MIN_BACKUP_PASSWORD_LENGTH,
   getExportFormats,
   getImportSources,
   ImportSource,
@@ -65,6 +66,7 @@ export const BackupModal = ({
   const [result, setResult] = useState<ImportResult | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
   const [showPlainExportWarning, setShowPlainExportWarning] = useState(false);
+  const [showPlainExportOptions, setShowPlainExportOptions] = useState(false);
   const [pendingPlainExport, setPendingPlainExport] = useState<
     ExportFormat['id'] | null
   >(null);
@@ -103,6 +105,7 @@ export const BackupModal = ({
     if (visible) {
       setResult(null);
       setExportPath(null);
+      setShowPlainExportOptions(false);
     }
   }, [visible]);
 
@@ -143,8 +146,11 @@ export const BackupModal = ({
   };
 
   const handleEncryptedExport = async () => {
-    if (!encryptPassword || encryptPassword.length < 8) {
-      Alert.alert(t('backup.msg_err'), t('backup.err_len8'));
+    if (!encryptPassword || encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH) {
+      Alert.alert(
+        t('backup.msg_err'),
+        t('backup.err_min_len', { count: MIN_BACKUP_PASSWORD_LENGTH }),
+      );
       return;
     }
     if (encryptPassword !== encryptConfirm) {
@@ -418,6 +424,23 @@ export const BackupModal = ({
                   {t('backup.exp_note')}
                 </Text>
 
+                <TouchableOpacity
+                  style={[
+                    st.plainToggle,
+                    { backgroundColor: cc.inputBg, borderColor: cc.cardBorder },
+                  ]}
+                  onPress={() => setShowPlainExportOptions(value => !value)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[st.plainToggleText, { color: cc.navy }]}>
+                    {showPlainExportOptions
+                      ? t('backup.hide_plain_exports')
+                      : t('backup.show_plain_exports')}
+                  </Text>
+                </TouchableOpacity>
+
+                {showPlainExportOptions && (
+                  <>
                 {/* Warning */}
                 <View
                   style={[
@@ -443,7 +466,15 @@ export const BackupModal = ({
                   </Text>
                 </View>
 
-                {getExportFormats(t).map(fmt => (
+                  </>
+                )}
+
+                {getExportFormats(t)
+                  .filter(
+                    fmt =>
+                      fmt.id === 'aegis_encrypted' || showPlainExportOptions,
+                  )
+                  .map(fmt => (
                   <TouchableOpacity
                     key={fmt.id}
                     style={[
@@ -475,6 +506,11 @@ export const BackupModal = ({
                       <Text style={[st.formatDesc, { color: cc.muted }]}>
                         {fmt.description}
                       </Text>
+                      {fmt.id === 'aegis_encrypted' && (
+                        <Text style={[st.recommendedBadge, { color: cc.sage }]}>
+                          {t('backup.encrypted_recommended')}
+                        </Text>
+                      )}
                     </View>
                     <Text style={{ fontSize: 18, color: cc.muted }}>›</Text>
                   </TouchableOpacity>
@@ -700,9 +736,12 @@ export const BackupModal = ({
               </TouchableOpacity>
             </View>
 
-            {encryptPassword.length > 0 && encryptPassword.length < 8 && (
+            {encryptPassword.length > 0 &&
+              encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH && (
               <Text style={{ fontSize: 11, color: cc.red, marginTop: 4 }}>
-                {t('backup.err_len8')}
+                {t('backup.err_min_len', {
+                  count: MIN_BACKUP_PASSWORD_LENGTH,
+                })}
               </Text>
             )}
             {encryptConfirm.length > 0 &&
@@ -731,7 +770,7 @@ export const BackupModal = ({
                 style={[st.pwBtn, { backgroundColor: cc.sage, flex: 2 }]}
                 onPress={handleEncryptedExport}
                 disabled={
-                  encryptPassword.length < 8 ||
+                  encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH ||
                   encryptPassword !== encryptConfirm
                 }
                 activeOpacity={0.7}
@@ -969,6 +1008,18 @@ const st = StyleSheet.create({
     borderColor: C.sageMid,
     backgroundColor: 'rgba(114,136,111,0.06)',
   },
+  plainToggle: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  plainToggleText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
   formatIconBox: {
     width: 48,
     height: 48,
@@ -980,6 +1031,12 @@ const st = StyleSheet.create({
   },
   formatTitle: { fontSize: 15, fontWeight: '700', color: C.navy },
   formatDesc: { fontSize: 12, color: C.muted, marginTop: 3 },
+  recommendedBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
 
   pathBox: {
     backgroundColor: C.card,

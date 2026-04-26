@@ -103,6 +103,7 @@ export interface SecureAppSettingsState {
   biometricEnabled: boolean;
   clipboardClearSeconds: number;
   passwordLength: number;
+  excludeAmbiguousCharacters: boolean;
 
   // Theme & Display
   darkMode: boolean;
@@ -158,6 +159,7 @@ export interface VaultSettings {
   biometricEnabled: boolean;
   clipboardClearSeconds: number;
   passwordLength: number;
+  excludeAmbiguousCharacters?: boolean;
   darkMode: boolean;
   breachCheckEnabled?: boolean;
   deviceTrustPolicy?: SecurityPolicy;
@@ -177,6 +179,7 @@ const DEFAULT_STATE: SecureAppSettingsState = {
   biometricEnabled: true,
   clipboardClearSeconds: 20,
   passwordLength: 20,
+  excludeAmbiguousCharacters: false,
   darkMode: false,
   themeMode: 'light',
   breachCheckEnabled: false,
@@ -190,7 +193,7 @@ const DEFAULT_STATE: SecureAppSettingsState = {
     tenantHeaderValue: '',
   },
   validationRecords: [],
-  relayUrl: 'https://relay.aegis.io',
+  relayUrl: '',
   syncSessionId: '',
   syncLastSequence: 0,
   syncLastContentHashes: {},
@@ -200,10 +203,10 @@ const DEFAULT_STATE: SecureAppSettingsState = {
   sharedSpaces: [],
   sharingAuditLog: [],
   browserPairings: [],
-  deviceTrustPolicy: 'moderate',
+  deviceTrustPolicy: 'strict',
   rootDetectionEnabled: true,
-  rootBlocksVault: false,
-  degradedDeviceAction: 'warn',
+  rootBlocksVault: true,
+  degradedDeviceAction: 'block',
 };
 
 // ═══════════════════════════════════════════════════════════════

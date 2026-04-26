@@ -11,6 +11,8 @@ import Argon2 from 'react-native-argon2';
 import QuickCrypto from 'react-native-quick-crypto';
 import { Buffer } from '@craftzdog/react-native-buffer';
 
+type BinaryInput = Buffer | Uint8Array | string;
+
 const shouldLogImportVersioning =
   typeof process !== 'undefined' && process.env.NODE_ENV !== 'test';
 
@@ -133,17 +135,18 @@ export class ImportVersioning {
    */
   static async decryptWithPBKDF2(
     password: string,
-    salt: Buffer | string,
-    encryptedData: Buffer | string,
-    authTag?: Buffer | string,
-    iv?: Buffer | string
+    salt: BinaryInput,
+    encryptedData: BinaryInput,
+    authTag?: BinaryInput,
+    iv?: BinaryInput
   ): Promise<string | null> {
     try {
       // Convert to Buffer if needed
-      const saltBuffer = typeof salt === 'string' ? Buffer.from(salt, 'hex') : salt;
+      const saltBuffer =
+        typeof salt === 'string' ? Buffer.from(salt, 'hex') : Buffer.from(salt);
       const dataBuffer = typeof encryptedData === 'string'
         ? Buffer.from(encryptedData, 'base64')
-        : encryptedData;
+        : Buffer.from(encryptedData);
 
       // PBKDF2-SHA256: 310000 iterations, 32 bytes output
       const key = QuickCrypto.pbkdf2Sync(
@@ -155,8 +158,16 @@ export class ImportVersioning {
       );
 
       // AES-256-GCM decryption
-      const ivBuffer = iv ? (typeof iv === 'string' ? Buffer.from(iv, 'hex') : iv) : saltBuffer.slice(0, 12);
-      const tagBuffer = authTag ? (typeof authTag === 'string' ? Buffer.from(authTag, 'base64') : authTag) : undefined;
+      const ivBuffer = iv
+        ? typeof iv === 'string'
+          ? Buffer.from(iv, 'hex')
+          : Buffer.from(iv)
+        : saltBuffer.slice(0, 12);
+      const tagBuffer = authTag
+        ? typeof authTag === 'string'
+          ? Buffer.from(authTag, 'base64')
+          : Buffer.from(authTag)
+        : undefined;
 
       const decipher = QuickCrypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
 

@@ -1,6 +1,8 @@
 import RNFS from 'react-native-fs';
 import { SecurityModule, VaultItem } from './SecurityModule';
 
+export const MIN_BACKUP_PASSWORD_LENGTH = 12;
+
 /* Stryker disable all: debug-only logging has no production behavior impact and creates equivalent mutants. */
 const debugLog = (...args: any[]) => {
   if (__DEV__) {
@@ -1100,6 +1102,12 @@ export class BackupModule {
   }
 
   static async exportEncrypted(password: string): Promise<string> {
+    if (!password || password.length < MIN_BACKUP_PASSWORD_LENGTH) {
+      throw new Error(
+        `Backup password must be at least ${MIN_BACKUP_PASSWORD_LENGTH} characters.`,
+      );
+    }
+
     const items = await SecurityModule.getItems();
     const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
     const plainItems = items.map(({ id: _id, ...rest }) => rest);

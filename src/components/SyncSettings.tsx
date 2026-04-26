@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert, NativeModules } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { SecureAppSettings } from '../SecureAppSettings';
 import { SyncManager } from '../SyncManager';
@@ -28,6 +28,20 @@ export const SyncSettings = ({ theme }: any) => {
 
   const isPinFormatValid = (value: string) =>
     /^sha256\/[A-Za-z0-9+/=_-]+$/.test(value);
+
+  const secureRelayGet = async (path: string, pin: string) => {
+    if (!NativeModules.CloudSyncSecure?.getJson) {
+      throw new Error(t('sync.err_native_secure_transport'));
+    }
+    return NativeModules.CloudSyncSecure.getJson(path, pin);
+  };
+
+  const secureRelayPost = async (path: string, body: string, pin: string) => {
+    if (!NativeModules.CloudSyncSecure?.postJson) {
+      throw new Error(t('sync.err_native_secure_transport'));
+    }
+    return NativeModules.CloudSyncSecure.postJson(path, body, pin);
+  };
 
   const createSessionId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -145,17 +159,17 @@ export const SyncSettings = ({ theme }: any) => {
     setCreatingRelay(true);
     setStatus({ type: 'info', message: t('sync.status_creating_server') });
     try {
-      const res = await fetch(`${normalizedRelayUrl}/v1/sync/session/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: generatedSessionId }),
-      });
+      const res = await secureRelayPost(
+        `${normalizedRelayUrl}/v1/sync/session/create`,
+        JSON.stringify({ sessionId: generatedSessionId }),
+        normalizedPin,
+      );
 
-      if (!res.ok) {
-        throw new Error(`relay_create_failed_${res.status}`);
+      if (res.statusCode < 200 || res.statusCode > 299) {
+        throw new Error(`relay_create_failed_${res.statusCode}`);
       }
 
-      const payload = (await res.json()) as { sessionId?: string };
+      const payload = JSON.parse(res.body || '{}') as { sessionId?: string };
       const createdSessionId = (payload?.sessionId || generatedSessionId).trim();
       setSessionId(createdSessionId);
 
@@ -175,9 +189,14 @@ export const SyncSettings = ({ theme }: any) => {
       });
     } catch {
       try {
-        const healthRes = await fetch(`${normalizedRelayUrl}/health`);
-        if (!healthRes.ok) {
-          throw new Error(t('sync.self_hosted_health_fail'));
+        const healthRes = await secureRelayGet(
+          `${normalizedRelayUrl}/health`,
+          normalizedPin,
+        );
+        if (healthRes.statusCode < 200 || healthRes.statusCode > 299) {
+          throw new Error(
+            `${t('sync.self_hosted_health_fail')} (${healthRes.statusCode})`,
+          );
         }
 
         setSessionId(generatedSessionId);
@@ -207,15 +226,26 @@ export const SyncSettings = ({ theme }: any) => {
 
   const onCheckRelay = async () => {
     const normalizedRelayUrl = relayUrl.trim();
+    const normalizedPin = normalizePin(relayCertificatePin);
     if (!/^https:\/\//i.test(normalizedRelayUrl)) {
       setStatus({ type: 'error', message: t('sync.err_url') });
       return;
     }
+    if (!normalizedPin) {
+      setStatus({ type: 'error', message: t('sync.err_pin_required') });
+      return;
+    }
+    if (!isPinFormatValid(normalizedPin)) {
+      setStatus({ type: 'error', message: t('sync.err_pin_format') });
+      return;
+    }
     setCheckingRelay(true);
     try {
-      const res = await fetch(`${normalizedRelayUrl}/health`);
-      if (!res.ok) {
-        throw new Error(`${t('sync.self_hosted_health_fail')} (${res.status})`);
+      const res = await secureRelayGet(`${normalizedRelayUrl}/health`, normalizedPin);
+      if (res.statusCode < 200 || res.statusCode > 299) {
+        throw new Error(
+          `${t('sync.self_hosted_health_fail')} (${res.statusCode})`,
+        );
       }
       await SecureAppSettings.update({
         syncHealth: {

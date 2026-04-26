@@ -4,6 +4,7 @@ import { BackupModule } from '../src/BackupModule';
 import { SecurityModule } from '../src/SecurityModule';
 
 jest.mock('../src/BackupModule', () => ({
+  MIN_BACKUP_PASSWORD_LENGTH: 12,
   BackupModule: {
     exportEncrypted: jest.fn(),
     importEncryptedAegis: jest.fn(),
@@ -46,7 +47,7 @@ describe('RecoveryModule', () => {
     expect(RNFS.writeFile).not.toHaveBeenCalled();
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_initiate_failed',
-      'success',
+      'failed',
       expect.objectContaining({ reason: 'invalid_email' }),
     );
   });
@@ -207,7 +208,7 @@ describe('RecoveryModule', () => {
     expect(savedSession.status).toBe('expired');
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_verify_code_failed',
-      'success',
+      'failed',
       expect.objectContaining({ reason: 'code_expired' }),
     );
   });
@@ -285,8 +286,22 @@ describe('RecoveryModule', () => {
     expect(RNFS.writeFile).not.toHaveBeenCalled();
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_verify_code_failed',
-      'success',
+      'failed',
       expect.objectContaining({ reason: 'too_many_attempts' }),
+    );
+  });
+
+  test('verifyRecoveryCode rejects unsafe session ids before file access', async () => {
+    const token = await RecoveryModule.verifyRecoveryCode('../evil', '123456');
+
+    expect(token).toBeNull();
+    expect(RNFS.exists).not.toHaveBeenCalledWith(
+      expect.stringContaining('../evil'),
+    );
+    expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
+      'recovery_session_load_failed',
+      'failed',
+      expect.objectContaining({ reason: 'invalid_session_id' }),
     );
   });
 
@@ -323,7 +338,7 @@ describe('RecoveryModule', () => {
     expect(SecurityModule.resetBiometricKeys).not.toHaveBeenCalled();
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_restore_failed',
-      'success',
+      'failed',
       expect.objectContaining({ reason: 'invalid_token' }),
     );
   });
@@ -371,7 +386,7 @@ describe('RecoveryModule', () => {
     );
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_restore_failed',
-      'success',
+      'failed',
       expect.objectContaining({ reason: 'backup_decrypt_failed' }),
     );
   });
@@ -408,7 +423,7 @@ describe('RecoveryModule', () => {
     expect(BackupModule.importEncryptedAegis).not.toHaveBeenCalled();
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'recovery_restore_failed',
-      'success',
+      'failed',
       expect.objectContaining({ reason: 'token_expired' }),
     );
   });

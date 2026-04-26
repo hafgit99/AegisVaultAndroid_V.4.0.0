@@ -1,4 +1,5 @@
 import { PasswordHistoryModule } from '../src/PasswordHistoryModule';
+import type { PasswordHistoryRecord } from '../src/PasswordHistoryModule';
 import RNFS from 'react-native-fs';
 import QuickCrypto from 'react-native-quick-crypto';
 
@@ -55,7 +56,9 @@ jest.mock('../src/SecurityModule', () => ({
 
 describe('PasswordHistoryModule', () => {
   const getSecurityModule = () => require('../src/SecurityModule').SecurityModule;
-  const historyRecord = (overrides: Partial<any> = {}) => ({
+  const historyRecord = (
+    overrides: Partial<PasswordHistoryRecord> = {},
+  ): PasswordHistoryRecord => ({
     accountId: 'acc_1',
     accountTitle: 'Account',
     accountUsername: 'user',

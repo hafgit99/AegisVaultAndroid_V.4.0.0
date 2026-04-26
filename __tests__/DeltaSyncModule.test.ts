@@ -48,14 +48,14 @@ describe('DeltaSyncModule Tests', () => {
         updated_at: iso(-3 * 60 * 60 * 1000),
         created_at: iso(-3 * 60 * 60 * 1000),
         data: '{}',
-      } as VaultItem,
+      } as unknown as VaultItem,
       {
         id: 2,
         title: 'Stable 2',
         updated_at: iso(-2 * 60 * 60 * 1000),
         created_at: iso(-2 * 60 * 60 * 1000),
         data: '{}',
-      } as VaultItem,
+      } as unknown as VaultItem,
     ];
     const lastSync = iso(-60 * 60 * 1000);
     const previousHashes = DeltaSyncModule.buildContentHashMap(stableItems);
@@ -118,7 +118,7 @@ describe('DeltaSyncModule Tests', () => {
         data: '',
         is_deleted: 0,
         deleted_at: null,
-      } as VaultItem,
+      } as unknown as VaultItem,
       null as unknown as VaultItem,
       {
         id: '11',

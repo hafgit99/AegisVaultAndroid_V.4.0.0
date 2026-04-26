@@ -6,8 +6,21 @@
  */
 
 import RNFS from 'react-native-fs';
+import { NativeModules } from 'react-native';
 import { SecurityModule } from './SecurityModule';
 import { RecoveryModule } from './RecoveryModule';
+import { writeSecureJson } from './security/SecureJsonStorage';
+
+const { SecureStorage } = NativeModules as {
+  SecureStorage?: {
+    getItem?: (key: string) => Promise<string | null>;
+    setItem?: (key: string, value: string) => Promise<boolean>;
+  };
+};
+
+const CONTACTS_SECURE_KEY = 'aegis_trusted_contacts_v2';
+const REQUESTS_SECURE_KEY = 'aegis_emergency_requests_v2';
+const SAFE_EMERGENCY_ID = /^[a-zA-Z0-9_-]{8,128}$/;
 
 export interface TrustedContact {
   id: string;
@@ -38,7 +51,6 @@ export class EmergencyAccessModule {
   static async addContact(
     contact: Omit<TrustedContact, 'id' | 'addedAt'>,
   ): Promise<string> {
-    await RNFS.mkdir(this.CONTACTS_DIR).catch(() => {});
     const id = `tc_${Date.now()}`;
     const newContact: TrustedContact = {
       ...contact,
@@ -47,11 +59,9 @@ export class EmergencyAccessModule {
       status: 'pending',
     };
 
-    await RNFS.writeFile(
-      `${this.CONTACTS_DIR}/${id}.json`,
-      JSON.stringify(newContact),
-      'utf8',
-    );
+    const contacts = await this.loadContactsMap();
+    contacts[id] = newContact;
+    await this.saveContactsMap(contacts);
 
     await SecurityModule.logSecurityEvent('trusted_contact_added', 'success', {
       email: contact.email,
@@ -61,17 +71,7 @@ export class EmergencyAccessModule {
 
   static async getContacts(): Promise<TrustedContact[]> {
     try {
-      const exists = await RNFS.exists(this.CONTACTS_DIR);
-      if (!exists) return [];
-
-      const files = await RNFS.readDir(this.CONTACTS_DIR);
-      const contacts: TrustedContact[] = [];
-      for (const file of files) {
-        if (!file.name.endsWith('.json')) continue;
-        const content = await RNFS.readFile(file.path, 'utf8');
-        contacts.push(JSON.parse(content));
-      }
-      return contacts;
+      return Object.values(await this.loadContactsMap());
     } catch {
       return [];
     }
@@ -82,8 +82,6 @@ export class EmergencyAccessModule {
   ): Promise<string | null> {
     const session = await RecoveryModule.initiateRecovery(requesterEmail);
     if (!session) return null;
-
-    await RNFS.mkdir(this.REQUESTS_DIR).catch(() => {});
 
     const activeContacts = (await this.getContacts()).filter(
       c => c.status === 'active',
@@ -108,74 +106,145 @@ export class EmergencyAccessModule {
       approvedBy: [],
     };
 
-    await this.saveRequest(request);
+    const requests = await this.loadRequestsMap();
+    requests[request.id] = request;
+    await this.saveRequestsMap(requests);
+
     await SecurityModule.logSecurityEvent('emergency_request_created', 'success', {
+      id: request.id,
       requestId: request.id,
+      requesterEmail,
       requiredApprovals,
     });
-
     return request.id;
+  }
+
+  static async getActiveRequest(
+    requestId: string,
+  ): Promise<EmergencyAccessRequest | null> {
+    if (!this.isSafeId(requestId)) return null;
+    const requests = await this.loadRequestsMap();
+    const request =
+      requests[requestId] ||
+      (await this.readLegacyRecord<EmergencyAccessRequest>(
+        this.REQUESTS_DIR,
+        requestId,
+      ));
+    if (!request) return null;
+
+    if (
+      request.status === 'pending' &&
+      new Date(request.expiresAt) < new Date()
+    ) {
+      request.status = 'expired';
+      await this.saveRequestsMap(requests);
+    }
+    return request;
+  }
+
+  static async approveRequest(
+    requestId: string,
+    contactEmail: string,
+  ): Promise<boolean> {
+    return this.approveRecovery(requestId, contactEmail);
   }
 
   static async approveRecovery(
     requestId: string,
     contactId: string,
   ): Promise<boolean> {
-    const [request, contact] = await Promise.all([
-      this.getRequest(requestId),
-      this.getContact(contactId),
-    ]);
+    if (!this.isSafeId(requestId) || !this.isSafeId(contactId)) return false;
+    const requests = await this.loadRequestsMap();
+    const request =
+      requests[requestId] ||
+      (await this.readLegacyRecord<EmergencyAccessRequest>(
+        this.REQUESTS_DIR,
+        requestId,
+      ));
+    if (!request) return false;
+    requests[requestId] = request;
+    if (request.status === 'approved') return true;
+    if (request.status !== 'pending') return false;
 
-    if (!request || !contact || contact.status !== 'active') {
-      return false;
-    }
-    if (request.status !== 'pending') {
-      return request.status === 'approved';
-    }
-
-    const now = new Date();
-    if (now > new Date(request.expiresAt)) {
+    if (new Date(request.expiresAt) < new Date()) {
       request.status = 'expired';
-      await this.saveRequest(request);
+      await this.saveRequestsMap(requests);
       return false;
     }
+
+    const contacts = await this.loadContactsMap();
+    const contact =
+      contacts[contactId] ||
+      (await this.readLegacyRecord<TrustedContact>(this.CONTACTS_DIR, contactId));
+    if (!contact || contact.status !== 'active') return false;
 
     if (!request.approvedBy.includes(contactId)) {
       request.approvedBy.push(contactId);
-    }
-
-    if (request.approvedBy.length >= request.requiredApprovals) {
-      request.status = 'approved';
-      request.approvedAt = now.toISOString();
-    }
-
-    await this.saveRequest(request);
-    await SecurityModule.logSecurityEvent(
-      'recovery_approved_by_contact',
-      'success',
-      {
+      if (request.approvedBy.length >= request.requiredApprovals) {
+        request.status = 'approved';
+        request.approvedAt = new Date().toISOString();
+      }
+      await this.saveRequestsMap(requests);
+      await SecurityModule.logSecurityEvent('emergency_request_approved', 'success', {
         requestId,
         contactId,
-        approvals: request.approvedBy.length,
-        requiredApprovals: request.requiredApprovals,
-      },
-    );
-
-    return request.status === 'approved';
+        contactEmail: contact.email,
+        status: request.status,
+      });
+      return true;
+    }
+    await this.saveRequestsMap(requests);
+    return false;
   }
 
-  static async getRecoveryApprovalStatus(requestId: string): Promise<{
+  static async completeRecovery(requestId: string): Promise<boolean> {
+    return this.completeApprovedRecovery(requestId, '', '');
+  }
+
+  static async completeApprovedRecovery(
+    requestId: string,
+    recoveryToken: string,
+    backupPassword: string,
+  ): Promise<boolean> {
+    if (!this.isSafeId(requestId)) return false;
+    const requests = await this.loadRequestsMap();
+    const request =
+      requests[requestId] ||
+      (await this.readLegacyRecord<EmergencyAccessRequest>(
+        this.REQUESTS_DIR,
+        requestId,
+      ));
+    if (!request || request.status !== 'approved') return false;
+    requests[requestId] = request;
+
+    const ok = await RecoveryModule.restoreFromRecovery(
+      request.recoverySessionId,
+      recoveryToken,
+      backupPassword,
+    );
+    if (ok) {
+      request.status = 'completed';
+      await this.saveRequestsMap(requests);
+      await SecurityModule.logSecurityEvent('emergency_recovery_completed', 'success', {
+        requestId,
+      });
+    }
+    return ok;
+  }
+
+  static async getRecoveryApprovalStatus(
+    requestId: string,
+  ): Promise<{
     status: EmergencyAccessRequest['status'] | 'not_found';
     approvedCount: number;
     requiredApprovals: number;
   }> {
-    const request = await this.getRequest(requestId);
+    if (!this.isSafeId(requestId)) {
+      return { status: 'not_found', approvedCount: 0, requiredApprovals: 0 };
+    }
+    const request = await this.getActiveRequest(requestId);
     if (!request) {
-      return {
-        status: 'not_found',
-        approvedCount: 0,
-        requiredApprovals: 0,
-      };
+      return { status: 'not_found', approvedCount: 0, requiredApprovals: 0 };
     }
     return {
       status: request.status,
@@ -184,63 +253,107 @@ export class EmergencyAccessModule {
     };
   }
 
-  static async completeApprovedRecovery(
-    requestId: string,
-    recoveryToken: string,
-    backupPassword: string,
-  ): Promise<boolean> {
-    const request = await this.getRequest(requestId);
-    if (!request || request.status !== 'approved') {
-      return false;
+  private static async readSecureMap<T>(
+    key: string,
+    legacyDir: string,
+  ): Promise<Record<string, T>> {
+    const legacyFile = `${legacyDir}/index.json`;
+    if (SecureStorage?.getItem) {
+      try {
+        const secureValue = await SecureStorage.getItem(key);
+        if (secureValue) return this.normalizeMap<T>(JSON.parse(secureValue));
+      } catch {}
     }
 
-    const ok = await RecoveryModule.restoreFromRecovery(
-      request.recoverySessionId,
-      recoveryToken,
-      backupPassword,
-    );
-    if (!ok) return false;
+    try {
+      if (await RNFS.exists(legacyFile)) {
+        const parsed = JSON.parse(await RNFS.readFile(legacyFile, 'utf8'));
+        if (parsed?.id) {
+          return this.readLegacyDirectoryMap<T>(legacyDir);
+        }
+        return this.normalizeMap<T>(parsed);
+      }
+    } catch {}
 
-    request.status = 'completed';
-    await this.saveRequest(request);
-    await SecurityModule.logSecurityEvent('emergency_recovery_completed', 'success', {
-      requestId,
-      recoverySessionId: request.recoverySessionId,
+    return this.readLegacyDirectoryMap<T>(legacyDir);
+  }
+
+  private static async writeSecureMap<T>(
+    key: string,
+    legacyDir: string,
+    value: Record<string, T>,
+  ): Promise<boolean> {
+    await writeSecureJson(key, `${legacyDir}/index.json`, value, {
+      secureStorage: SecureStorage,
     });
     return true;
   }
 
-  private static async getContact(contactId: string): Promise<TrustedContact | null> {
+  private static async loadContactsMap(): Promise<Record<string, TrustedContact>> {
+    return this.readSecureMap<TrustedContact>(CONTACTS_SECURE_KEY, this.CONTACTS_DIR);
+  }
+
+  private static async saveContactsMap(
+    contacts: Record<string, TrustedContact>,
+  ): Promise<boolean> {
+    return this.writeSecureMap(CONTACTS_SECURE_KEY, this.CONTACTS_DIR, contacts);
+  }
+
+  private static async loadRequestsMap(): Promise<Record<string, EmergencyAccessRequest>> {
+    return this.readSecureMap<EmergencyAccessRequest>(REQUESTS_SECURE_KEY, this.REQUESTS_DIR);
+  }
+
+  private static async saveRequestsMap(
+    requests: Record<string, EmergencyAccessRequest>,
+  ): Promise<boolean> {
+    return this.writeSecureMap(REQUESTS_SECURE_KEY, this.REQUESTS_DIR, requests);
+  }
+
+  private static normalizeMap<T>(value: unknown): Record<string, T> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const record = value as Record<string, any>;
+    if (typeof record.id === 'string') {
+      return { [record.id]: record as T };
+    }
+    return record as Record<string, T>;
+  }
+
+  private static async readLegacyDirectoryMap<T>(
+    legacyDir: string,
+  ): Promise<Record<string, T>> {
     try {
-      const path = `${this.CONTACTS_DIR}/${contactId}.json`;
+      if (!(await RNFS.exists(legacyDir))) return {};
+      const files = await RNFS.readDir(legacyDir);
+      const out: Record<string, T> = {};
+      for (const file of files) {
+        if (!file.name.endsWith('.json')) continue;
+        try {
+          const parsed = JSON.parse(await RNFS.readFile(file.path, 'utf8'));
+          if (parsed?.id) out[parsed.id] = parsed as T;
+        } catch {}
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  private static async readLegacyRecord<T>(
+    legacyDir: string,
+    id: string,
+  ): Promise<T | null> {
+    if (!this.isSafeId(id)) return null;
+    try {
+      const path = `${legacyDir}/${id}.json`;
       if (!(await RNFS.exists(path))) return null;
-      const raw = await RNFS.readFile(path, 'utf8');
-      return JSON.parse(raw) as TrustedContact;
+      return JSON.parse(await RNFS.readFile(path, 'utf8')) as T;
     } catch {
       return null;
     }
   }
 
-  private static async getRequest(
-    requestId: string,
-  ): Promise<EmergencyAccessRequest | null> {
-    try {
-      const path = `${this.REQUESTS_DIR}/${requestId}.json`;
-      if (!(await RNFS.exists(path))) return null;
-      const raw = await RNFS.readFile(path, 'utf8');
-      return JSON.parse(raw) as EmergencyAccessRequest;
-    } catch {
-      return null;
-    }
-  }
-
-  private static async saveRequest(request: EmergencyAccessRequest): Promise<void> {
-    await RNFS.mkdir(this.REQUESTS_DIR).catch(() => {});
-    await RNFS.writeFile(
-      `${this.REQUESTS_DIR}/${request.id}.json`,
-      JSON.stringify(request),
-      'utf8',
-    );
+  private static isSafeId(value: string): boolean {
+    return SAFE_EMERGENCY_ID.test(value);
   }
 }
 

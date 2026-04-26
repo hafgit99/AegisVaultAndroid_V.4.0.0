@@ -596,6 +596,23 @@ describe('SecurityModule', () => {
     });
   });
 
+  describe('SQLCipher key pragma formatting', () => {
+    it('uses validated raw hex literals for rekey operations', () => {
+      expect(
+        (SecurityModule as any).buildSqlCipherRawKeyPragma(
+          'rekey',
+          'A'.repeat(64),
+        ),
+      ).toBe(`PRAGMA rekey = "x'${'a'.repeat(64)}'";`);
+      expect(() =>
+        (SecurityModule as any).buildSqlCipherRawKeyPragma(
+          'rekey',
+          "abc';DROP TABLE vault_items;--",
+        ),
+      ).toThrow('Invalid SQLCipher rekey key format');
+    });
+  });
+
   describe('password helpers', () => {
     it('generatePassword respects requested character classes', () => {
       const password = SecurityModule.generatePassword(12, {
@@ -603,6 +620,19 @@ describe('SecurityModule', () => {
         lowercase: true,
         numbers: false,
         symbols: false,
+      });
+
+      expect(password).toHaveLength(12);
+      expect(password).toMatch(/^[abcdefghijklmnopqrstuvwxyz]+$/);
+    });
+
+    it('generatePassword can exclude ambiguous characters explicitly', () => {
+      const password = SecurityModule.generatePassword(12, {
+        uppercase: false,
+        lowercase: true,
+        numbers: false,
+        symbols: false,
+        excludeAmbiguous: true,
       });
 
       expect(password).toHaveLength(12);
@@ -1050,6 +1080,50 @@ describe('SecurityModule', () => {
       ).resolves.toBe(false);
     });
 
+    it('updateItem ignores non-whitelisted field names before building SQL', async () => {
+      const executeSync = jest
+        .fn()
+        .mockImplementationOnce(() => ({
+          rows: [
+            {
+              id: 7,
+              title: 'Existing',
+              username: '',
+              password: '',
+              url: '',
+              notes: '',
+              category: 'login',
+              favorite: 0,
+              is_deleted: 0,
+              data: '{}',
+            },
+          ],
+        }))
+        .mockImplementation(() => ({ rows: [] }));
+      SecurityModule.db = { executeSync } as any;
+      jest
+        .spyOn(SecurityModule as any, 'syncAutofill')
+        .mockResolvedValue(undefined);
+      jest
+        .spyOn(SecurityModule as any, 'triggerWearSync')
+        .mockResolvedValue(undefined);
+      jest.spyOn(SecurityModule, 'logSecurityEvent').mockResolvedValue(undefined as any);
+
+      const result = await SecurityModule.updateItem(7, {
+        title: 'Safe',
+        ['title = title; DROP TABLE vault_items; --']: 'boom',
+      } as any);
+
+      expect(result).toBe(true);
+      const updateCall = executeSync.mock.calls.find(call =>
+        String(call[0]).startsWith('UPDATE vault_items SET'),
+      );
+      expect(updateCall?.[0]).toBe(
+        'UPDATE vault_items SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+      );
+      expect(updateCall?.[1]).toEqual(['Safe', 7]);
+    });
+
     it('updateItem updates passkey items with normalized data and history sync', async () => {
       SecurityModule.db = {
         executeSync: jest
@@ -1438,5 +1512,3 @@ describe('SecurityModule', () => {
     });
   });
 });
-
-  

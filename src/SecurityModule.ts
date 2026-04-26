@@ -9,6 +9,25 @@ import Argon2 from 'react-native-argon2';
 import i18n from './i18n';
 import { IntegrityModule } from './IntegrityModule';
 import { WearOSModule } from './WearOSModule';
+import {
+  buildSqlCipherRawKeyPragma,
+  wipeBytes,
+} from './security/CryptoService';
+import {
+  generatePassword as generateSecurePassword,
+  getPasswordStrength as getGeneratedPasswordStrength,
+  PasswordGeneratorOptions,
+} from './security/PasswordGenerator';
+import { resolveSecurityPolicy } from './security/PolicyService';
+import {
+  readSecureJson,
+  writeSecureJson,
+} from './security/SecureJsonStorage';
+import { isAllowedVaultItemUpdateColumn } from './security/VaultCRUD';
+import * as BruteForceService from './security/BruteForceService';
+import * as BiometricService from './security/BiometricService';
+import * as AuditService from './security/AuditService';
+import * as SharedVaultService from './security/SharedVaultService';
 
 // ── Pure JS Helper for robustness to replace buggy React Native Buffer ──
 const _b64chars =
@@ -266,6 +285,7 @@ export interface VaultSettings {
   biometricEnabled: boolean;
   clipboardClearSeconds: number;
   passwordLength: number;
+  excludeAmbiguousCharacters?: boolean;
   darkMode: boolean;
   breachCheckEnabled?: boolean;
   deviceTrustPolicy?: SecurityPolicy;
@@ -273,7 +293,11 @@ export interface VaultSettings {
 
 export type SharedVaultKind = 'private' | 'family' | 'team';
 export type SharedVaultRole = 'owner' | 'admin' | 'editor' | 'viewer';
-export type SharedMemberStatus = 'active' | 'pending' | 'emergency_only';
+export type SharedMemberStatus =
+  | 'active'
+  | 'pending'
+  | 'revoked'
+  | 'emergency_only';
 
 export interface SharedVaultMember {
   id: string;
@@ -424,43 +448,29 @@ const DEFAULT_SETTINGS: VaultSettings = {
   passwordLength: 20,
   darkMode: false,
   breachCheckEnabled: false,
+  excludeAmbiguousCharacters: false,
   deviceTrustPolicy: {
-    deviceTrustPolicy: 'moderate',
+    deviceTrustPolicy: 'strict',
     requireBiometric: true,
     rootDetectionEnabled: true,
-    rootBlocksVault: false,
-    degradedDeviceAction: 'warn',
+    rootBlocksVault: true,
+    degradedDeviceAction: 'block',
   },
 };
 
 // ── Brute Force Protection State ────────────────────
-interface BruteForceState {
-  failCount: number;
-  lockUntil: number; // timestamp
-  lastAttempt: number;
-}
-
-const BRUTE_FORCE_DECAY_WINDOW_MS = 24 * 60 * 60 * 1000;
-const BRUTE_FORCE_HARD_LOCK_SECONDS = [
-  15 * 60, // 5 failures
-  60 * 60, // 6 failures
-  6 * 60 * 60, // 7 failures
-  24 * 60 * 60, // 8 failures
-  3 * 24 * 60 * 60, // 9 failures
-  7 * 24 * 60 * 60, // 10+ failures
-];
-
 // ── Device Salt File Path ───────────────────────────
 const SALT_FILE = `${RNFS.DocumentDirectoryPath}/aegis_device_salt.bin`;
 const BRUTE_FORCE_FILE = `${RNFS.DocumentDirectoryPath}/aegis_bf_state.json`;
+const BRUTE_FORCE_SECURE_KEY = 'aegis_brute_force_state_v2';
 const LEGACY_BIOMETRIC_MATERIAL_FILE = `${RNFS.DocumentDirectoryPath}/aegis_km.dat`;
 const BIOMETRIC_MATERIAL_SECURE_KEY = 'aegis_biometric_public_key_v1';
 const BIOMETRIC_UNLOCK_SECRET_SECURE_KEY = 'aegis_biometric_unlock_secret_v2';
 const AUDIT_BUFFER_FILE = `${RNFS.DocumentDirectoryPath}/aegis_audit_buffer.json`;
 const AUDIT_BUFFER_SECURE_KEY = 'aegis_audit_buffer_secure_v1';
-const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
 const SHARED_SPACES_SETTING_KEY = 'sharedVaultSpaces';
-
+const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
+const APP_CONFIG_SECURE_KEY = 'aegis_app_config_secure_v2';
 const BACKUP_KDF_DEFAULT = {
   algorithm: 'Argon2id',
   memory: 32768,
@@ -495,26 +505,74 @@ export class SecurityModule {
   private static currentUnlockSecret: string | null = null;
   private static biometricLegacyFallbackSecret: string | null = null;
   private static appConfig: any = null;
-  private static bfState: BruteForceState = {
+  private static bfState: BruteForceService.BruteForceState = {
     failCount: 0,
     lockUntil: 0,
     lastAttempt: 0,
   };
 
   // ══════════════════════════════════════════════════
-  // 0. NON-ENCRYPTED APP CONFIG (for Pre-Unlock Settings)
+  // 0. PRE-UNLOCK APP CONFIG (SecureStorage with legacy file fallback)
   // ══════════════════════════════════════════════════
+
+  private static async readSecureJson<T>(
+    secureKey: string,
+    legacyFile: string,
+    fallback: T,
+  ): Promise<T> {
+    return readSecureJson(secureKey, legacyFile, fallback, {
+      secureStorage: SecureStorage,
+      onWarning: debugWarn,
+    });
+  }
+
+  private static async writeSecureJson<T>(
+    secureKey: string,
+    legacyFile: string,
+    value: T,
+  ): Promise<void> {
+    await writeSecureJson(secureKey, legacyFile, value, {
+      secureStorage: SecureStorage,
+    });
+  }
+
+  private static generateId(prefix: string): string {
+    return `${prefix}_${Date.now()}_${__bufToHex(randomBytesSafe(4))}`;
+  }
+
+  private static parseDataJson(data?: string | null): Record<string, any> {
+    if (!data) return {};
+    try {
+      const parsed = JSON.parse(data);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private static sanitizeAuditDetails(
+    details?: Record<string, any>,
+  ): Record<string, unknown> {
+    const redacted = AuditService.redactSensitiveFields(details || {});
+    return Object.fromEntries(
+      Object.entries(redacted).map(([key, value]) => [
+        key,
+        value === '[REDACTED]' ? '[redacted]' : value,
+      ]),
+    );
+  }
 
   private static async loadAppConfig(): Promise<void> {
     /* Stryker disable all: app-config IO fallbacks and brute-force persistence edges are behavior-tested via higher-level flows; remaining literal/branch mutants here are mostly storage noise. */
     if (this.appConfig) return;
     try {
-      if (await RNFS.exists(APP_CONFIG_FILE)) {
-        const json = await RNFS.readFile(APP_CONFIG_FILE, 'utf8');
-        this.appConfig = JSON.parse(json);
-      } else {
-        this.appConfig = {};
-      }
+      this.appConfig = await this.readSecureJson(
+        APP_CONFIG_SECURE_KEY,
+        APP_CONFIG_FILE,
+        {},
+      );
     } catch {
       this.appConfig = {};
     }
@@ -522,12 +580,15 @@ export class SecurityModule {
 
   private static async saveAppConfig(): Promise<void> {
     try {
-      await RNFS.writeFile(
+      await this.writeSecureJson(
+        APP_CONFIG_SECURE_KEY,
         APP_CONFIG_FILE,
-        JSON.stringify(this.appConfig || {}),
-        'utf8',
+        this.appConfig || {},
       );
-    } catch {}
+    } catch (e) {
+      debugWarn('[Security] App config persistence failed:', e);
+      throw e;
+    }
   }
 
   static async getAppConfigSetting(key: string): Promise<any> {
@@ -578,45 +639,16 @@ export class SecurityModule {
   // 2. BRUTE FORCE PROTECTION (exponential backoff)
   // ══════════════════════════════════════════════════
 
-  /**
-   * Exponential backoff schedule:
-   * 1-4 fails:  no delay
-   * 5 fails:    15 min lockout
-   * 6 fails:    60 min lockout
-   * 7 fails:    6 hour lockout
-   * 8 fails:    24 hour lockout
-   * 9 fails:    72 hour lockout
-   * 10+ fails:  7 day lockout
-   */
-  private static getLockoutDuration(failCount: number): number {
-    if (failCount < 5) return 0;
-    const idx = Math.min(
-      failCount - 5,
-      BRUTE_FORCE_HARD_LOCK_SECONDS.length - 1,
-    );
-    return BRUTE_FORCE_HARD_LOCK_SECONDS[idx] * 1000;
-  }
-
-  private static decayBruteForceCounter(now: number): void {
-    if (!this.bfState.lastAttempt) return;
-    const elapsed = now - this.bfState.lastAttempt;
-    if (elapsed < BRUTE_FORCE_DECAY_WINDOW_MS) return;
-    const decaySteps = Math.floor(elapsed / BRUTE_FORCE_DECAY_WINDOW_MS);
-    this.bfState.failCount = Math.max(0, this.bfState.failCount - decaySteps);
-    if (this.bfState.failCount < 5 && this.bfState.lockUntil < now) {
-      this.bfState.lockUntil = 0;
-    }
-    /* Stryker restore all */
-  }
-
   private static async loadBruteForceState(): Promise<void> {
     try {
-      const exists = await RNFS.exists(BRUTE_FORCE_FILE);
-      if (exists) {
-        const json = await RNFS.readFile(BRUTE_FORCE_FILE, 'utf8');
-        this.bfState = JSON.parse(json);
-        this.decayBruteForceCounter(Date.now());
-      }
+      this.bfState = BruteForceService.normalizeBruteForceState(
+        await this.readSecureJson(
+          BRUTE_FORCE_SECURE_KEY,
+          BRUTE_FORCE_FILE,
+          { failCount: 0, lockUntil: 0, lastAttempt: 0 },
+        ),
+      );
+      this.bfState = BruteForceService.decayBruteForceCounter(this.bfState, Date.now());
     } catch {
       this.bfState = { failCount: 0, lockUntil: 0, lastAttempt: 0 };
     }
@@ -624,28 +656,37 @@ export class SecurityModule {
 
   private static async saveBruteForceState(): Promise<void> {
     try {
-      await RNFS.writeFile(
+      await this.writeSecureJson(
+        BRUTE_FORCE_SECURE_KEY,
         BRUTE_FORCE_FILE,
-        JSON.stringify(this.bfState),
-        'utf8',
+        this.bfState,
       );
-    } catch {}
-  }
-
-  private static async recordFailedAttempt(): Promise<void> {
-    this.decayBruteForceCounter(Date.now());
-    this.bfState.failCount++;
-    this.bfState.lastAttempt = Date.now();
-    const lockDuration = this.getLockoutDuration(this.bfState.failCount);
-    if (lockDuration > 0) {
-      this.bfState.lockUntil = Date.now() + lockDuration;
+    } catch (e) {
+      debugWarn('[Security] Brute-force state persistence failed:', e);
     }
-    await this.saveBruteForceState();
-    debugLog('[Security] Failed unlock attempt recorded');
   }
 
   private static async recordSuccessfulAttempt(): Promise<void> {
     this.bfState = { failCount: 0, lockUntil: 0, lastAttempt: 0 };
+    await this.saveBruteForceState();
+  }
+
+  private static decayBruteForceCounter(now: number = Date.now()): void {
+    this.bfState = BruteForceService.decayBruteForceCounter(
+      this.bfState,
+      now,
+    );
+  }
+
+  private static getLockoutDuration(failCount: number): number {
+    return BruteForceService.getLockoutDuration(failCount);
+  }
+
+  private static async recordFailedAttempt(): Promise<void> {
+    this.bfState = BruteForceService.recordFailedAttempt(
+      this.bfState,
+      Date.now(),
+    );
     await this.saveBruteForceState();
   }
 
@@ -654,8 +695,7 @@ export class SecurityModule {
    */
   static async getRemainingLockout(): Promise<number> {
     await this.loadBruteForceState();
-    if (this.bfState.lockUntil <= Date.now()) return 0;
-    return Math.ceil((this.bfState.lockUntil - Date.now()) / 1000);
+    return BruteForceService.getRemainingSeconds(this.bfState, Date.now());
   }
 
   static async getFailedAttempts(): Promise<number> {
@@ -700,6 +740,13 @@ export class SecurityModule {
     }
   }
 
+  private static buildSqlCipherRawKeyPragma(
+    operation: 'key' | 'rekey',
+    keyHex: string,
+  ): string {
+    return buildSqlCipherRawKeyPragma(operation, keyHex);
+  }
+
   // ══════════════════════════════════════════════════
   // 3. BIOMETRIC KEY DERIVATION (hardware-backed, deterministic)
   // ══════════════════════════════════════════════════
@@ -729,10 +776,6 @@ export class SecurityModule {
    * - Biometric verification required before secret derivation
    * - Key material zeroed after use
    */
-  private static generateBiometricUnlockSecret(): string {
-    return randomBytesSafe(32).toString('hex');
-  }
-
   private static async readBiometricUnlockSecret(): Promise<string | null> {
     if (!SecureStorage?.getItem) return null;
     try {
@@ -744,14 +787,16 @@ export class SecurityModule {
     return null;
   }
 
-  private static async writeBiometricUnlockSecret(secret: string): Promise<void> {
-    if (!secret || secret.length < 32) return;
+  private static async writeBiometricUnlockSecret(secret: string): Promise<boolean> {
+    if (!secret || secret.length < 32) return false;
     if (SecureStorage?.setItem) {
       try {
         await SecureStorage.setItem(BIOMETRIC_UNLOCK_SECRET_SECURE_KEY, secret);
-        return;
+        const savedSecret = await this.readBiometricUnlockSecret();
+        return savedSecret === secret;
       } catch {}
     }
+    return false;
   }
 
   private static async deriveLegacyBiometricUnlockSecret(): Promise<string | null> {
@@ -767,11 +812,20 @@ export class SecurityModule {
         }
         const result = await rnBiometrics.createKeys();
         publicKey = result.publicKey;
+        if (!publicKey || typeof publicKey !== 'string') {
+          throw new Error('Invalid public key generated');
+        }
         await this.storeKeyMaterial(publicKey);
       }
 
       const salt = await this.getDeviceSalt();
-      const argon2Result = await Argon2Fn(publicKey!, salt.toString('hex'), {
+      const input = BiometricService.buildBiometricDerivationInput({
+        publicKey: publicKey!,
+        deviceSalt: salt.toString('hex'),
+        version: 'v1_legacy',
+      });
+
+      const argon2Result = await Argon2Fn(input, salt.toString('hex'), {
         mode: 'argon2id',
         memory: VAULT_KDF_STRONG.memory,
         iterations: VAULT_KDF_STRONG.iterations,
@@ -893,6 +947,32 @@ export class SecurityModule {
     );
   }
 
+  private static async getEffectiveSecurityPolicy(
+    userSecurityPolicy?: SecurityPolicy,
+  ): Promise<SecurityPolicy> {
+    if (userSecurityPolicy) return userSecurityPolicy;
+    const defaults = DEFAULT_SETTINGS.deviceTrustPolicy!;
+    try {
+      return resolveSecurityPolicy(
+        {
+          deviceTrustPolicy: await this.getAppConfigSetting('deviceTrustPolicy'),
+          requireBiometric: await this.getAppConfigSetting('biometricEnabled'),
+          rootDetectionEnabled: await this.getAppConfigSetting(
+            'rootDetectionEnabled',
+          ),
+          rootBlocksVault: await this.getAppConfigSetting('rootBlocksVault'),
+          degradedDeviceAction: await this.getAppConfigSetting(
+            'degradedDeviceAction',
+          ),
+        },
+        defaults,
+        this.parseSettingBoolean,
+      );
+    } catch {
+      return defaults;
+    }
+  }
+
   // ══════════════════════════════════════════════════
   // 4. VAULT UNLOCK (with brute force protection)
   // ══════════════════════════════════════════════════
@@ -922,11 +1002,11 @@ export class SecurityModule {
       }
 
       // ✅ NEW FEATURE #1: Device Integrity Check (Cihaz Bütünlüğü Kontrol)
-      const policy = userSecurityPolicy || DEFAULT_SETTINGS.deviceTrustPolicy!;
+      const policy = await this.getEffectiveSecurityPolicy(userSecurityPolicy);
 
       if (policy.rootDetectionEnabled) {
         debugLog('[Security] Running device integrity check...');
-        const integrityResult = await IntegrityModule.checkDeviceIntegrity();
+        const integrityResult = await IntegrityModule.getIntegritySignals();
         debugLog(
           '[Security] Integrity result:',
           integrityResult.riskLevel,
@@ -934,23 +1014,35 @@ export class SecurityModule {
           integrityResult.score,
         );
 
-        // Handle based on policy
-        if (
+        const degradedDevice =
+          integrityResult.riskLevel === 'critical' ||
+          integrityResult.riskLevel === 'high';
+        const shouldBlock =
           policy.deviceTrustPolicy === 'strict' &&
-          (integrityResult.riskLevel === 'critical' ||
-            integrityResult.riskLevel === 'high')
-        ) {
+          ((policy.rootBlocksVault && Boolean((integrityResult as any).rooted)) ||
+            degradedDevice ||
+            (policy.degradedDeviceAction === 'block' && degradedDevice));
+
+        if (shouldBlock) {
           await this.logSecurityEvent('vault_unlock', 'blocked', {
             reason: 'device_integrity_failed',
             riskLevel: integrityResult.riskLevel,
             reasons: integrityResult.reasons,
+            policy: policy.deviceTrustPolicy,
           });
           console.error(
-            '[Security] Vault unlock blocked: Device integrity check failed (STRICT mode)',
+            '[Security] Vault unlock blocked: Device integrity policy failed',
           );
           return false;
         }
-        // ...existing code...
+        if (policy.degradedDeviceAction === 'warn' && degradedDevice) {
+          await this.logSecurityEvent('vault_unlock', 'info', {
+            reason: 'device_integrity_degraded',
+            riskLevel: integrityResult.riskLevel,
+            reasons: integrityResult.reasons,
+            policy: policy.deviceTrustPolicy,
+          });
+        }
         debugLog(
           '[Security] Device integrity check passed, risk level:',
           integrityResult.riskLevel,
@@ -980,8 +1072,9 @@ export class SecurityModule {
           throw new Error('Vault unlock failed for strong and legacy KDF profiles');
         }
 
-        const escapedStrongKey = strongKeyHex.replace(/'/g, "''");
-        openedDb.executeSync(`PRAGMA rekey = '${escapedStrongKey}';`);
+        openedDb.executeSync(
+          this.buildSqlCipherRawKeyPragma('rekey', strongKeyHex),
+        );
         openedDb.close();
         openedDb = this.tryOpenVaultWithKey(strongKeyHex);
         if (!openedDb) {
@@ -996,27 +1089,27 @@ export class SecurityModule {
       this.db = openedDb;
       this.currentUnlockSecret = unlockSecret;
 
-      // One-time migration: if unlock succeeded with legacy biometric derivation,
-      // rotate vault unlock secret to a random secret protected by SecureStorage.
+      // One-time migration: persist the working legacy biometric secret in
+      // SecureStorage without rekeying the database. Rekeying to a new random
+      // secret during unlock can strand the vault if SecureStorage persistence
+      // fails or the process dies mid-migration.
       if (
         this.biometricLegacyFallbackSecret &&
         unlockSecret === this.biometricLegacyFallbackSecret
       ) {
         try {
-          const migratedSecret = this.generateBiometricUnlockSecret();
-          const migratedStrongKeyHex = await this.deriveVaultDatabaseKeyHex(
-            migratedSecret,
-            salt,
-            'strong',
-          );
-          const escapedMigratedKey = migratedStrongKeyHex.replace(/'/g, "''");
-          this.db.executeSync(`PRAGMA rekey = '${escapedMigratedKey}';`);
-          await this.writeBiometricUnlockSecret(migratedSecret);
-          this.currentUnlockSecret = migratedSecret;
-          this.biometricLegacyFallbackSecret = null;
-          await this.logSecurityEvent('biometric_secret_migrated', 'success', {
-            model: 'secure_storage_random_secret_v2',
-          });
+          const persisted = await this.writeBiometricUnlockSecret(unlockSecret);
+          if (persisted) {
+            this.biometricLegacyFallbackSecret = null;
+            await this.logSecurityEvent('biometric_secret_migrated', 'success', {
+              model: 'secure_storage_legacy_secret_v2',
+            });
+          } else {
+            await this.logSecurityEvent('biometric_secret_migrated', 'info', {
+              model: 'legacy_secret_retained',
+              reason: 'secure_storage_roundtrip_failed',
+            });
+          }
         } catch (migrationError) {
           await this.logSecurityEvent('biometric_secret_migrated', 'failed', {
             reason:
@@ -1219,26 +1312,6 @@ export class SecurityModule {
     await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
   }
 
-  private static sanitizeAuditDetails(
-    details?: Record<string, any>,
-  ): Record<string, any> {
-    const source = details || {};
-    const sensitiveKeyPattern =
-      /password|pass|token|secret|authorization|credential|private|key|seed/i;
-    const sanitized: Record<string, any> = {};
-    Object.keys(source).forEach(key => {
-      const value = source[key];
-      if (sensitiveKeyPattern.test(key)) {
-        sanitized[key] = '[redacted]';
-      } else if (typeof value === 'string' && value.length > 512) {
-        sanitized[key] = `${value.slice(0, 256)}...[truncated]`;
-      } else {
-        sanitized[key] = value;
-      }
-    });
-    return sanitized;
-  }
-
   private static async appendAuditBuffer(
     eventType: string,
     eventStatus: AuditEvent['event_status'],
@@ -1358,306 +1431,6 @@ export class SecurityModule {
       console.error('clearAuditEvents:', e);
       return false;
     }
-  }
-
-  private static parseDataJson(raw?: string): any {
-    try {
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  }
-
-  private static generateLocalId(prefix: string): string {
-    return `${prefix}_${Date.now()}_${__bufToHex(randomBytesSafe(6))}`;
-  }
-
-  private static sanitizeSharedMember(
-    input: Partial<SharedVaultMember>,
-  ): SharedVaultMember {
-    return {
-      id: (input.id || this.generateLocalId('member')).trim(),
-      name: (input.name || '').trim(),
-      email: (input.email || '').trim().toLowerCase(),
-      role: (input.role || 'viewer') as SharedVaultRole,
-      status: (input.status || 'active') as SharedMemberStatus,
-      inviteCode: (input.inviteCode || '').trim() || undefined,
-      invitedAt: input.invitedAt || undefined,
-      acceptedAt: input.acceptedAt || undefined,
-      deviceLabel: (input.deviceLabel || '').trim() || undefined,
-      notes: (input.notes || '').trim() || undefined,
-      lastVerifiedAt: input.lastVerifiedAt || undefined,
-    };
-  }
-
-  private static sanitizeSharedSpace(
-    input: Partial<SharedVaultSpace>,
-  ): SharedVaultSpace {
-    const now = new Date().toISOString();
-    const members = Array.isArray(input.members)
-      ? input.members
-          .map(member => this.sanitizeSharedMember(member))
-          .filter(member => member.name || member.email)
-      : [];
-
-    return {
-      id: (input.id || this.generateLocalId('space')).trim(),
-      name: (input.name || '').trim(),
-      kind: (input.kind || 'family') as SharedVaultKind,
-      description: (input.description || '').trim(),
-      defaultRole: (input.defaultRole || 'viewer') as Exclude<
-        SharedVaultRole,
-        'owner'
-      >,
-      allowExport: input.allowExport !== false,
-      requireReview: Boolean(input.requireReview),
-      createdAt: input.createdAt || now,
-      updatedAt: now,
-      members,
-    };
-  }
-
-  static parseSharedAssignment(
-    itemOrData?: Partial<VaultItem> | string | null,
-  ): SharedItemAssignment | null {
-    const data =
-      typeof itemOrData === 'string'
-        ? this.parseDataJson(itemOrData)
-        : this.parseDataJson(itemOrData?.data);
-    const shared = data?.shared;
-    if (!shared || typeof shared !== 'object') return null;
-    if (!(shared.spaceId || '').trim()) return null;
-
-    return {
-      spaceId: String(shared.spaceId).trim(),
-      role: (
-        shared.role && ['editor', 'viewer'].includes(shared.role)
-          ? shared.role
-          : 'viewer'
-      ) as 'editor' | 'viewer',
-      sharedBy: (shared.sharedBy || '').trim() || undefined,
-      isSensitive: Boolean(shared.isSensitive),
-      emergencyAccess: Boolean(shared.emergencyAccess),
-      notes: (shared.notes || '').trim() || undefined,
-      lastReviewedAt: (shared.lastReviewedAt || '').trim() || undefined,
-    };
-  }
-
-  static mergeSharedAssignmentIntoData(
-    rawData: any,
-    assignment?: SharedItemAssignment | null,
-  ): string {
-    const data =
-      typeof rawData === 'string' ? this.parseDataJson(rawData) : rawData || {};
-    const next = { ...data };
-    if (assignment?.spaceId) {
-      next.shared = {
-        ...assignment,
-        spaceId: assignment.spaceId.trim(),
-        role: assignment.role || 'viewer',
-      };
-    } else {
-      delete next.shared;
-    }
-    return JSON.stringify(next);
-  }
-
-  static async getSharedVaultSpaces(): Promise<SharedVaultSpace[]> {
-    try {
-      const raw = await this.getSetting(SHARED_SPACES_SETTING_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .map(space => this.sanitizeSharedSpace(space))
-        .filter(space => space.name);
-    } catch {
-      return [];
-    }
-  }
-
-  static async saveSharedVaultSpace(
-    input: Partial<SharedVaultSpace>,
-  ): Promise<SharedVaultSpace | null> {
-    const normalized = this.sanitizeSharedSpace(input);
-    if (!normalized.name) {
-      return null;
-    }
-
-    const spaces = await this.getSharedVaultSpaces();
-    const nextSpaces = spaces.some(space => space.id === normalized.id)
-      ? spaces.map(space => (space.id === normalized.id ? normalized : space))
-      : [...spaces, normalized];
-
-    await this.setSetting(
-      SHARED_SPACES_SETTING_KEY,
-      JSON.stringify(nextSpaces, null, 2),
-    );
-    await this.logSecurityEvent('shared_space_saved', 'success', {
-      id: normalized.id,
-      kind: normalized.kind,
-      members: normalized.members.length,
-    });
-    return normalized;
-  }
-
-  static async deleteSharedVaultSpace(spaceId: string): Promise<boolean> {
-    const trimmedId = (spaceId || '').trim();
-    if (!trimmedId) return false;
-
-    const spaces = await this.getSharedVaultSpaces();
-    const nextSpaces = spaces.filter(space => space.id !== trimmedId);
-    await this.setSetting(
-      SHARED_SPACES_SETTING_KEY,
-      JSON.stringify(nextSpaces, null, 2),
-    );
-
-    const items = await this.getItems();
-    for (const item of items) {
-      const assignment = this.parseSharedAssignment(item);
-      if (assignment?.spaceId !== trimmedId || !item.id) continue;
-      await this.updateItem(item.id, {
-        data: this.mergeSharedAssignmentIntoData(item.data, null),
-      });
-    }
-
-    await this.logSecurityEvent('shared_space_deleted', 'info', {
-      id: trimmedId,
-    });
-    return true;
-  }
-
-  static async setItemSharedAssignment(
-    itemId: number,
-    assignment?: SharedItemAssignment | null,
-  ): Promise<boolean> {
-    const item = await this.getItemById(itemId);
-    if (!item) return false;
-    return this.updateItem(itemId, {
-      data: this.mergeSharedAssignmentIntoData(item.data, assignment || null),
-    });
-  }
-
-  static async getSharingOverview(): Promise<SharingOverviewReport> {
-    const spaces = await this.getSharedVaultSpaces();
-    const items = await this.getItems();
-    const issues: SharingOverviewIssue[] = [];
-    const now = Date.now();
-    const reviewThresholdMs = 90 * 24 * 60 * 60 * 1000;
-    let sharedItems = 0;
-    let reviewRequiredItems = 0;
-    let pendingMembers = 0;
-
-    const spaceSummaries = spaces.map(space => {
-      const activeMembers = space.members.filter(
-        member => member.status === 'active',
-      ).length;
-      const pending = space.members.filter(
-        member => member.status === 'pending',
-      ).length;
-      pendingMembers += pending;
-      return {
-        ...space,
-        itemCount: 0,
-        activeMembers,
-        pendingMembers: pending,
-      };
-    });
-
-    const spaceIndex = new Map(spaceSummaries.map(space => [space.id, space]));
-
-    for (const item of items) {
-      const assignment = this.parseSharedAssignment(item);
-      if (!assignment) continue;
-      sharedItems++;
-      const space = spaceIndex.get(assignment.spaceId);
-      if (!space) {
-        issues.push({
-          itemId: item.id || 0,
-          title: item.title || 'Untitled',
-          severity: 'high',
-          type: 'orphaned_space',
-          message: 'Shared assignment points to a space that no longer exists.',
-        });
-        continue;
-      }
-
-      space.itemCount += 1;
-
-      if (space.members.length === 0) {
-        issues.push({
-          itemId: item.id || 0,
-          title: item.title || 'Untitled',
-          severity: 'high',
-          type: 'no_members',
-          message: 'Shared item belongs to a space without any configured members.',
-        });
-      }
-
-      const reviewedAt = assignment.lastReviewedAt
-        ? new Date(assignment.lastReviewedAt).getTime()
-        : 0;
-      const requiresReview = space.requireReview && (!reviewedAt || now - reviewedAt > reviewThresholdMs);
-      if (requiresReview) {
-        reviewRequiredItems++;
-        issues.push({
-          itemId: item.id || 0,
-          title: item.title || 'Untitled',
-          severity: 'medium',
-          type: 'review_required',
-          message: 'Shared access review is overdue for this item.',
-        });
-      }
-
-      if (assignment.isSensitive && !assignment.emergencyAccess) {
-        issues.push({
-          itemId: item.id || 0,
-          title: item.title || 'Untitled',
-          severity: 'medium',
-          type: 'sensitive_without_emergency',
-          message: 'Sensitive shared item has no emergency access path configured.',
-        });
-      }
-    }
-
-    const penalty =
-      issues.filter(issue => issue.severity === 'high').length * 12 +
-      issues.filter(issue => issue.severity === 'medium').length * 6 +
-      pendingMembers * 2;
-    const score = Math.max(0, 100 - penalty);
-    const actions: string[] = [];
-
-    if (issues.some(issue => issue.type === 'orphaned_space')) {
-      actions.push('Fix items linked to deleted spaces before the next backup or export.');
-    }
-    if (issues.some(issue => issue.type === 'no_members')) {
-      actions.push('Add at least one active member to every shared family or team space.');
-    }
-    if (reviewRequiredItems > 0) {
-      actions.push('Review shared access every 90 days for spaces that require periodic review.');
-    }
-    if (issues.some(issue => issue.type === 'sensitive_without_emergency')) {
-      actions.push('Enable emergency access for highly sensitive shared entries.');
-    }
-    if (actions.length === 0) {
-      actions.push('Shared spaces look healthy. Keep member roles and access reviews current.');
-    }
-
-    return {
-      score,
-      riskLevel: this.getRiskLevelFromScore(score),
-      summary: {
-        spaces: spaces.length,
-        sharedItems,
-        familySpaces: spaces.filter(space => space.kind === 'family').length,
-        teamSpaces: spaces.filter(space => space.kind === 'team').length,
-        pendingMembers,
-        reviewRequiredItems,
-      },
-      actions,
-      issues,
-      spaces: spaceSummaries.sort((a, b) => a.name.localeCompare(b.name)),
-    };
   }
 
   private static extractHistorySecretsFromItem(
@@ -1882,10 +1655,9 @@ export class SecurityModule {
       const fields: string[] = [],
         params: any[] = [];
       for (const [k, v] of Object.entries(item)) {
-        if (!['id', 'created_at'].includes(k)) {
-          fields.push(`${k}=?`);
-          params.push(v);
-        }
+        if (!isAllowedVaultItemUpdateColumn(k)) continue;
+        fields.push(`${k}=?`);
+        params.push(v);
       }
       fields.push('updated_at=CURRENT_TIMESTAMP');
       params.push(id);
@@ -2071,6 +1843,151 @@ export class SecurityModule {
     } catch (e) {
       console.error('[Security] Error cleaning up old trash:', e);
     }
+  }
+
+  static sanitizeSharedMember(
+    input: Partial<SharedVaultMember>,
+  ): SharedVaultMember {
+    return SharedVaultService.sanitizeSharedMember(input, prefix =>
+      this.generateId(prefix),
+    );
+  }
+
+  static sanitizeSharedSpace(
+    input: Partial<SharedVaultSpace>,
+  ): SharedVaultSpace {
+    return SharedVaultService.sanitizeSharedSpace(input, prefix =>
+      this.generateId(prefix),
+    );
+  }
+
+  static parseSharedAssignment(
+    input: Partial<VaultItem> | string | null | undefined,
+  ): SharedItemAssignment | null {
+    if (!input) return null;
+    const data =
+      typeof input === 'string'
+        ? this.parseDataJson(input)
+        : this.parseDataJson(input.data);
+    return SharedVaultService.parseSharedAssignment(data);
+  }
+
+  static mergeSharedAssignmentIntoData(
+    data: string | null | undefined,
+    assignment?: Partial<SharedItemAssignment> | null,
+  ): string {
+    const parsed = this.parseDataJson(data);
+    if (!assignment?.spaceId?.trim()) {
+      delete parsed.shared;
+      return JSON.stringify(parsed);
+    }
+
+    parsed.shared = {
+      spaceId: assignment.spaceId.trim(),
+      role:
+        assignment.role === 'editor' || assignment.role === 'viewer'
+          ? assignment.role
+          : 'viewer',
+      ...(assignment.sharedBy?.trim()
+        ? { sharedBy: assignment.sharedBy.trim() }
+        : {}),
+      ...(assignment.isSensitive !== undefined
+        ? { isSensitive: Boolean(assignment.isSensitive) }
+        : {}),
+      ...(assignment.emergencyAccess !== undefined
+        ? { emergencyAccess: Boolean(assignment.emergencyAccess) }
+        : {}),
+      ...(assignment.notes?.trim() ? { notes: assignment.notes.trim() } : {}),
+      ...(assignment.lastReviewedAt?.trim()
+        ? { lastReviewedAt: assignment.lastReviewedAt.trim() }
+        : {}),
+    };
+    return JSON.stringify(parsed);
+  }
+
+  static async getSharedVaultSpaces(): Promise<SharedVaultSpace[]> {
+    const raw = await this.getSetting(SHARED_SPACES_SETTING_KEY);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(space => space && typeof space === 'object')
+        .map(space => this.sanitizeSharedSpace(space));
+    } catch {
+      return [];
+    }
+  }
+
+  static async saveSharedVaultSpace(
+    input: Partial<SharedVaultSpace>,
+  ): Promise<SharedVaultSpace | null> {
+    const normalized = this.sanitizeSharedSpace(input);
+    if (!normalized.name.trim()) return null;
+
+    const spaces = await this.getSharedVaultSpaces();
+    const nextSpaces = spaces.some(space => space.id === normalized.id)
+      ? spaces.map(space => (space.id === normalized.id ? normalized : space))
+      : [...spaces, normalized];
+
+    await this.setSetting(
+      SHARED_SPACES_SETTING_KEY,
+      JSON.stringify(nextSpaces),
+    );
+    await this.logSecurityEvent('shared_space_saved', 'success', {
+      id: normalized.id,
+      kind: normalized.kind,
+      members: normalized.members.length,
+    });
+    return normalized;
+  }
+
+  static async setItemSharedAssignment(
+    itemId: number,
+    assignment?: Partial<SharedItemAssignment> | null,
+  ): Promise<boolean> {
+    const item = await this.getItemById(itemId);
+    if (!item) return false;
+    const data = this.mergeSharedAssignmentIntoData(item.data, assignment);
+    return this.updateItem(itemId, { data });
+  }
+
+  static async deleteSharedVaultSpace(spaceId: string): Promise<boolean> {
+    const safeSpaceId = spaceId.trim();
+    if (!safeSpaceId) return false;
+
+    const spaces = await this.getSharedVaultSpaces();
+    const nextSpaces = spaces.filter(space => space.id !== safeSpaceId);
+    if (nextSpaces.length === spaces.length) return false;
+
+    await this.setSetting(
+      SHARED_SPACES_SETTING_KEY,
+      JSON.stringify(nextSpaces),
+    );
+
+    const items = await this.getItems();
+    for (const item of items) {
+      const assignment = this.parseSharedAssignment(item);
+      if (assignment?.spaceId === safeSpaceId && item.id) {
+        const data = this.mergeSharedAssignmentIntoData(item.data, null);
+        await this.updateItem(item.id, { data });
+      }
+    }
+
+    await this.logSecurityEvent('shared_space_deleted', 'info', {
+      id: safeSpaceId,
+    });
+    return true;
+  }
+
+  static async getSharingOverview(): Promise<SharingOverviewReport> {
+    const [spaces, items] = await Promise.all([
+      this.getSharedVaultSpaces(),
+      this.getItems(),
+    ]);
+    return SharedVaultService.generateSharingOverview(spaces, items, item =>
+      this.parseSharedAssignment(item),
+    );
   }
 
   static async resetVault(): Promise<boolean> {
@@ -2409,6 +2326,10 @@ export class SecurityModule {
         'biometricEnabled',
         'autoLockSeconds',
         'breachCheckEnabled',
+        'deviceTrustPolicy',
+        'rootDetectionEnabled',
+        'rootBlocksVault',
+        'degradedDeviceAction',
       ];
     try {
       if (uiSettingKeys.includes(key)) {
@@ -2473,6 +2394,13 @@ export class SecurityModule {
       const pl = await this.getSetting('passwordLength');
       if (pl !== null)
         s.passwordLength = this.parseSettingNumber(pl, s.passwordLength);
+      const ea = await this.getSetting('excludeAmbiguousCharacters');
+      if (ea !== null) {
+        s.excludeAmbiguousCharacters = this.parseSettingBoolean(
+          ea,
+          Boolean(s.excludeAmbiguousCharacters),
+        );
+      }
       const dm = await this.getSetting('darkMode');
       if (dm !== null) s.darkMode = this.parseSettingBoolean(dm, s.darkMode);
       const bc = await this.getSetting('breachCheckEnabled');
@@ -2489,37 +2417,9 @@ export class SecurityModule {
   // ── Password Generator (CSPRNG-based) ─────────────
   static generatePassword(
     len: number = 20,
-    opts?: {
-      uppercase?: boolean;
-      lowercase?: boolean;
-      numbers?: boolean;
-      symbols?: boolean;
-    },
+    opts?: PasswordGeneratorOptions,
   ): string {
-    const o = {
-      uppercase: true,
-      lowercase: true,
-      numbers: true,
-      symbols: true,
-      ...opts,
-    };
-    let c = '';
-    if (o.lowercase) c += 'abcdefghijkmnopqrstuvwxyz';
-    if (o.uppercase) c += 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    if (o.numbers) c += '23456789';
-    if (o.symbols) c += '!@#$%^&*_+-=?';
-    if (!c) c = 'abcdefghijkmnopqrstuvwxyz';
-
-    // Use CSPRNG instead of Math.random()
-    const randomBytes = randomBytesSafe(len * 2);
-    let pw = '';
-    for (let i = 0; i < len; i++) {
-      // Use 2 bytes per char to reduce modulo bias
-      const val =
-        ((randomBytes[i * 2] << 8) | randomBytes[i * 2 + 1]) % c.length;
-      pw += c.charAt(val);
-    }
-    return pw;
+    return generateSecurePassword(len, opts, randomBytesSafe);
   }
 
   static getPasswordStrength(pw: string): {
@@ -2527,19 +2427,7 @@ export class SecurityModule {
     label: string;
     color: string;
   } {
-    if (!pw) return { score: 0, label: 'Yok', color: '#94a3b8' };
-    let sc = 0;
-    if (pw.length >= 8) sc++;
-    if (pw.length >= 12) sc++;
-    if (pw.length >= 16) sc++;
-    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) sc++;
-    if (/\d/.test(pw)) sc++;
-    if (/[^A-Za-z0-9]/.test(pw)) sc++;
-    if (pw.length >= 20) sc++;
-    if (sc <= 2) return { score: sc, label: 'Zayıf', color: '#ef4444' };
-    if (sc <= 4) return { score: sc, label: 'Orta', color: '#f59e0b' };
-    if (sc <= 5) return { score: sc, label: 'Güçlü', color: '#22c55e' };
-    return { score: sc, label: 'Çok Güçlü', color: '#06b6d4' };
+    return getGeneratedPasswordStrength(pw);
   }
 
   static normalizePasskeyRpId(url?: string, rpId?: string): string {
@@ -3211,6 +3099,26 @@ export class SecurityModule {
    * Encrypt data using AES-256-GCM with Argon2id key derivation.
    * Returns: { salt, iv, authTag, ciphertext } all base64 encoded.
    */
+  private static normalizeArgon2RawHash(rawHash: unknown): Uint8Array {
+    if (!rawHash) throw new Error('Argon2 returned empty rawHash');
+    if (typeof rawHash === 'string') {
+      const value = rawHash.trim();
+      return /^[0-9a-f]+$/i.test(value) && value.length % 2 === 0
+        ? __hexToBuf(value)
+        : new Uint8Array(Buffer.from(value, 'base64'));
+    }
+    if (rawHash instanceof Uint8Array) return rawHash;
+    if (rawHash instanceof ArrayBuffer) return new Uint8Array(rawHash);
+    if ((rawHash as any).buffer instanceof ArrayBuffer) {
+      return new Uint8Array(
+        (rawHash as any).buffer,
+        (rawHash as any).byteOffset || 0,
+        (rawHash as any).byteLength,
+      );
+    }
+    return new Uint8Array(rawHash as ArrayLike<number>);
+  }
+
   static async encryptAES256GCM(
     plaintext: string,
     password: string,
@@ -3251,7 +3159,7 @@ export class SecurityModule {
       hashLength: BACKUP_KDF_DEFAULT.hashLength,
       saltEncoding: 'hex',
     });
-    keyBuf = Buffer.from(argon2Result.rawHash, 'hex');
+    keyBuf = Buffer.from(this.normalizeArgon2RawHash(argon2Result?.rawHash));
 
     const crypto = getCryptoImpl();
     if (!crypto?.createCipheriv) {
@@ -3259,33 +3167,34 @@ export class SecurityModule {
         'Crypto AES-GCM encryption is not available on this build.',
       );
     }
-    const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
-
     const plaintextBuf = Buffer.from(plaintext, 'utf8');
-    const updateResult = cipher.update(plaintextBuf);
-    const finalResult = cipher.final();
+    try {
+      const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+      const updateResult = cipher.update(plaintextBuf);
+      const finalResult = cipher.final();
 
-    const updateBytes = new Uint8Array(updateResult as ArrayBuffer);
-    const finalBytes = new Uint8Array(finalResult as ArrayBuffer);
-    const encryptedBytes = new Uint8Array(
-      updateBytes.length + finalBytes.length,
-    );
-    encryptedBytes.set(updateBytes, 0);
-    encryptedBytes.set(finalBytes, updateBytes.length);
+      const updateBytes = new Uint8Array(updateResult as ArrayBuffer);
+      const finalBytes = new Uint8Array(finalResult as ArrayBuffer);
+      const encryptedBytes = new Uint8Array(
+        updateBytes.length + finalBytes.length,
+      );
+      encryptedBytes.set(updateBytes, 0);
+      encryptedBytes.set(finalBytes, updateBytes.length);
 
-    const rawAuthTag = cipher.getAuthTag();
-    const tagBytes = new Uint8Array(rawAuthTag as ArrayBuffer);
+      const rawAuthTag = cipher.getAuthTag();
+      const tagBytes = new Uint8Array(rawAuthTag as ArrayBuffer);
 
-    // Zero out key
-    for (let i = 0; i < keyBuf.length; i++) (keyBuf as any)[i] = 0;
-
-    return {
-      salt: __bufToBase64(salt),
-      iv: __bufToBase64(iv),
-      authTag: __bufToBase64(tagBytes),
-      ciphertext: __bufToBase64(encryptedBytes),
-      ...kdfMeta,
-    };
+      return {
+        salt: __bufToBase64(salt),
+        iv: __bufToBase64(iv),
+        authTag: __bufToBase64(tagBytes),
+        ciphertext: __bufToBase64(encryptedBytes),
+        ...kdfMeta,
+      };
+    } finally {
+      wipeBytes(keyBuf);
+      wipeBytes(plaintextBuf);
+    }
   }
 
   /**
@@ -3332,7 +3241,7 @@ export class SecurityModule {
         hashLength: kdfMeta?.hashLength || BACKUP_KDF_DEFAULT.hashLength,
         saltEncoding: 'hex',
       });
-      keyBuf = __hexToBuf(argon2Result.rawHash);
+      keyBuf = this.normalizeArgon2RawHash(argon2Result?.rawHash);
     }
 
     // AES-256-GCM decryption
@@ -3343,27 +3252,29 @@ export class SecurityModule {
       );
     }
 
-    const decipher = cryptoDec.createDecipheriv('aes-256-gcm', keyBuf, iv);
-    decipher.setAuthTag(authTag);
+    try {
+      const decipher = cryptoDec.createDecipheriv('aes-256-gcm', keyBuf, iv);
+      decipher.setAuthTag(authTag);
 
-    // Similarly use Uint8Array to bypass string/Buffer incompatibilities
-    const decUpdateResult = new Uint8Array(
-      decipher.update(encData) as ArrayBuffer,
-    );
-    const decFinalResult = new Uint8Array(decipher.final() as ArrayBuffer);
+      // Similarly use Uint8Array to bypass string/Buffer incompatibilities
+      const decUpdateResult = new Uint8Array(
+        decipher.update(encData) as ArrayBuffer,
+      );
+      const decFinalResult = new Uint8Array(decipher.final() as ArrayBuffer);
 
-    const decryptedBytes = new Uint8Array(
-      decUpdateResult.length + decFinalResult.length,
-    );
-    decryptedBytes.set(decUpdateResult, 0);
-    decryptedBytes.set(decFinalResult, decUpdateResult.length);
+      const decryptedBytes = new Uint8Array(
+        decUpdateResult.length + decFinalResult.length,
+      );
+      decryptedBytes.set(decUpdateResult, 0);
+      decryptedBytes.set(decFinalResult, decUpdateResult.length);
 
-    const decryptedStr = __bufToUtf8(decryptedBytes);
-
-    // Zero out key
-    for (let i = 0; i < keyBuf.length; i++) (keyBuf as any)[i] = 0;
-
-    return decryptedStr;
+      const decryptedStr = __bufToUtf8(decryptedBytes);
+      wipeBytes(decryptedBytes);
+      return decryptedStr;
+    } finally {
+      wipeBytes(keyBuf);
+      wipeBytes(encData);
+    }
   }
 
   // ── Lock ──────────────────────────────────────────

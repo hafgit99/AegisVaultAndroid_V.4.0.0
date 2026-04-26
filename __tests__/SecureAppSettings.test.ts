@@ -87,6 +87,7 @@ describe('SecureAppSettings', () => {
       expect(state.darkMode).toBe(false);
       expect(state.themeMode).toBe('light');
       expect(state.passwordLength).toBe(20);
+      expect(state.excludeAmbiguousCharacters).toBe(false);
       expect(SecureAppSettings.isInitialized()).toBe(true);
     });
 

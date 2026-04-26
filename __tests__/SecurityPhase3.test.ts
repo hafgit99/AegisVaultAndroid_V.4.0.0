@@ -177,7 +177,7 @@ describe('SecurityModule Phase3 - Mutation Hardening', () => {
       await SecurityModule.logSecurityEvent('test_event', 'success', { key: 'val' });
       expect(mockDb.executeSync).toHaveBeenCalledWith(
         'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
-        ['test_event', 'success', '{"key":"val"}'],
+        ['test_event', 'success', '{"key":"[redacted]"}'],
       );
     });
     test('buffers when db is null', async () => {

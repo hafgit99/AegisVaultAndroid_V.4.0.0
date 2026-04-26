@@ -147,6 +147,12 @@ function patchGradleRepoCalls(filePath) {
     );
   }
 
+  if (filePath.includes('react-native-svg') && filePath.endsWith('build.gradle')) {
+    if (!patched.includes('apply plugin: "com.facebook.react"')) {
+        patched = patched.replace('apply plugin: \'com.android.library\'', 'apply plugin: \'com.android.library\'\n\nif (isNewArchitectureEnabled()) {\n    apply plugin: "com.facebook.react"\n}');
+    }
+  }
+
   if (patched !== source) {
     fs.writeFileSync(filePath, patched, 'utf8');
     return true;

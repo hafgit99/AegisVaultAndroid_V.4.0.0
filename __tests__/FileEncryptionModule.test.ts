@@ -6,7 +6,10 @@
  * chunked reading, error paths, progress callbacks, and edge cases.
  */
 
-import { FileEncryptionModule } from '../src/FileEncryptionModule';
+import {
+  FileEncryptionModule,
+  sanitizeVaultFileName,
+} from '../src/FileEncryptionModule';
 import RNFS from 'react-native-fs';
 
 // ═══════════════════════════════════════════════════════════════
@@ -63,6 +66,16 @@ jest.mock('../src/SecurityModule', () => ({
 describe('FileEncryptionModule', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('sanitizeVaultFileName', () => {
+    it('removes path traversal and reserved filename characters', () => {
+      expect(sanitizeVaultFileName('../secret/pass:word?.txt')).toBe(
+        'pass_word_.txt',
+      );
+      expect(sanitizeVaultFileName('..\\..\\CON')).toBe('_CON');
+      expect(sanitizeVaultFileName('...')).toBe('decrypted_file');
+    });
   });
 
   // ── encryptFile ─────────────────────────────────────────────
@@ -215,6 +228,27 @@ describe('FileEncryptionModule', () => {
 
       const result = await FileEncryptionModule.decryptFile('/enc/x.aegis_enc', 'pw');
       expect(result.originalName).toBe('decrypted_file');
+    });
+
+    it('sanitizes decrypted v2 output names before writing', async () => {
+      const { SecurityModule: SM } = require('../src/SecurityModule');
+      SM.decryptAES256GCM.mockResolvedValueOnce(
+        JSON.stringify({ originalName: '../evil/passwords.txt', data: 'ZGF0YQ==' }),
+      );
+      (RNFS.readFile as jest.Mock).mockResolvedValue(v2Envelope);
+
+      const result = await FileEncryptionModule.decryptFile(
+        '/enc/x.aegis_enc',
+        'pw',
+        '/safe',
+      );
+
+      expect(result.decryptedPath).toBe('/safe/passwords.txt');
+      expect(RNFS.writeFile).toHaveBeenCalledWith(
+        '/safe/passwords.txt',
+        'ZGF0YQ==',
+        'base64',
+      );
     });
   });
 

@@ -1,7 +1,24 @@
 import RNFS from 'react-native-fs';
+import { NativeModules } from 'react-native';
 import { EmergencyAccessModule } from '../src/EmergencyAccessModule';
 import { RecoveryModule } from '../src/RecoveryModule';
 import { SecurityModule } from '../src/SecurityModule';
+
+const mockSecureStorageData: Record<string, string> = {};
+const secureContactsKey = 'aegis_trusted_contacts_v2';
+const secureRequestsKey = 'aegis_emergency_requests_v2';
+
+jest.mock('react-native', () => ({
+  NativeModules: {
+    SecureStorage: {
+      getItem: jest.fn(async (key: string) => mockSecureStorageData[key] ?? null),
+      setItem: jest.fn(async (key: string, value: string) => {
+        mockSecureStorageData[key] = value;
+        return true;
+      }),
+    },
+  },
+}));
 
 jest.mock('../src/RecoveryModule', () => ({
   RecoveryModule: {
@@ -16,9 +33,21 @@ jest.mock('../src/SecurityModule', () => ({
   },
 }));
 
+const getLastSecureWrite = (key: string) => {
+  const calls = (NativeModules.SecureStorage.setItem as jest.Mock).mock.calls;
+  const write = [...calls].reverse().find(([storedKey]) => storedKey === key);
+  if (!write) {
+    throw new Error(`Missing SecureStorage write for ${key}`);
+  }
+  return JSON.parse(write[1]);
+};
+
 describe('EmergencyAccessModule', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    for (const key of Object.keys(mockSecureStorageData)) {
+      delete mockSecureStorageData[key];
+    }
     (RNFS.exists as jest.Mock).mockResolvedValue(false);
     (RNFS.readDir as jest.Mock).mockResolvedValue([]);
     (RNFS.readFile as jest.Mock).mockResolvedValue('');
@@ -41,15 +70,14 @@ describe('EmergencyAccessModule', () => {
     });
 
     expect(id).toBe('tc_1700000000000');
-    expect(RNFS.mkdir).toHaveBeenCalled();
-    expect(RNFS.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining('/trusted_contacts/tc_1700000000000.json'),
+    expect(RNFS.mkdir).not.toHaveBeenCalled();
+    expect(RNFS.writeFile).not.toHaveBeenCalled();
+    expect(NativeModules.SecureStorage.setItem).toHaveBeenCalledWith(
+      secureContactsKey,
       expect.any(String),
-      'utf8',
     );
 
-    const [, body] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(body)).toMatchObject({
+    expect(getLastSecureWrite(secureContactsKey).tc_1700000000000).toMatchObject({
       id: 'tc_1700000000000',
       email: 'trusted@example.com',
       name: 'Trusted Person',
@@ -144,10 +172,9 @@ describe('EmergencyAccessModule', () => {
       'user@example.com',
     );
     expect(requestId).toBe('session_123');
-    expect(RNFS.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining('/emergency_requests/session_123.json'),
+    expect(NativeModules.SecureStorage.setItem).toHaveBeenCalledWith(
+      secureRequestsKey,
       expect.any(String),
-      'utf8',
     );
     expect(SecurityModule.logSecurityEvent).toHaveBeenCalledWith(
       'emergency_request_created',
@@ -191,8 +218,9 @@ describe('EmergencyAccessModule', () => {
       'contact_1',
     );
     expect(approved).toBe(true);
-    const [, body] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(body).status).toBe('approved');
+    expect(getLastSecureWrite(secureRequestsKey).request_1.status).toBe(
+      'approved',
+    );
   });
 
   test('requestEmergencyAccess returns null and logs failure when no active contacts exist', async () => {
@@ -282,8 +310,7 @@ describe('EmergencyAccessModule', () => {
     const requestId = await EmergencyAccessModule.requestEmergencyAccess('single@example.com');
 
     expect(requestId).toBe('session_single');
-    const [, body] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(body)).toMatchObject({
+    expect(getLastSecureWrite(secureRequestsKey).session_single).toMatchObject({
       id: 'session_single',
       requiredApprovals: 1,
       approvedBy: [],
@@ -326,8 +353,9 @@ describe('EmergencyAccessModule', () => {
     );
 
     expect(approved).toBe(false);
-    const [, body] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(body).approvedBy).toEqual(['contact_1']);
+    expect(getLastSecureWrite(secureRequestsKey).request_dup.approvedBy).toEqual([
+      'contact_1',
+    ]);
   });
 
   test('approveRecovery request veya aktif olmayan kontakt yoksa false doner', async () => {
@@ -430,8 +458,9 @@ describe('EmergencyAccessModule', () => {
     );
 
     expect(approved).toBe(false);
-    const [, body] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(body).status).toBe('expired');
+    expect(getLastSecureWrite(secureRequestsKey).request_expired.status).toBe(
+      'expired',
+    );
   });
 
   test('completeApprovedRecovery marks request completed only after restore succeeds', async () => {
@@ -466,8 +495,9 @@ describe('EmergencyAccessModule', () => {
       'token-1',
       'backup-password',
     );
-    const [, body] = (RNFS.writeFile as jest.Mock).mock.calls[0];
-    expect(JSON.parse(body).status).toBe('completed');
+    expect(getLastSecureWrite(secureRequestsKey).request_complete.status).toBe(
+      'completed',
+    );
   });
 
   test('completeApprovedRecovery approved olmayan requestte false doner', async () => {

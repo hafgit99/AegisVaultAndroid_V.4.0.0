@@ -167,15 +167,36 @@ describe('PasskeyModule', () => {
       challenge: 'SERVERCHALLENGE',
       rpId: 'custom.example.com',
       timeout: 180000,
-      userVerification: 'preferred',
+      userVerification: 'required',
       allowCredentials: [
         {
           id: 'CRED123',
           type: 'public-key',
-          transports: ['USB'],
+          transports: ['usb'],
         },
       ],
     });
+  });
+
+  test('buildRegistrationRequest can require a server challenge for production flows', () => {
+    expect(() =>
+      PasskeyModule.buildRegistrationRequest({
+        title: 'Example',
+        username: 'user@example.com',
+        url: 'https://example.com',
+        requireServerChallenge: true,
+      }),
+    ).toThrow('Server-backed passkey flow requires a server challenge.');
+  });
+
+  test('buildAuthenticationRequest can require a server challenge for production flows', () => {
+    expect(() =>
+      PasskeyModule.buildAuthenticationRequest({
+        url: 'https://example.com',
+        credentialId: 'CRED123',
+        requireServerChallenge: true,
+      }),
+    ).toThrow('Server-backed passkey flow requires a server challenge.');
   });
 
   test('buildRegistrationRequestFromServer maps server WebAuthn options into native request JSON', () => {
@@ -227,7 +248,7 @@ describe('PasskeyModule', () => {
     expect(request.authenticatorSelection).toEqual({
       authenticatorAttachment: 'platform',
       residentKey: 'required',
-      userVerification: 'preferred',
+      userVerification: 'required',
     });
   });
 
@@ -260,6 +281,7 @@ describe('PasskeyModule', () => {
             name: 'user@example.com',
             displayName: 'User Example',
           },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
           timeout: 60000,
           attestation: 'direct',
           authenticatorSelection: {
@@ -313,7 +335,7 @@ describe('PasskeyModule', () => {
       type: 'public-key',
       transports: ['usb', 'internal'],
     });
-    expect(request.userVerification).toBe('preferred');
+    expect(request.userVerification).toBe('required');
   });
 
   test('buildAuthenticationRequestFromServer keeps optional timeout and explicit user verification', () => {

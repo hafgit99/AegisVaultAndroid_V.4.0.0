@@ -17,6 +17,30 @@ export interface EncryptedFileMetadata {
   mimeType: string;
 }
 
+const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+const INVALID_FILENAME_CHARS = new Set(['<', '>', ':', '"', '/', '\\', '|', '?', '*']);
+
+export const sanitizeVaultFileName = (name?: string): string => {
+  const leaf = String(name || '')
+    .split(/[\\/]/)
+    .filter(Boolean)
+    .pop() || 'decrypted_file';
+  const cleaned = leaf
+    .split('')
+    .map(char => (
+      char.charCodeAt(0) <= 31 || INVALID_FILENAME_CHARS.has(char)
+        ? '_'
+        : char
+    ))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+/, '')
+    .replace(/[. ]+$/, '')
+    .trim();
+  const safe = cleaned || 'decrypted_file';
+  return RESERVED_WINDOWS_NAMES.test(safe) ? `_${safe}` : safe;
+};
+
 export class FileEncryptionModule {
   private static readonly ENCRYPTED_FILES_DIR = `${RNFS.DocumentDirectoryPath}/encrypted_vault_files`;
   private static readonly CHUNK_SIZE = 1024 * 1024; // 1MB chunks for large files
@@ -68,7 +92,7 @@ export class FileEncryptionModule {
 
       await RNFS.mkdir(this.ENCRYPTED_FILES_DIR).catch(() => {});
 
-      const fileName = sourcePath.split('/').pop() || 'file';
+      const fileName = sanitizeVaultFileName(sourcePath);
       const encryptedPath = `${this.ENCRYPTED_FILES_DIR}/${fileName}.aegis_enc`;
       
       const fileStat = await RNFS.stat(sourcePath);
@@ -129,7 +153,7 @@ export class FileEncryptionModule {
           },
         );
         const parsed = JSON.parse(decryptedJson);
-        const originalName = parsed.originalName || 'decrypted_file';
+        const originalName = sanitizeVaultFileName(parsed.originalName);
         const decryptedPath = `${targetDir}/${originalName}`;
         await RNFS.writeFile(decryptedPath, parsed.data, 'base64');
         return { success: true, decryptedPath, originalName };
@@ -149,7 +173,7 @@ export class FileEncryptionModule {
           decipher.final()
         ]);
 
-        const originalName = obj.meta?.originalName || 'decrypted_file';
+        const originalName = sanitizeVaultFileName(obj.meta?.originalName);
         const decryptedPath = `${targetDir}/${originalName}`;
         await RNFS.writeFile(decryptedPath, decrypted.toString('base64'), 'base64');
         return { success: true, decryptedPath, originalName };

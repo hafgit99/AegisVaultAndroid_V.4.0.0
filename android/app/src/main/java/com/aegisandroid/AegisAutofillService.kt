@@ -12,6 +12,7 @@ import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
 import android.annotation.SuppressLint
 import androidx.annotation.RequiresApi
+import java.net.IDN
 
 /**
  * Aegis Vault – Android Autofill Service
@@ -402,12 +403,18 @@ class AegisAutofillService : AutofillService() {
      * Örn: ["google.com", "accounts.google.com"] → "accounts.google.com"
      */
     private fun normalizeDomain(domain: String): String {
-        return domain.lowercase()
+        val host = domain.lowercase()
             .removePrefix("https://")
             .removePrefix("http://")
             .removePrefix("www.")
             .substringBefore("/")
             .trim()
+            .trim('.')
+        return try {
+            IDN.toASCII(host).lowercase()
+        } catch (_: Exception) {
+            host
+        }
     }
 
     private fun collectCandidateDomains(allDomains: List<String>, lastDomain: String): List<String> {
@@ -458,12 +465,7 @@ class AegisAutofillService : AutofillService() {
                 when {
                     // 1. Domain bazlı eşleşme (tarayıcı istekleri için birincil yöntem)
                     isBrowserRequest && webDomains.isNotEmpty() && entryDomain.isNotEmpty() -> {
-                        webDomains.any { candidate ->
-                            entryDomain.contains(candidate) ||
-                            candidate.contains(entryDomain) ||
-                            entryTitle.contains(extractMainDomain(candidate)) ||
-                            extractMainDomain(entryDomain).contains(extractMainDomain(candidate))
-                        }
+                        webDomains.any { candidate -> isDomainMatch(entryDomain, candidate) }
                     }
                     // 2. Uygulama paketi bazlı eşleşme (native app)
                     !isBrowserRequest && pkg.isNotEmpty() -> {
@@ -471,7 +473,7 @@ class AegisAutofillService : AutofillService() {
                         pkg.contains(entryTitle) ||
                         entryTitle.contains(pkgLast) ||
                         (webDomains.isNotEmpty() && webDomains.any { candidate ->
-                            entryDomain.contains(candidate) || candidate.contains(entryDomain)
+                            isDomainMatch(entryDomain, candidate)
                         })
                     }
                     // 3. Hem domain hem paket bazlı
@@ -480,7 +482,7 @@ class AegisAutofillService : AutofillService() {
                         (webDomains.isNotEmpty() &&
                             entryDomain.isNotEmpty() &&
                             webDomains.any { candidate ->
-                                entryDomain.contains(candidate) || candidate.contains(entryDomain)
+                                isDomainMatch(entryDomain, candidate)
                             }) ||
                         (pkg.isNotEmpty() && (
                             pkg.contains(entryTitle) || entryTitle.contains(pkgLast)
@@ -496,10 +498,8 @@ class AegisAutofillService : AutofillService() {
                     .split("/").firstOrNull() ?: ""
                 webDomains.maxOfOrNull { candidate ->
                     when {
-                        entryDomain == candidate -> 100
-                        entryDomain.contains(candidate) && candidate.isNotEmpty() -> 80
-                        candidate.contains(entryDomain) && entryDomain.isNotEmpty() -> 60
-                        extractMainDomain(entryDomain) == extractMainDomain(candidate) -> 50
+                        normalizeDomain(entryDomain) == normalizeDomain(candidate) -> 100
+                        isDomainMatch(entryDomain, candidate) -> 80
                         else -> 0
                     }
                 } ?: 0
@@ -513,6 +513,17 @@ class AegisAutofillService : AutofillService() {
     private fun extractMainDomain(domain: String): String {
         val parts = domain.split(".")
         return if (parts.size >= 2) parts[parts.size - 2] else domain
+    }
+
+    private fun isDomainMatch(entryDomainRaw: String, candidateRaw: String): Boolean {
+        val entryDomain = normalizeDomain(entryDomainRaw)
+        val candidate = normalizeDomain(candidateRaw)
+        if (entryDomain.isBlank() || candidate.isBlank()) return false
+        if (entryDomain == candidate) return true
+
+        // A saved parent domain may fill a real subdomain, e.g. example.com -> login.example.com.
+        // Substring matching is intentionally forbidden to avoid evil-example.com style spoofing.
+        return candidate.endsWith(".$entryDomain")
     }
 
     /**

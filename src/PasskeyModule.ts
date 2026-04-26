@@ -6,7 +6,17 @@ import {
   PasskeyRegistrationOptionsResponse,
 } from './PasskeyRpApi';
 
-const { PasskeyModule: NativePasskeyModule } = NativeModules;
+interface NativePasskeyBridge {
+  isAvailable: () => Promise<boolean>;
+  createPasskey: (requestJson: string) => Promise<PasskeyRegistrationResult>;
+  authenticatePasskey: (
+    requestJson: string,
+  ) => Promise<PasskeyAuthenticationResult>;
+}
+
+const { PasskeyModule: NativePasskeyModule } = NativeModules as {
+  PasskeyModule?: NativePasskeyBridge;
+};
 
 export interface PasskeyRegistrationResult {
   registrationResponseJson: string;
@@ -16,9 +26,16 @@ export interface PasskeyAuthenticationResult {
   authenticationResponseJson: string;
 }
 
-const resolveChallenge = (challenge?: string): string => {
+const resolveChallenge = (
+  challenge?: string,
+  options?: { requireServerChallenge?: boolean },
+): string => {
   if (challenge && challenge.trim()) {
     return SecurityModule.sanitizeBase64Url(challenge);
+  }
+
+  if (options?.requireServerChallenge) {
+    throw new Error('Server-backed passkey flow requires a server challenge.');
   }
 
   // Local-only fallback for offline helper mode. Full production WebAuthn
@@ -75,6 +92,7 @@ export const PasskeyModule = {
     displayName?: string;
     userHandle?: string;
     challenge?: string;
+    requireServerChallenge?: boolean;
   }): string {
     const generated = SecurityModule.generatePasskeyData({
       username: input.username,
@@ -85,7 +103,9 @@ export const PasskeyModule = {
 
     /* Stryker disable all: WebAuthn request literal defaults and descriptor normalization are asserted end-to-end by tests; extra literal/object mutants add little behavioral value. */
     return JSON.stringify({
-      challenge: resolveChallenge(input.challenge),
+      challenge: resolveChallenge(input.challenge, {
+        requireServerChallenge: input.requireServerChallenge,
+      }),
       rp: {
         id: generated.rp_id,
         name: input.title || generated.rp_id,
@@ -105,7 +125,7 @@ export const PasskeyModule = {
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         residentKey: 'required',
-        userVerification: 'preferred',
+        userVerification: 'required',
       },
     });
   },
@@ -116,18 +136,21 @@ export const PasskeyModule = {
     credentialId: string;
     transport?: string;
     challenge?: string;
+    requireServerChallenge?: boolean;
   }): string {
     const rpId = SecurityModule.normalizePasskeyRpId(input.url, input.rpId);
     return JSON.stringify({
-      challenge: resolveChallenge(input.challenge),
+      challenge: resolveChallenge(input.challenge, {
+        requireServerChallenge: input.requireServerChallenge,
+      }),
       rpId,
       timeout: 180000,
-      userVerification: 'preferred',
+      userVerification: 'required',
       allowCredentials: [
         {
           id: SecurityModule.sanitizeBase64Url(input.credentialId),
           type: 'public-key',
-          transports: [input.transport || 'internal'],
+          transports: [`${input.transport || 'internal'}`.toLowerCase()],
         },
       ],
     });
@@ -163,7 +186,7 @@ export const PasskeyModule = {
       authenticatorSelection: publicKey.authenticatorSelection || {
         authenticatorAttachment: 'platform',
         residentKey: 'required',
-        userVerification: 'preferred',
+        userVerification: 'required',
       },
       excludeCredentials: (publicKey.excludeCredentials || []).map(
         normalizeCredentialDescriptor,
@@ -188,7 +211,7 @@ export const PasskeyModule = {
       challenge: resolveChallenge(publicKey.challenge),
       rpId: publicKey.rpId,
       timeout: publicKey.timeout || 180000,
-      userVerification: publicKey.userVerification || 'preferred',
+      userVerification: publicKey.userVerification || 'required',
       allowCredentials: (publicKey.allowCredentials || []).map(
         normalizeCredentialDescriptor,
       ),

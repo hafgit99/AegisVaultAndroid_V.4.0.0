@@ -1,6 +1,6 @@
 package com.aegisandroid
 
-import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.facebook.react.bridge.Promise
@@ -13,15 +13,19 @@ class SecureStorageModule(private val reactContext: ReactApplicationContext) :
 
     override fun getName(): String = "SecureStorage"
 
-    private fun prefs() = EncryptedSharedPreferences.create(
-        reactContext,
-        "aegis_secure_storage",
-        MasterKey.Builder(reactContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val securePrefs: SharedPreferences by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        EncryptedSharedPreferences.create(
+            reactContext,
+            "aegis_secure_storage",
+            MasterKey.Builder(reactContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }
+
+    private fun prefs() = securePrefs
 
     @ReactMethod
     fun getItem(key: String, promise: Promise) {

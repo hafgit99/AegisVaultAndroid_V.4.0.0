@@ -15,15 +15,33 @@ import {
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { PasskeyBindingService } from '../PasskeyBindingService';
+import {
+  PasskeyBindingRecord,
+  PasskeyBindingService,
+} from '../PasskeyBindingService';
 import { PasskeyEnrollmentService } from '../PasskeyEnrollmentService';
 import { PasskeyModule } from '../PasskeyModule';
 import { PasskeyRpApi } from '../PasskeyRpApi';
 import { PasskeyRpService } from '../PasskeyRpService';
 import { SecureAppSettings } from '../SecureAppSettings';
 import { SecurityModule } from '../SecurityModule';
+import { useSecuritySettingsStore } from '../state/useSecuritySettingsStore';
+import { AegisTheme } from '../types/ui';
 
-export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
+interface PasskeySettingsProps {
+  theme: AegisTheme;
+  bindings?: PasskeyBindingRecord[];
+  onRefresh?: () => void;
+}
+
+const getErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+export const PasskeySettings = ({
+  theme,
+  bindings = [],
+  onRefresh,
+}: PasskeySettingsProps) => {
   const { t } = useTranslation();
   const [nativeAvailable, setNativeAvailable] = useState(false);
   const [checkingNative, setCheckingNative] = useState(true);
@@ -34,12 +52,12 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
   const [displayName, setDisplayName] = useState('');
   const [deviceLabel, setDeviceLabel] = useState('');
   const [notice, setNotice] = useState<null | { type: 'success' | 'error'; message: string }>(null);
-  const [rpBaseUrl, setRpBaseUrl] = useState('');
-  const [rpAccountId, setRpAccountId] = useState('');
-  const [rpAuthToken, setRpAuthToken] = useState('');
-  const [rpTenantHeaderName, setRpTenantHeaderName] = useState('');
-  const [rpTenantHeaderValue, setRpTenantHeaderValue] = useState('');
   const [checkingBackend, setCheckingBackend] = useState(false);
+  const {
+    passkeyRpDraft,
+    hydrateFromSecureSettings,
+    updatePasskeyRpDraft,
+  } = useSecuritySettingsStore();
 
   const orderedBindings = useMemo(
     () =>
@@ -67,13 +85,8 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
   }, []);
 
   useEffect(() => {
-    const settings = SecureAppSettings.get().passkeyRp;
-    setRpBaseUrl(settings.baseUrl || '');
-    setRpAccountId(settings.accountId || '');
-    setRpAuthToken(settings.authToken || '');
-    setRpTenantHeaderName(settings.tenantHeaderName || '');
-    setRpTenantHeaderValue(settings.tenantHeaderValue || '');
-  }, []);
+    hydrateFromSecureSettings();
+  }, [hydrateFromSecureSettings]);
 
   const resetForm = () => {
     setUsername('');
@@ -83,7 +96,7 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
   };
 
   const saveRpSettings = async () => {
-    const normalizedBaseUrl = rpBaseUrl.trim();
+    const normalizedBaseUrl = passkeyRpDraft.baseUrl.trim();
     if (normalizedBaseUrl && !/^https:\/\//i.test(normalizedBaseUrl)) {
       setNotice({
         type: 'error',
@@ -96,10 +109,10 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
       {
         passkeyRp: {
           baseUrl: normalizedBaseUrl,
-          accountId: rpAccountId.trim(),
-          authToken: rpAuthToken.trim(),
-          tenantHeaderName: rpTenantHeaderName.trim(),
-          tenantHeaderValue: rpTenantHeaderValue.trim(),
+          accountId: passkeyRpDraft.accountId.trim(),
+          authToken: passkeyRpDraft.authToken.trim(),
+          tenantHeaderName: passkeyRpDraft.tenantHeaderName.trim(),
+          tenantHeaderValue: passkeyRpDraft.tenantHeaderValue.trim(),
         },
       },
       SecurityModule.db,
@@ -132,10 +145,10 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           ? t('passkeys.backend.health_ok')
           : t('passkeys.backend.health_fail'),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setNotice({
         type: 'error',
-        message: error?.message || t('passkeys.backend.health_fail'),
+        message: getErrorMessage(error, t('passkeys.backend.health_fail')),
       });
     } finally {
       setCheckingBackend(false);
@@ -180,10 +193,10 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
         }),
       });
       if (onRefresh) onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setNotice({
         type: 'error',
-        message: error?.message || t('passkeys.bind_failed'),
+        message: getErrorMessage(error, t('passkeys.bind_failed')),
       });
     } finally {
       setWorking(false);
@@ -268,8 +281,9 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           placeholderTextColor={theme.muted}
           autoCapitalize="none"
           keyboardType="url"
-          value={rpBaseUrl}
-          onChangeText={setRpBaseUrl}
+          value={passkeyRpDraft.baseUrl}
+          onChangeText={baseUrl => updatePasskeyRpDraft({ baseUrl })}
+          accessibilityLabel={t('passkeys.backend.base_url')}
         />
 
         <Text style={[styles.label, { color: theme.navy }]}>
@@ -287,8 +301,9 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           placeholder={t('passkeys.backend.account_id_placeholder')}
           placeholderTextColor={theme.muted}
           autoCapitalize="none"
-          value={rpAccountId}
-          onChangeText={setRpAccountId}
+          value={passkeyRpDraft.accountId}
+          onChangeText={accountId => updatePasskeyRpDraft({ accountId })}
+          accessibilityLabel={t('passkeys.backend.account_id')}
         />
 
         <Text style={[styles.label, { color: theme.navy }]}>
@@ -306,8 +321,10 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           placeholder={t('passkeys.backend.auth_token_placeholder')}
           placeholderTextColor={theme.muted}
           autoCapitalize="none"
-          value={rpAuthToken}
-          onChangeText={setRpAuthToken}
+          secureTextEntry
+          value={passkeyRpDraft.authToken}
+          onChangeText={authToken => updatePasskeyRpDraft({ authToken })}
+          accessibilityLabel={t('passkeys.backend.auth_token')}
         />
 
         <Text style={[styles.label, { color: theme.navy }]}>
@@ -325,8 +342,11 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           placeholder={t('passkeys.backend.header_name_placeholder')}
           placeholderTextColor={theme.muted}
           autoCapitalize="none"
-          value={rpTenantHeaderName}
-          onChangeText={setRpTenantHeaderName}
+          value={passkeyRpDraft.tenantHeaderName}
+          onChangeText={tenantHeaderName =>
+            updatePasskeyRpDraft({ tenantHeaderName })
+          }
+          accessibilityLabel={t('passkeys.backend.header_name')}
         />
 
         <Text style={[styles.label, { color: theme.navy }]}>
@@ -344,13 +364,19 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           placeholder={t('passkeys.backend.header_value_placeholder')}
           placeholderTextColor={theme.muted}
           autoCapitalize="none"
-          value={rpTenantHeaderValue}
-          onChangeText={setRpTenantHeaderValue}
+          secureTextEntry
+          value={passkeyRpDraft.tenantHeaderValue}
+          onChangeText={tenantHeaderValue =>
+            updatePasskeyRpDraft({ tenantHeaderValue })
+          }
+          accessibilityLabel={t('passkeys.backend.header_value')}
         />
 
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: theme.sage, marginTop: 4 }]}
           onPress={saveRpSettings}
+          accessibilityRole="button"
+          accessibilityLabel={t('passkeys.backend.save')}
         >
           <Text style={styles.btnText}>{t('passkeys.backend.save')}</Text>
         </TouchableOpacity>
@@ -361,6 +387,8 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           ]}
           onPress={checkBackend}
           disabled={checkingBackend}
+          accessibilityRole="button"
+          accessibilityLabel={t('passkeys.backend.health_check')}
         >
           {checkingBackend ? (
             <ActivityIndicator color={theme.navy} />
@@ -429,7 +457,7 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
       {orderedBindings.length === 0 ? (
         <Text style={[styles.empty, { color: theme.muted }]}>{t('passkeys.empty')}</Text>
       ) : (
-        orderedBindings.map((binding: any) => (
+        orderedBindings.map(binding => (
           <View
             key={binding.credentialId}
             style={[styles.item, { borderColor: theme.cardBorder }]}
@@ -451,6 +479,8 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
             <TouchableOpacity
               style={[styles.revBtn, { borderColor: '#E53935' }]}
               onPress={() => onRevoke(binding.credentialId)}
+              accessibilityRole="button"
+              accessibilityLabel={t('passkeys.btn_revoke')}
             >
               <Text style={styles.revBtnText}>{t('passkeys.btn_revoke')}</Text>
             </TouchableOpacity>
@@ -476,6 +506,8 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
           }
           setShowEnroll(true);
         }}
+        accessibilityRole="button"
+        accessibilityLabel={t('passkeys.btn_bind')}
       >
         <Text style={styles.btnText}>{t('passkeys.btn_bind')}</Text>
       </TouchableOpacity>
@@ -518,6 +550,7 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
               keyboardType="email-address"
               value={username}
               onChangeText={setUsername}
+              accessibilityLabel={t('passkeys.field_username')}
             />
 
             <Text style={[styles.label, { color: theme.navy }]}>{t('passkeys.field_rp_id')}</Text>
@@ -535,6 +568,7 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
               autoCapitalize="none"
               value={rpId}
               onChangeText={setRpId}
+              accessibilityLabel={t('passkeys.field_rp_id')}
             />
 
             <Text style={[styles.label, { color: theme.navy }]}>{t('passkeys.field_display_name')}</Text>
@@ -551,6 +585,7 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
               placeholderTextColor={theme.muted}
               value={displayName}
               onChangeText={setDisplayName}
+              accessibilityLabel={t('passkeys.field_display_name')}
             />
 
             <Text style={[styles.label, { color: theme.navy }]}>{t('passkeys.field_device_label')}</Text>
@@ -567,6 +602,7 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
               placeholderTextColor={theme.muted}
               value={deviceLabel}
               onChangeText={setDeviceLabel}
+              accessibilityLabel={t('passkeys.field_device_label')}
             />
 
             <View style={styles.modalActions}>
@@ -575,6 +611,8 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
                 onPress={() => {
                   if (!working) setShowEnroll(false);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('passkeys.btn_cancel')}
               >
                 <Text style={[styles.secondaryBtnText, { color: theme.navy }]}>
                   {t('passkeys.btn_cancel')}
@@ -584,6 +622,8 @@ export const PasskeySettings = ({ theme, bindings = [], onRefresh }: any) => {
                 style={[styles.primaryBtn, { backgroundColor: theme.sage }]}
                 onPress={onEnroll}
                 disabled={working}
+                accessibilityRole="button"
+                accessibilityLabel={t('passkeys.btn_confirm_bind')}
               >
                 <Text style={styles.primaryBtnText}>
                   {working ? t('passkeys.btn_binding') : t('passkeys.btn_confirm_bind')}
