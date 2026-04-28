@@ -20,6 +20,7 @@ class MainApplication : Application(), ReactApplication {
           add(CloudSyncPackage())
           add(IntegrityPackage())
           add(SecureStoragePackage())
+          add(ScreenSecurityPackage())
         },
     )
   }

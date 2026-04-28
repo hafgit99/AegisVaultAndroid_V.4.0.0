@@ -59,7 +59,7 @@ export const useAutoLock = ({ unlocked, autoLockSeconds, onLock }: UseAutoLockOp
     if (unlocked && autoLockSeconds > 0) {
       SecurityModule.startAutoLockTimer(autoLockSeconds, () => lockVault('auto'));
     }
-    return () => SecurityModule.clearAutoLockTimer();
+    return () => { SecurityModule.clearAutoLockTimer(); };
   }, [unlocked, autoLockSeconds, lockVault]);
 
   // Reset the timer on user interaction

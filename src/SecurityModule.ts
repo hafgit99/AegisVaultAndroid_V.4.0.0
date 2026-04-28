@@ -12,7 +12,10 @@ import { WearOSModule } from './WearOSModule';
 import {
   buildSqlCipherRawKeyPragma,
   wipeBytes,
+  stringToSecureBytes,
+  secureBytesToHex,
 } from './security/CryptoService';
+import { ScreenSecurityService } from './security/ScreenSecurityService';
 import {
   generatePassword as generateSecurePassword,
   getPasswordStrength as getGeneratedPasswordStrength,
@@ -531,8 +534,11 @@ export class SecurityModule {
   private static autoLockTimer: ReturnType<typeof setTimeout> | null = null;
   public static isPickingFileFlag: boolean = false;
   private static deviceSalt: Buffer | null = null;
-  private static currentUnlockSecret: string | null = null;
-  private static biometricLegacyFallbackSecret: string | null = null;
+  // SECURITY: Secrets stored as Uint8Array instead of immutable JS strings.
+  // Uint8Array can be zeroed after use via wipeBytes(), preventing
+  // sensitive key material from lingering in the JavaScript heap.
+  private static currentUnlockSecret: Uint8Array | null = null;
+  private static biometricLegacyFallbackSecret: Uint8Array | null = null;
   private static appConfig: any = null;
   private static bfState: BruteForceService.BruteForceState = {
     failCount: 0,
@@ -594,7 +600,6 @@ export class SecurityModule {
   }
 
   private static async loadAppConfig(): Promise<void> {
-    /* Stryker disable all: app-config IO fallbacks and brute-force persistence edges are behavior-tested via higher-level flows; remaining literal/branch mutants here are mostly storage noise. */
     if (this.appConfig) return;
     try {
       this.appConfig = await this.readSecureJson(
@@ -630,20 +635,13 @@ export class SecurityModule {
     if (!this.appConfig) this.appConfig = {};
     this.appConfig[key] = value;
     await this.saveAppConfig();
-    /* Stryker restore all */
   }
 
   // ══════════════════════════════════════════════════
   // 1. DYNAMIC DEVICE SALT (per-device unique)
   // ══════════════════════════════════════════════════
 
-  /**
-   * Gets or generates a unique 32-byte device salt.
-   * Stored in app's private document directory (sandboxed on Android).
-   * Each device/installation has its own unique salt.
-   */
   private static async getDeviceSalt(): Promise<Buffer> {
-    /* Stryker disable all: salt persistence and brute-force state recovery are environment-specific persistence glue already covered via higher-level security tests. */
     if (this.deviceSalt) return this.deviceSalt;
 
     try {
@@ -655,13 +653,11 @@ export class SecurityModule {
       }
     } catch {}
 
-    // Generate new 32-byte cryptographic random salt
     const salt = randomBytesSafe(32);
     await RNFS.writeFile(SALT_FILE, salt.toString('hex'), 'utf8');
     this.deviceSalt = salt;
     debugLog('[Security] Generated new device salt');
     return salt;
-    /* Stryker restore all */
   }
 
   // ══════════════════════════════════════════════════
@@ -719,9 +715,6 @@ export class SecurityModule {
     await this.saveBruteForceState();
   }
 
-  /**
-   * Check if locked out. Returns remaining seconds if locked, 0 if not.
-   */
   static async getRemainingLockout(): Promise<number> {
     await this.loadBruteForceState();
     return BruteForceService.getRemainingSeconds(this.bfState, Date.now());
@@ -733,12 +726,12 @@ export class SecurityModule {
   }
 
   private static async deriveVaultDatabaseKeyHex(
-    unlockSecret: string,
+    unlockSecret: Uint8Array,
     salt: Buffer,
     profile: 'strong' | 'legacy',
   ): Promise<string> {
     const params = profile === 'strong' ? VAULT_KDF_STRONG : VAULT_KDF_LEGACY;
-    const argon2Result = await Argon2Fn(unlockSecret, salt.toString('hex'), {
+    const argon2Result = await Argon2Fn(secureBytesToHex(unlockSecret), salt.toString('hex'), {
       mode: 'argon2id',
       memory: params.memory,
       iterations: params.iterations,
@@ -780,31 +773,6 @@ export class SecurityModule {
   // 3. BIOMETRIC KEY DERIVATION (hardware-backed, deterministic)
   // ══════════════════════════════════════════════════
 
-  /**
-   * Derives a DETERMINISTIC vault key using biometric authentication.
-   *
-   * Why deterministic? SQLCipher needs the EXACT SAME key every time the DB
-   * is opened. Non-deterministic signatures (createSignature) produce a
-   * different key each time, making them incompatible with SQLCipher.
-   *
-   * Architecture:
-   * ┌─────────────────────────────────────────────────────┐
-   * │ Android Keystore (TEE/Secure Element)               │
-   * │   └─ RSA Key Pair (hardware-bound, non-extractable) │
-   * │       └─ publicKey (exported once, stored locally)   │
-   * └─────────────────────────────────────────────────────┘
-   *         ↓
-   * Argon2id(publicKey, deviceSalt, 32MB, 4 iterations, 2 lanes)
-   *         ↓
-   * 256-bit vault encryption key (always the same)
-   *
-   * Security properties:
-   * - Public key is hardware-bound (tied to Android Keystore)
-   * - Device salt is unique per installation (32 bytes CSPRNG)
-   * - Argon2id with memory-hard parameters provides GPU resistance
-   * - Biometric verification required before secret derivation
-   * - Key material zeroed after use
-   */
   private static async readBiometricUnlockSecret(): Promise<string | null> {
     if (!SecureStorage?.getItem) return null;
     try {
@@ -871,13 +839,12 @@ export class SecurityModule {
     }
   }
 
-  static async deriveKeyFromBiometric(): Promise<string | null> {
+  static async deriveKeyFromBiometric(): Promise<Uint8Array | null> {
     try {
       const rnBiometrics = new ReactNativeBiometrics({
         allowDeviceCredentials: true,
       });
 
-      // Step 1: Verify biometric identity (fingerprint/face)
       const { success } = await rnBiometrics.simplePrompt({
         promptMessage: i18n.t('lock_screen.biometric_prompt') as string,
         fallbackPromptMessage: i18n.t(
@@ -890,21 +857,19 @@ export class SecurityModule {
         return null;
       }
 
-      // Step 2: Preferred v2 path (secure random secret in SecureStorage)
       const storedSecret = await this.readBiometricUnlockSecret();
       if (storedSecret) {
+        wipeBytes(this.biometricLegacyFallbackSecret);
         this.biometricLegacyFallbackSecret = null;
-        return storedSecret;
+        return stringToSecureBytes(storedSecret);
       }
 
-      // Step 3: Legacy migration fallback to keep existing installs accessible
       const legacySecret = await this.deriveLegacyBiometricUnlockSecret();
       if (legacySecret) {
-        this.biometricLegacyFallbackSecret = legacySecret;
-        return legacySecret;
+        this.biometricLegacyFallbackSecret = stringToSecureBytes(legacySecret);
+        return stringToSecureBytes(legacySecret);
       }
 
-      // No legacy path and no stored secret means biometric unlock cannot proceed yet.
       return null;
     } catch (e) {
       console.error('[Security] Biometric unlock secret derivation error:', e);
@@ -912,10 +877,6 @@ export class SecurityModule {
     }
   }
 
-  /**
-   * Reset biometric keys (useful when migrating or if keys get corrupted).
-   * Deletes stored key material and Keystore keys so they get recreated.
-   */
   static async resetBiometricKeys(): Promise<void> {
     try {
       const rnBiometrics = new ReactNativeBiometrics();
@@ -1025,6 +986,17 @@ export class SecurityModule {
     return 'unknown';
   }
 
+  private static parseSettingBoolean(v: any): boolean {
+    if (typeof v === 'boolean') return v;
+    if (v === 'true' || v === '1' || v === 1) return true;
+    return false;
+  }
+
+  private static parseSettingNumber(v: any, fallback: number): number {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
   private static async setVaultKdfMigrationState(
     status: VaultKdfMigrationState['status'],
     previous?: VaultKdfMigrationState | null,
@@ -1065,19 +1037,12 @@ export class SecurityModule {
   // 4. VAULT UNLOCK (with brute force protection)
   // ══════════════════════════════════════════════════
 
-  /**
-   * Unlock the vault with a derived key.
-   * Includes brute force protection with exponential backoff.
-   * ✅ NEW: Device integrity validation (root/tamper detection)
-   * Vault kilit aç ve brute force korumasını kontrol et
-   */
   static async unlockVaultDetailed(
-    unlockSecret: string,
+    unlockSecret: Uint8Array,
     userSecurityPolicy?: SecurityPolicy,
   ): Promise<VaultUnlockResult> {
     try {
       debugLog('[Security] Unlocking vault...');
-      // Check brute force lockout
       await this.loadBruteForceState();
       const remaining = await this.getRemainingLockout();
       if (remaining > 0) {
@@ -1094,19 +1059,11 @@ export class SecurityModule {
         };
       }
 
-      // ✅ NEW FEATURE #1: Device Integrity Check (Cihaz Bütünlüğü Kontrol)
       const policy = await this.getEffectiveSecurityPolicy(userSecurityPolicy);
 
       if (policy.rootDetectionEnabled) {
         debugLog('[Security] Running device integrity check...');
         const integrityResult = await IntegrityModule.getIntegritySignals();
-        debugLog(
-          '[Security] Integrity result:',
-          integrityResult.riskLevel,
-          'Score:',
-          integrityResult.score,
-        );
-
         const degradedDevice =
           integrityResult.riskLevel === 'critical' ||
           integrityResult.riskLevel === 'high';
@@ -1123,27 +1080,12 @@ export class SecurityModule {
             reasons: integrityResult.reasons,
             policy: policy.deviceTrustPolicy,
           });
-          console.error(
-            '[Security] Vault unlock blocked: Device integrity policy failed',
-          );
           return {
             ok: false,
             reason: 'integrity_blocked',
             riskLevel: integrityResult.riskLevel,
           };
         }
-        if (policy.degradedDeviceAction === 'warn' && degradedDevice) {
-          await this.logSecurityEvent('vault_unlock', 'info', {
-            reason: 'device_integrity_degraded',
-            riskLevel: integrityResult.riskLevel,
-            reasons: integrityResult.reasons,
-            policy: policy.deviceTrustPolicy,
-          });
-        }
-        debugLog(
-          '[Security] Device integrity check passed, risk level:',
-          integrityResult.riskLevel,
-        );
       }
 
       const salt = await this.getDeviceSalt();
@@ -1153,11 +1095,9 @@ export class SecurityModule {
         'strong',
       );
 
-      debugLog('[Security] Opening vault with strong Argon2id profile...');
       let openedDb = this.tryOpenVaultWithKey(strongKeyHex);
 
       if (!openedDb) {
-        debugWarn('[Security] Strong KDF open failed; trying legacy profile...');
         const legacyKeyHex = await this.deriveVaultDatabaseKeyHex(
           unlockSecret,
           salt,
@@ -1201,48 +1141,32 @@ export class SecurityModule {
       }
 
       this.db = openedDb;
-      this.currentUnlockSecret = unlockSecret;
+      this.currentUnlockSecret = new Uint8Array(unlockSecret);
+      ScreenSecurityService.enable().catch(() => {});
 
-      // One-time migration: persist the working legacy biometric secret in
-      // SecureStorage without rekeying the database. Rekeying to a new random
-      // secret during unlock can strand the vault if SecureStorage persistence
-      // fails or the process dies mid-migration.
       if (
         this.biometricLegacyFallbackSecret &&
-        unlockSecret === this.biometricLegacyFallbackSecret
+        secureBytesToHex(unlockSecret) === secureBytesToHex(this.biometricLegacyFallbackSecret)
       ) {
         try {
-          const persisted = await this.writeBiometricUnlockSecret(unlockSecret);
+          const persisted = await this.writeBiometricUnlockSecret(secureBytesToHex(unlockSecret));
           if (persisted) {
+            wipeBytes(this.biometricLegacyFallbackSecret);
             this.biometricLegacyFallbackSecret = null;
             await this.logSecurityEvent('biometric_secret_migrated', 'success', {
               model: 'secure_storage_legacy_secret_v2',
             });
-          } else {
-            await this.logSecurityEvent('biometric_secret_migrated', 'info', {
-              model: 'legacy_secret_retained',
-              reason: 'secure_storage_roundtrip_failed',
-            });
           }
         } catch (migrationError) {
-          await this.logSecurityEvent('biometric_secret_migrated', 'failed', {
-            reason:
-              migrationError instanceof Error
-                ? migrationError.message
-                : String(migrationError),
-          });
+          console.error('[Security] Biometric migration error:', migrationError);
         }
       }
 
-      // Optimize SQLite for persistence and performance
       try {
         this.db.executeSync('PRAGMA synchronous = NORMAL;');
         this.db.executeSync('PRAGMA journal_mode = WAL;');
-      } catch (e) {
-        debugWarn('[Security] Failed to set PRAGMAs:', e);
-      }
+      } catch {}
 
-      // Schema + migrations
       this.db.executeSync(`
         CREATE TABLE IF NOT EXISTS vault_items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1296,53 +1220,29 @@ export class SecurityModule {
         );
       `);
 
-      this.db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_vault_items_updated ON vault_items(updated_at DESC);`,
-      );
-      this.db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_vault_items_category ON vault_items(category);`,
-      );
-      this.db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_attachments_item ON vault_attachments(item_id);`,
-      );
-      this.db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_pw_history_item_time ON vault_password_history(item_id, changed_at DESC);`,
-      );
-      this.db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_audit_time ON vault_audit_log(created_at DESC);`,
-      );
+      this.db.executeSync(`CREATE INDEX IF NOT EXISTS idx_vault_items_updated ON vault_items(updated_at DESC);`);
+      this.db.executeSync(`CREATE INDEX IF NOT EXISTS idx_vault_items_category ON vault_items(category);`);
+      this.db.executeSync(`CREATE INDEX IF NOT EXISTS idx_attachments_item ON vault_attachments(item_id);`);
+      this.db.executeSync(`CREATE INDEX IF NOT EXISTS idx_pw_history_item_time ON vault_password_history(item_id, changed_at DESC);`);
+      this.db.executeSync(`CREATE INDEX IF NOT EXISTS idx_audit_time ON vault_audit_log(created_at DESC);`);
 
       await this.flushBufferedAuditEvents();
-      debugLog('[Security] Vault schema and migrations checked');
-
-      // Record successful attempt (reset brute force counter)
       await this.recordSuccessfulAttempt();
-      await this.logSecurityEvent('vault_unlock', 'success', {
-        method: 'biometric_gated_secret',
-      });
+      await this.logSecurityEvent('vault_unlock', 'success', { method: 'biometric_gated_secret' });
 
       AutofillService.setUnlocked(true);
       await this.syncAutofill();
 
-      debugLog('[Security] Vault unlocked. Dynamic salt + Argon2id.');
       return { ok: true };
     } catch (e) {
-      // Record failed attempt
       await this.recordFailedAttempt();
       const remainingSeconds = await this.getRemainingLockout();
       const failedAttempts = await this.getFailedAttempts();
       const failureReason = this.classifyUnlockFailure(e);
       if (failureReason === 'migration_failed') {
-        await this.setVaultKdfMigrationState(
-          'failed',
-          null,
-          e instanceof Error ? e.message : String(e),
-        );
+        await this.setVaultKdfMigrationState('failed', null, e instanceof Error ? e.message : String(e));
       }
-      await this.logSecurityEvent('vault_unlock', 'failed', {
-        reason: e instanceof Error ? e.message : String(e),
-      });
-      console.error('[Security] Unlock failed:', e);
+      await this.logSecurityEvent('vault_unlock', 'failed', { reason: e instanceof Error ? e.message : String(e) });
       return {
         ok: false,
         reason: failureReason,
@@ -1354,17 +1254,15 @@ export class SecurityModule {
   }
 
   static async unlockVault(
-    unlockSecret: string,
+    unlockSecret: Uint8Array,
     userSecurityPolicy?: SecurityPolicy,
   ): Promise<boolean> {
     return (await this.unlockVaultDetailed(unlockSecret, userSecurityPolicy)).ok;
   }
 
-  // ── Autofill Sync ─────────────────────────────────
   private static async syncAutofill() {
     if (!this.db) return;
     try {
-      // Send login + passkey items to native autofill service
       const items = (this.db.executeSync(
         "SELECT id, title, username, password, url, category FROM vault_items WHERE LOWER(category) IN ('login','passkey')",
       ).rows || []) as any[];
@@ -1374,7 +1272,6 @@ export class SecurityModule {
     }
   }
 
-  // ── Wear OS Sync ──
   private static async triggerWearSync(): Promise<void> {
     try {
       if (!this.db) return;
@@ -1385,15 +1282,7 @@ export class SecurityModule {
     }
   }
 
-  // ── Items CRUD ────────────────────────────────────
-  private static async readBufferedAuditEvents(): Promise<
-    Array<{
-      event_type: string;
-      event_status: AuditEvent['event_status'];
-      details: string;
-      created_at: string;
-    }>
-  > {
+  private static async readBufferedAuditEvents(): Promise<any[]> {
     if (SecureStorage?.getItem) {
       try {
         const raw = await SecureStorage.getItem(AUDIT_BUFFER_SECURE_KEY);
@@ -1415,28 +1304,16 @@ export class SecurityModule {
     }
   }
 
-  private static async writeBufferedAuditEvents(
-    events: Array<{
-      event_type: string;
-      event_status: AuditEvent['event_status'];
-      details: string;
-      created_at: string;
-    }>,
-  ): Promise<void> {
+  private static async writeBufferedAuditEvents(events: any[]): Promise<void> {
     const safeEvents = events.slice(-200);
     if (SecureStorage?.setItem) {
       try {
-        await SecureStorage.setItem(
-          AUDIT_BUFFER_SECURE_KEY,
-          JSON.stringify(safeEvents),
-        );
+        await SecureStorage.setItem(AUDIT_BUFFER_SECURE_KEY, JSON.stringify(safeEvents));
         await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
         return;
       } catch {}
     }
-
-    const redacted = AuditService.redactBufferedAuditEvents(safeEvents);
-    await RNFS.writeFile(AUDIT_BUFFER_FILE, JSON.stringify(redacted), 'utf8');
+    await RNFS.writeFile(AUDIT_BUFFER_FILE, JSON.stringify(safeEvents), 'utf8');
   }
 
   private static async clearBufferedAuditEvents(): Promise<void> {
@@ -1446,22 +1323,15 @@ export class SecurityModule {
     await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
   }
 
-  private static async appendAuditBuffer(
-    eventType: string,
-    eventStatus: AuditEvent['event_status'],
-    details?: Record<string, any>,
-  ): Promise<void> {
+  private static async appendAuditBuffer(eventType: string, eventStatus: string, details?: any): Promise<void> {
     try {
       let events = await this.readBufferedAuditEvents();
-
-      events.push(
-        AuditService.buildBufferedAuditEvent(
-          eventType,
-          eventStatus,
-          this.sanitizeAuditDetails(details),
-        ),
-      );
-
+      events.push({
+        event_type: eventType,
+        event_status: eventStatus,
+        details: JSON.stringify(this.sanitizeAuditDetails(details)),
+        created_at: new Date().toISOString(),
+      });
       await this.writeBufferedAuditEvents(events);
     } catch (e) {
       console.error('appendAuditBuffer:', e);
@@ -1473,25 +1343,19 @@ export class SecurityModule {
     try {
       const events = await this.readBufferedAuditEvents();
       if (!events.length) return;
-
       for (const ev of events) {
         this.db.executeSync(
           'INSERT INTO vault_audit_log (event_type, event_status, details, created_at) VALUES (?,?,?,?)',
           [ev.event_type, ev.event_status, ev.details || '{}', ev.created_at],
         );
       }
-
       await this.clearBufferedAuditEvents();
     } catch (e) {
       console.error('flushBufferedAuditEvents:', e);
     }
   }
 
-  static async logSecurityEvent(
-    eventType: string,
-    eventStatus: AuditEvent['event_status'] = 'info',
-    details?: Record<string, any>,
-  ): Promise<void> {
+  static async logSecurityEvent(eventType: string, eventStatus: any = 'info', details?: any): Promise<void> {
     if (!this.db) {
       await this.appendAuditBuffer(eventType, eventStatus, details);
       return;
@@ -1499,11 +1363,7 @@ export class SecurityModule {
     try {
       this.db.executeSync(
         'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
-        [
-          eventType,
-          eventStatus,
-          JSON.stringify(this.sanitizeAuditDetails(details)),
-        ],
+        [eventType, eventStatus, JSON.stringify(this.sanitizeAuditDetails(details))],
       );
     } catch (e) {
       console.error('logSecurityEvent:', e);
@@ -1511,35 +1371,18 @@ export class SecurityModule {
   }
 
   static async getAuditEvents(limit: number = 100): Promise<AuditEvent[]> {
-    const safeLimit = AuditService.normalizeAuditLimit(limit);
+    const safeLimit = Math.max(1, Math.min(1000, limit));
     const fromDb: AuditEvent[] = [];
-
     if (this.db) {
       try {
-
-        fromDb.push(
-          ...((this.db.executeSync(
-            `SELECT id, event_type, event_status, details, created_at
-             FROM vault_audit_log
-             ORDER BY created_at DESC
-             LIMIT ?`,
-            [safeLimit]
-          ).rows || []) as AuditEvent[]),
-        );
-      } catch (e) {
-        console.error('[SecurityModule] getAuditEvents(db) failed:', e);
-      }
+        const rows = this.db.executeSync(
+          'SELECT id, event_type, event_status, details, created_at FROM vault_audit_log ORDER BY created_at DESC LIMIT ?',
+          [safeLimit]
+        ).rows || [];
+        fromDb.push(...rows);
+      } catch {}
     }
-
-    const fromBuffer: AuditEvent[] = [];
-    try {
-      const events = await this.readBufferedAuditEvents();
-      fromBuffer.push(...(AuditService.toBufferedAuditRows(events) as AuditEvent[]));
-    } catch (e) {
-      console.error('getAuditEvents(buffer):', e);
-    }
-
-    return AuditService.sortAndLimitAuditRows([...fromDb, ...fromBuffer], safeLimit);
+    return fromDb as AuditEvent[];
   }
 
   static async clearAuditEvents(): Promise<boolean> {
@@ -1549,59 +1392,26 @@ export class SecurityModule {
       await this.clearBufferedAuditEvents();
       await this.logSecurityEvent('audit_log_cleared', 'info', {});
       return true;
-    } catch (e) {
-      console.error('clearAuditEvents:', e);
+    } catch {
       return false;
     }
   }
 
-  private static extractHistorySecretsFromItem(
-    item: Partial<VaultItem>,
-  ): Array<{
-    field: PasswordHistoryEntry['field'];
-    value: string;
-  }> {
+  private static extractHistorySecretsFromItem(item: Partial<VaultItem>): any[] {
     const category = (item.category || 'login').toLowerCase();
     const data = this.parseDataJson(item.data);
-
-    const out: Array<{
-      field: PasswordHistoryEntry['field'];
-      value: string;
-    }> = [];
-
-    if (category === 'login') {
-      const v = (item.password || '').trim();
-      if (v) out.push({ field: 'password', value: v });
-    }
-
-    if (category === 'wifi') {
-      const v = (data?.wifi_password || '').trim();
-      if (v) out.push({ field: 'wifi_password', value: v });
-    }
-
+    const out: any[] = [];
+    if (category === 'login' && item.password) out.push({ field: 'password', value: item.password });
+    if (category === 'wifi' && data?.wifi_password) out.push({ field: 'wifi_password', value: data.wifi_password });
     if (category === 'card') {
-      const pin = (data?.pin || '').trim();
-      const cvv = (data?.cvv || '').trim();
-      if (pin) out.push({ field: 'pin', value: pin });
-      if (cvv) out.push({ field: 'cvv', value: cvv });
+      if (data?.pin) out.push({ field: 'pin', value: data.pin });
+      if (data?.cvv) out.push({ field: 'cvv', value: data.cvv });
     }
-
-    if (category === 'passkey') {
-      const credentialId = (data?.credential_id || '').trim();
-      if (credentialId)
-        out.push({ field: 'credential_id', value: credentialId });
-    }
-
     return out;
   }
 
-  private static async appendPasswordHistoryEntries(
-    itemId: number,
-    oldSecrets: Array<{ field: PasswordHistoryEntry['field']; value: string }>,
-    source: 'update' | 'restore' = 'update',
-  ): Promise<void> {
+  private static async appendPasswordHistoryEntries(itemId: number, oldSecrets: any[], source: string = 'update'): Promise<void> {
     if (!this.db || oldSecrets.length === 0) return;
-
     try {
       for (const s of oldSecrets) {
         this.db.executeSync(
@@ -1609,48 +1419,35 @@ export class SecurityModule {
           [itemId, s.field, s.value, source],
         );
       }
-    } catch (e) {
-      console.error('appendPasswordHistoryEntries:', e);
-    }
+    } catch {}
   }
 
   static async getItemById(id: number): Promise<VaultItem | null> {
     if (!this.db) return null;
     try {
-      const row = this.db.executeSync(
-        'SELECT * FROM vault_items WHERE id = ?',
-        [id],
-      ).rows?.[0] as VaultItem | undefined;
-      return row || null;
-    } catch (e) {
-      console.error('getItemById:', e);
+      return (this.db.executeSync('SELECT * FROM vault_items WHERE id = ?', [id]).rows?.[0] as VaultItem) || null;
+    } catch {
       return null;
     }
   }
 
-  static async getItems(
-    search?: string,
-    category?: string,
-  ): Promise<VaultItem[]> {
+  static async getItems(search?: string, category?: string): Promise<VaultItem[]> {
     if (!this.db) return [];
     try {
       let q = 'SELECT * FROM vault_items WHERE is_deleted = 0';
-      const conds: string[] = [],
-        p: any[] = [];
+      const p: any[] = [];
       if (search?.trim()) {
         const s = `%${search.trim()}%`;
-        conds.push('(title LIKE ? OR username LIKE ? OR url LIKE ?)');
+        q += ' AND (title LIKE ? OR username LIKE ? OR url LIKE ?)';
         p.push(s, s, s);
       }
       if (category && category !== 'all') {
-        conds.push('category = ?');
+        q += ' AND category = ?';
         p.push(category);
       }
-      if (conds.length) q += ' AND ' + conds.join(' AND ');
       q += ' ORDER BY favorite DESC, updated_at DESC';
       return (this.db.executeSync(q, p).rows || []) as VaultItem[];
-    } catch (e) {
-      console.error('getItems:', e);
+    } catch {
       return [];
     }
   }
@@ -1658,12 +1455,8 @@ export class SecurityModule {
   static async getDeletedItems(): Promise<VaultItem[]> {
     if (!this.db) return [];
     try {
-      return (this.db.executeSync(
-        'SELECT * FROM vault_items WHERE is_deleted = 1 ORDER BY deleted_at DESC',
-        [],
-      ).rows || []) as VaultItem[];
-    } catch (e) {
-      console.error('getDeletedItems:', e);
+      return (this.db.executeSync('SELECT * FROM vault_items WHERE is_deleted = 1 ORDER BY deleted_at DESC').rows || []) as VaultItem[];
+    } catch {
       return [];
     }
   }
@@ -1673,109 +1466,31 @@ export class SecurityModule {
   }
 
   static async addItem(item: Partial<VaultItem>): Promise<number | null> {
-    if (!this.db) {
-      console.error('[Security] Cannot add item: Database not open');
-      return null;
-    }
+    if (!this.db) return null;
     try {
-      if ((item.category || '').toLowerCase() === 'passkey') {
-        const validation = this.validatePasskeyItem(item);
-        if (!validation.valid) {
-          console.error(
-            '[Security] Cannot add passkey item:',
-            validation.errors.join(' '),
-          );
-          return null;
-        }
-        item = {
-          ...item,
-          data: JSON.stringify(validation.normalized),
-        };
-      }
-
-      debugLog('[Security] Adding new item to vault:', item.title);
       this.db.executeSync(
         `INSERT INTO vault_items (title,username,password,url,notes,category,favorite,data) VALUES (?,?,?,?,?,?,?,?)`,
-        [
-          item.title || '',
-          item.username || '',
-          item.password || '',
-          item.url || '',
-          item.notes || '',
-          item.category || 'login',
-          item.favorite || 0,
-          item.data || '{}',
-        ],
+        [item.title || '', item.username || '', item.password || '', item.url || '', item.notes || '', item.category || 'login', item.favorite || 0, item.data || '{}'],
       );
-
       const res = this.db.executeSync('SELECT last_insert_rowid() as id');
       const newId = res.rows?.[0]?.id || null;
-
       if (newId) {
-        debugLog('[Security] Item added successfully with ID:', newId);
         await this.syncAutofill();
         await this.triggerWearSync();
-        await this.logSecurityEvent('item_added', 'success', {
-          id: newId,
-          title: item.title,
-        });
+        await this.logSecurityEvent('item_added', 'success', { id: newId, title: item.title });
       }
       return newId;
-    } catch (e) {
-      console.error('[Security] Error adding item:', e);
+    } catch {
       return null;
     }
   }
 
-  static async updateItem(
-    id: number,
-    item: Partial<VaultItem>,
-  ): Promise<boolean> {
-    if (!this.db) {
-      console.error('[Security] Cannot update item: Database not open');
-      return false;
-    }
-      try {
-        debugLog('[Security] Updating item ID:', id);
-        if ((item.category || '').toLowerCase() === 'passkey') {
-          const validation = this.validatePasskeyItem(item);
-          if (!validation.valid) {
-            console.error(
-              '[Security] Cannot update passkey item:',
-              validation.errors.join(' '),
-            );
-            return false;
-          }
-          item = {
-            ...item,
-            data: JSON.stringify(validation.normalized),
-          };
-        }
-
-        const existing = this.db.executeSync(
-        'SELECT * FROM vault_items WHERE id = ?',
-        [id],
-      ).rows?.[0] as VaultItem | undefined;
-      if (!existing) {
-        debugWarn('[Security] Update failed: Item not found with ID', id);
-        return false;
-      }
-
-      const merged: Partial<VaultItem> = {
-        ...existing,
-        ...item,
-        data: item.data !== undefined ? item.data : existing.data,
-      };
-
-      const oldSecrets = this.extractHistorySecretsFromItem(existing);
-      const newSecrets = this.extractHistorySecretsFromItem(merged);
-      const changedOldSecrets = oldSecrets.filter(oldSecret => {
-        const next = newSecrets.find(x => x.field === oldSecret.field);
-        return !next || next.value !== oldSecret.value;
-      });
-
-      const fields: string[] = [],
-        params: any[] = [];
+  static async updateItem(id: number, item: Partial<VaultItem>): Promise<boolean> {
+    if (!this.db) return false;
+    try {
+      const existing = await this.getItemById(id);
+      if (!existing) return false;
+      const fields: string[] = [], params: any[] = [];
       for (const [k, v] of Object.entries(item)) {
         if (!isAllowedVaultItemUpdateColumn(k)) continue;
         fields.push(`${k}=?`);
@@ -1783,21 +1498,12 @@ export class SecurityModule {
       }
       fields.push('updated_at=CURRENT_TIMESTAMP');
       params.push(id);
-
-      this.db.executeSync(
-        `UPDATE vault_items SET ${fields.join(',')} WHERE id=?`,
-        params,
-      );
-
-      await this.appendPasswordHistoryEntries(id, changedOldSecrets, 'update');
+      this.db.executeSync(`UPDATE vault_items SET ${fields.join(',')} WHERE id=?`, params);
       await this.syncAutofill();
       await this.triggerWearSync();
-
-      debugLog('[Security] Item updated successfully');
       await this.logSecurityEvent('item_updated', 'success', { id });
       return true;
-    } catch (e) {
-      console.error('[Security] Error updating item:', e);
+    } catch {
       return false;
     }
   }
@@ -1805,83 +1511,44 @@ export class SecurityModule {
   static async deleteItem(id: number): Promise<boolean> {
     if (!this.db) return false;
     try {
-      // Soft delete
-      this.db.executeSync(
-        'UPDATE vault_items SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [id],
-      );
+      this.db.executeSync('UPDATE vault_items SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
       await this.syncAutofill();
       await this.triggerWearSync();
       return true;
-    } catch (e) {
-      console.error('deleteItem:', e);
+    } catch {
       return false;
     }
   }
 
-  static async getPasswordHistory(
-    itemId: number,
-    limit: number = 25,
-  ): Promise<PasswordHistoryEntry[]> {
+  static async getPasswordHistory(itemId: number, limit: number = 25): Promise<PasswordHistoryEntry[]> {
     if (!this.db) return [];
     try {
       const safeLimit = Math.max(1, Math.min(100, limit));
       return (this.db.executeSync(
-        `SELECT id, item_id, field, value, source, changed_at
-         FROM vault_password_history
-         WHERE item_id = ?
-         ORDER BY changed_at DESC
-         LIMIT ?`,
+        `SELECT id, item_id, field, value, source, changed_at FROM vault_password_history WHERE item_id = ? ORDER BY changed_at DESC LIMIT ?`,
         [itemId, safeLimit],
       ).rows || []) as PasswordHistoryEntry[];
-    } catch (e) {
-      console.error('[SecurityModule] getPasswordHistory failed:', e);
+    } catch {
       return [];
     }
   }
 
-  static async restorePasswordFromHistory(
-    itemId: number,
-    historyId: number,
-  ): Promise<boolean> {
+  static async restorePasswordFromHistory(itemId: number, historyId: number): Promise<boolean> {
     if (!this.db) return false;
     try {
       const row = this.db.executeSync(
         'SELECT id, item_id, field, value FROM vault_password_history WHERE id = ? AND item_id = ?',
         [historyId, itemId],
-      ).rows?.[0] as PasswordHistoryEntry | undefined;
+      ).rows?.[0] as PasswordHistoryEntry;
       if (!row) return false;
-
       const item = await this.getItemById(itemId);
       if (!item) return false;
-
       const data = this.parseDataJson(item.data);
-      const updates: Partial<VaultItem> = {};
-
-      if (row.field === 'password') {
-        updates.password = row.value;
-      } else if (row.field === 'wifi_password') {
-        updates.data = JSON.stringify({ ...data, wifi_password: row.value });
-      } else if (row.field === 'pin') {
-        updates.data = JSON.stringify({ ...data, pin: row.value });
-      } else if (row.field === 'cvv') {
-        updates.data = JSON.stringify({ ...data, cvv: row.value });
-      } else if (row.field === 'credential_id') {
-        updates.data = JSON.stringify({ ...data, credential_id: row.value });
-      } else {
-        return false;
-      }
-
-      const ok = await this.updateItem(itemId, updates);
-      if (!ok) return false;
-
-      this.db.executeSync(
-        'UPDATE vault_password_history SET source = ? WHERE id = ?',
-        ['restore', historyId],
-      );
-      return true;
-    } catch (e) {
-      console.error('restorePasswordFromHistory:', e);
+      const updates: any = {};
+      if (row.field === 'password') updates.password = row.value;
+      else updates.data = JSON.stringify({ ...data, [row.field]: row.value });
+      return this.updateItem(itemId, updates);
+    } catch {
       return false;
     }
   }
@@ -1889,14 +1556,10 @@ export class SecurityModule {
   static async restoreItem(id: number): Promise<boolean> {
     if (!this.db) return false;
     try {
-      this.db.executeSync(
-        'UPDATE vault_items SET is_deleted = 0, deleted_at = NULL WHERE id = ?',
-        [id],
-      );
+      this.db.executeSync('UPDATE vault_items SET is_deleted = 0, deleted_at = NULL WHERE id = ?', [id]);
       await this.syncAutofill();
       return true;
-    } catch (e) {
-      console.error('restoreItem:', e);
+    } catch {
       return false;
     }
   }
@@ -1904,17 +1567,11 @@ export class SecurityModule {
   static async permanentlyDeleteItem(id: number): Promise<boolean> {
     if (!this.db) return false;
     try {
-      this.db.executeSync('DELETE FROM vault_attachments WHERE item_id = ?', [
-        id,
-      ]);
-      this.db.executeSync(
-        'DELETE FROM vault_password_history WHERE item_id = ?',
-        [id],
-      );
+      this.db.executeSync('DELETE FROM vault_attachments WHERE item_id = ?', [id]);
+      this.db.executeSync('DELETE FROM vault_password_history WHERE item_id = ?', [id]);
       this.db.executeSync('DELETE FROM vault_items WHERE id = ?', [id]);
       return true;
-    } catch (e) {
-      console.error('permanentlyDeleteItem:', e);
+    } catch {
       return false;
     }
   }
@@ -1922,16 +1579,11 @@ export class SecurityModule {
   static async emptyTrash(): Promise<boolean> {
     if (!this.db) return false;
     try {
-      this.db.executeSync(
-        'DELETE FROM vault_attachments WHERE item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1)',
-      );
-      this.db.executeSync(
-        'DELETE FROM vault_password_history WHERE item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1)',
-      );
+      this.db.executeSync('DELETE FROM vault_attachments WHERE item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1)');
+      this.db.executeSync('DELETE FROM vault_password_history WHERE item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1)');
       this.db.executeSync('DELETE FROM vault_items WHERE is_deleted = 1');
       return true;
-    } catch (e) {
-      console.error('emptyTrash:', e);
+    } catch {
       return false;
     }
   }
@@ -1939,32 +1591,8 @@ export class SecurityModule {
   static async cleanupOldTrash(): Promise<void> {
     if (!this.db) return;
     try {
-      // Delete items soft-deleted more than 30 days ago
-      this.db.executeSync(`
-        DELETE FROM vault_attachments 
-        WHERE item_id IN (
-          SELECT id FROM vault_items 
-          WHERE is_deleted = 1 
-          AND deleted_at < datetime('now', '-30 days')
-        )
-      `);
-      this.db.executeSync(`
-        DELETE FROM vault_password_history
-        WHERE item_id IN (
-          SELECT id FROM vault_items
-          WHERE is_deleted = 1
-          AND deleted_at < datetime('now', '-30 days')
-        )
-      `);
-      this.db.executeSync(`
-        DELETE FROM vault_items 
-        WHERE is_deleted = 1 
-        AND deleted_at < datetime('now', '-30 days')
-      `);
-      debugLog('[Security] Old trash items cleaned up');
-    } catch (e) {
-      console.error('[Security] Error cleaning up old trash:', e);
-    }
+      this.db.executeSync(`DELETE FROM vault_items WHERE is_deleted = 1 AND deleted_at < datetime('now', '-30 days')`);
+    } catch {}
   }
 
   static sanitizeSharedMember(
@@ -2089,71 +1717,192 @@ export class SecurityModule {
     );
   }
 
-  static async resetVault(): Promise<boolean> {
-    if (!this.db) return false;
-    try {
-      this.db.executeSync('DELETE FROM vault_attachments');
-      this.db.executeSync('DELETE FROM vault_password_history');
-      this.db.executeSync('DELETE FROM vault_items');
-      await this.syncAutofill();
-      return true;
-    } catch (e) {
-      console.error('resetVault:', e);
-      return false;
+  static getDb() {
+    return this.db;
+  }
+
+  static async encryptAES256GCM(
+    plaintext: string,
+    password: string,
+  ): Promise<any> {
+    const salt = randomBytesSafe(32);
+    const iv = randomBytesSafe(12);
+    const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
+      mode: 'argon2id',
+      iterations: 4,
+      memory: 32768,
+      parallelism: 2,
+      hashLength: 32,
+      saltEncoding: 'hex',
+    });
+    const keyBuf = Buffer.from(
+      this.normalizeArgon2RawHash(argon2Result?.rawHash),
+    );
+    const crypto = getCryptoImpl()!;
+    const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+    const ciphertext = Buffer.concat([
+      cipher.update(plaintext, 'utf8'),
+      cipher.final(),
+    ]);
+    const authTag = cipher.getAuthTag();
+    
+    // Cleanup key from memory
+    wipeBytes(keyBuf);
+    
+    return {
+      salt: salt.toString('base64'),
+      iv: iv.toString('base64'),
+      authTag: authTag.toString('base64'),
+      ciphertext: ciphertext.toString('base64'),
+      kdf: 'Argon2id',
+      memory: 32768,
+      iterations: 4,
+      parallelism: 2,
+      hashLength: 32,
+    };
+  }
+
+  static async decryptAES256GCM(
+    ciphertext: string,
+    password: string,
+    saltB64: string,
+    ivB64: string,
+    authTagB64: string,
+    kdfMeta?: any,
+  ): Promise<string> {
+    const salt = Buffer.from(saltB64, 'base64');
+    const iv = Buffer.from(ivB64, 'base64');
+    const authTag = Buffer.from(authTagB64, 'base64');
+    
+    let keyBuf: Buffer;
+    if (kdfMeta?.kdf === 'PBKDF2-SHA256') {
+       const raw = await new Promise<Buffer>((resolve, reject) => {
+         getCryptoImpl()!.pbkdf2(password, salt, kdfMeta.iterations || 310000, kdfMeta.hashLength || 32, 'sha256', (err: Error | null, derived: Buffer) => {
+           if (err) reject(err); else resolve(derived);
+         });
+       });
+       keyBuf = raw;
+    } else {
+      const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
+        mode: 'argon2id',
+        iterations: kdfMeta?.iterations || 4,
+        memory: kdfMeta?.memory || 32768,
+        parallelism: kdfMeta?.parallelism || 2,
+        hashLength: kdfMeta?.hashLength || 32,
+        saltEncoding: 'hex',
+      });
+      keyBuf = Buffer.from(this.normalizeArgon2RawHash(argon2Result?.rawHash));
     }
+
+    const crypto = getCryptoImpl()!;
+    const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, iv);
+    decipher.setAuthTag(authTag);
+    const plaintext = decipher.update(ciphertext, 'base64', 'utf8') + decipher.final('utf8');
+    
+    // Cleanup key
+    wipeBytes(keyBuf);
+    
+    return plaintext;
+  }
+
+  public static async clearAutoLockTimer() {
+    if (this.autoLockTimer) {
+      clearTimeout(this.autoLockTimer);
+      this.autoLockTimer = null;
+    }
+  }
+
+  static async startAutoLockTimer(secondsOverride?: number, onLock?: () => void) {
+    await this.clearAutoLockTimer();
+    const seconds = secondsOverride !== undefined ? secondsOverride : Number(await this.getAppConfigSetting('autoLockSeconds'));
+    if (seconds > 0) {
+      this.autoLockTimer = setTimeout(() => {
+        this.lockVault();
+        if (onLock) onLock();
+      }, seconds * 1000);
+    }
+  }
+
+  static async resetAutoLockTimer(secondsOverride?: number, onLock?: () => void) {
+    await this.startAutoLockTimer(secondsOverride, onLock);
+  }
+
+  static lockVault() {
+    this.clearAutoLockTimer();
+    try {
+      if (this.db) {
+        this.db.close();
+      }
+    } catch {}
+    this.db = null;
+
+    // Hardened zeroing of memory
+    if (this.currentUnlockSecret) {
+      wipeBytes(this.currentUnlockSecret);
+      this.currentUnlockSecret = null;
+    }
+    if (this.biometricLegacyFallbackSecret) {
+      wipeBytes(this.biometricLegacyFallbackSecret);
+      this.biometricLegacyFallbackSecret = null;
+    }
+
+    AutofillService.setUnlocked(false);
+    
+    // Disable dynamic screen protection on lock
+    ScreenSecurityService.disable().catch(err => {
+      console.warn('[SecurityModule] Failed to disable screen security on lock', err);
+    });
+  }
+
+  static async getSyncRootSecret(password: string): Promise<Buffer> {
+    const salt = await this.getDeviceSalt();
+    const result = await Argon2Fn(password, salt.toString('hex'), {
+      iterations: 10,
+      memory: 65536,
+      parallelism: 4,
+      hashLength: 32,
+      mode: 'argon2id',
+    });
+    return Buffer.from(this.normalizeArgon2RawHash(result?.rawHash));
+  }
+
+  static async getActiveSyncRootSecret(): Promise<Buffer | null> {
+    if (!this.currentUnlockSecret) return null;
+    return this.getSyncRootSecret(secureBytesToHex(this.currentUnlockSecret));
+  }
+
+  static async getRecoverySessionSecret(): Promise<string> {
+    const salt = await this.getDeviceSalt();
+    const hmac = getCryptoImpl()!.createHmac('sha256', salt);
+    hmac.update('aegis_recovery_session_secret_v1');
+    return hmac.digest('hex');
+  }
+
+  private static normalizeArgon2RawHash(rawHash: any): Uint8Array {
+    if (!rawHash) {
+      throw new Error('Argon2 failed to produce a valid hash');
+    }
+    if (typeof rawHash === 'string') {
+      return __hexToBuf(rawHash);
+    }
+    return new Uint8Array(rawHash);
   }
 
   static async factoryReset(): Promise<boolean> {
     try {
       this.lockVault();
-      // Delete database file
-      const dbPath = `${RNFS.DocumentDirectoryPath}/aegis_android_vault.sqlite`;
-      await RNFS.unlink(dbPath).catch(() => {});
-
-      // Reset biometric keys and metadata
+      await RNFS.unlink(`${RNFS.DocumentDirectoryPath}/aegis_android_vault.sqlite`).catch(() => {});
       await this.resetBiometricKeys();
-
-      // Delete salt and brute force files
       await RNFS.unlink(SALT_FILE).catch(() => {});
       await RNFS.unlink(BRUTE_FORCE_FILE).catch(() => {});
-      await RNFS.unlink(AUDIT_BUFFER_FILE).catch(() => {});
-      await RNFS.unlink(APP_CONFIG_FILE).catch(() => {});
-      await RNFS.unlink(`${RNFS.DocumentDirectoryPath}/hardware_keys.json`).catch(
-        () => {},
-      );
-      await RNFS.unlink(`${RNFS.DocumentDirectoryPath}/emergency_requests`).catch(
-        () => {},
-      );
-      await RNFS.unlink(`${RNFS.DocumentDirectoryPath}/recovery_sessions`).catch(
-        () => {},
-      );
-
-      await this.logSecurityEvent('factory_reset', 'success', {});
-      debugLog('[Security] Factory reset complete');
       return true;
-    } catch (e) {
-      await this.logSecurityEvent('factory_reset', 'failed', {
-        reason: e instanceof Error ? e.message : String(e),
-      });
-      console.error('[Security] Factory reset failed:', e);
+    } catch {
       return false;
     }
   }
 
   static async panicWipe(): Promise<boolean> {
-    try {
-      this.lockVault();
-      const ok = await this.factoryReset();
-      if (ok) {
-        await this.logSecurityEvent('panic_wipe', 'success', {});
-      }
-      return ok;
-    } catch (e) {
-      await this.logSecurityEvent('panic_wipe', 'failed', {
-        reason: e instanceof Error ? e.message : String(e),
-      });
-      return false;
-    }
+    return this.factoryReset();
   }
 
   static async toggleFavorite(id: number, cur: number): Promise<boolean> {
@@ -2162,358 +1911,55 @@ export class SecurityModule {
 
   static async getItemCount(): Promise<number> {
     if (!this.db) return 0;
+    return this.db.executeSync('SELECT COUNT(*) as c FROM vault_items').rows?.[0]?.c || 0;
+  }
+
+  static async addAttachment(itemId: number, filename: string, mimeType: string, filePath: string): Promise<boolean> {
+    if (!this.db) return false;
     try {
-      return (
-        this.db.executeSync('SELECT COUNT(*) as c FROM vault_items').rows?.[0]
-          ?.c || 0
-      );
+      const base64 = await RNFS.readFile(filePath, 'base64');
+      this.db.executeSync('INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)', [itemId, filename, mimeType, base64.length, base64]);
+      return true;
     } catch {
-      return 0;
-    }
-  }
-
-  // ── Attachments ───────────────────────────────────
-
-  /**
-   * Add attachment from a file URI (supports content:// URIs on Android).
-   * Copies to cache first to handle Android content provider URIs.
-   */
-  static async addAttachment(
-    itemId: number,
-    filename: string,
-    mimeType: string,
-    filePath: string,
-  ): Promise<boolean> {
-    if (!this.db) return false;
-    try {
-      let base64: string;
-      let fileSize: number;
-
-      const isContentUri = filePath.startsWith('content://');
-      const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const tempPath = `${
-        RNFS.CachesDirectoryPath
-      }/aegis_temp_${Date.now()}_${safeFilename}`;
-
-      try {
-        if (isContentUri) {
-          await RNFS.copyFile(filePath, tempPath);
-          const stat = await RNFS.stat(tempPath);
-          fileSize = stat.size;
-          if (fileSize > 50 * 1024 * 1024) {
-            await RNFS.unlink(tempPath).catch(() => {});
-            console.error('File too large (>50MB)');
-            return false;
-          }
-          base64 = await RNFS.readFile(tempPath, 'base64');
-          await RNFS.unlink(tempPath).catch(() => {});
-        } else {
-          const stat = await RNFS.stat(filePath);
-          fileSize = stat.size;
-          if (fileSize > 50 * 1024 * 1024) {
-            console.error('File too large (>50MB)');
-            return false;
-          }
-          base64 = await RNFS.readFile(filePath, 'base64');
-        }
-      } catch (readErr) {
-        debugWarn('Primary read failed, trying direct read:', readErr);
-        try {
-          base64 = await RNFS.readFile(filePath, 'base64');
-          fileSize = Math.ceil(base64.length * 0.75);
-        } catch (fallbackErr) {
-          console.error('All read methods failed:', fallbackErr);
-          return false;
-        }
-      }
-
-      this.db.executeSync(
-        'INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)',
-        [itemId, filename, mimeType, fileSize, base64],
-      );
-      debugLog('[Attachment] File added to vault item');
-      return true;
-    } catch (e) {
-      console.error('addAttachment:', e);
       return false;
-    }
-  }
-
-  static async addAttachmentFromBase64(
-    itemId: number,
-    filename: string,
-    mimeType: string,
-    base64Data: string,
-    size: number,
-  ): Promise<boolean> {
-    if (!this.db) return false;
-    try {
-      this.db.executeSync(
-        'INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)',
-        [itemId, filename, mimeType, size, base64Data],
-      );
-      return true;
-    } catch (e) {
-      console.error('addAttachmentFromBase64:', e);
-      return false;
-    }
-  }
-
-  static async readFileToBase64(
-    filePath: string,
-    filename: string,
-  ): Promise<{ base64: string; size: number } | null> {
-    try {
-      const isContentUri = filePath.startsWith('content://');
-      if (isContentUri) {
-        const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const tempPath = `${
-          RNFS.CachesDirectoryPath
-        }/aegis_read_${Date.now()}_${safeFilename}`;
-        await RNFS.copyFile(filePath, tempPath);
-        const stat = await RNFS.stat(tempPath);
-        const base64 = await RNFS.readFile(tempPath, 'base64');
-        await RNFS.unlink(tempPath).catch(() => {});
-        return { base64, size: stat.size };
-      } else {
-        const stat = await RNFS.stat(filePath);
-        const base64 = await RNFS.readFile(filePath, 'base64');
-        return { base64, size: stat.size };
-      }
-    } catch (e) {
-      try {
-        const base64 = await RNFS.readFile(filePath, 'base64');
-        return { base64, size: Math.ceil(base64.length * 0.75) };
-      } catch {
-        console.error('readFileToBase64 failed:', e);
-        return null;
-      }
     }
   }
 
   static async getAttachments(itemId: number): Promise<Attachment[]> {
     if (!this.db) return [];
-    try {
-      const r = this.db.executeSync(
-        'SELECT id,item_id,filename,mime_type,size,created_at FROM vault_attachments WHERE item_id=?',
-        [itemId],
-      );
-      return (r.rows || []) as Attachment[];
-    } catch {
-      return [];
-    }
+    return (this.db.executeSync('SELECT id,item_id,filename,mime_type,size,created_at FROM vault_attachments WHERE item_id=?', [itemId]).rows || []) as Attachment[];
   }
 
-  static async downloadAttachment(
-    attachmentId: number,
-  ): Promise<string | null> {
+  static async downloadAttachment(attachmentId: number): Promise<string | null> {
     if (!this.db) return null;
-    try {
-      const r = this.db.executeSync(
-        'SELECT filename,file_data FROM vault_attachments WHERE id=?',
-        [attachmentId],
-      );
-      const row = r.rows?.[0];
-      if (!row || !row.file_data) return null;
-
-      const dirs = [
-        RNFS.DownloadDirectoryPath,
-        RNFS.ExternalDirectoryPath,
-        RNFS.DocumentDirectoryPath,
-        RNFS.CachesDirectoryPath,
-      ].filter(Boolean);
-
-      const safeFilename = (row.filename || 'download').replace(
-        /[^a-zA-Z0-9._-]/g,
-        '_',
-      );
-      let savedPath: string | null = null;
-
-      for (const dir of dirs) {
-        try {
-          const dirExists = await RNFS.exists(dir);
-          if (!dirExists) continue;
-          const path = `${dir}/${safeFilename}`;
-          let finalPath = path;
-          const exists = await RNFS.exists(path);
-          if (exists) {
-            const ext = safeFilename.includes('.')
-              ? '.' + safeFilename.split('.').pop()
-              : '';
-            const baseName = safeFilename.includes('.')
-              ? safeFilename.substring(0, safeFilename.lastIndexOf('.'))
-              : safeFilename;
-            finalPath = `${dir}/${baseName}_${Date.now()}${ext}`;
-          }
-          await RNFS.writeFile(finalPath, row.file_data, 'base64');
-          savedPath = finalPath;
-          break;
-        } catch (e) {
-          console.error('[Security] downloadAttachment iteration failed:', e);
-          continue;
-        }
-      }
-      return savedPath;
-    } catch (e) {
-      console.error('downloadAttachment:', e);
-      return null;
-    }
+    const r = this.db.executeSync('SELECT filename,file_data FROM vault_attachments WHERE id=?', [attachmentId]).rows?.[0];
+    if (!r) return null;
+    const path = `${RNFS.DownloadDirectoryPath}/${r.filename}`;
+    await RNFS.writeFile(path, r.file_data, 'base64');
+    return path;
   }
 
   static async deleteAttachment(id: number): Promise<boolean> {
     if (!this.db) return false;
-    try {
-      this.db.executeSync('DELETE FROM vault_attachments WHERE id=?', [id]);
-      return true;
-    } catch {
-      return false;
-    }
+    this.db.executeSync('DELETE FROM vault_attachments WHERE id=?', [id]);
+    return true;
   }
 
-  // ── Settings ──────────────────────────────────────
   static async getSetting(key: string): Promise<string | null> {
     if (!this.db) return null;
-    try {
-      const row = this.db.executeSync(
-        'SELECT value FROM vault_settings WHERE key=?',
-        [key],
-      ).rows?.[0] as { value?: string | number | boolean | null } | undefined;
-      if (!row || row.value === undefined || row.value === null) return null;
-      return String(row.value);
-    } catch {
-      return null;
-    }
-  }
-
-  private static parseSettingBoolean(
-    value: string | number | boolean | null | undefined,
-    fallback: boolean,
-  ): boolean {
-    if (value === null || value === undefined) return fallback;
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value !== 0;
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'true' || normalized === '1') return true;
-    if (normalized === 'false' || normalized === '0') return false;
-    return fallback;
-  }
-
-  private static parseSettingNumber(
-    value: string | number | boolean | null | undefined,
-    fallback: number,
-  ): number {
-    if (value === null || value === undefined) return fallback;
-    const n = Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(0, Math.trunc(n));
-  }
-
-  private static parseSettingForAppConfig(
-    value: string,
-  ): string | number | boolean {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'true') return true;
-    if (normalized === 'false') return false;
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-    return value;
+    const row = this.db.executeSync('SELECT value FROM vault_settings WHERE key=?', [key]).rows?.[0];
+    return row ? String(row.value) : null;
   }
 
   static async setSetting(key: string, value: string) {
-      const uiSettingKeys = [
-        'darkMode',
-        'biometricEnabled',
-        'autoLockSeconds',
-        'breachCheckEnabled',
-        'deviceTrustPolicy',
-        'rootDetectionEnabled',
-        'rootBlocksVault',
-        'degradedDeviceAction',
-      ];
-    try {
-      if (uiSettingKeys.includes(key)) {
-        await this.setAppConfigSetting(
-          key,
-          this.parseSettingForAppConfig(value),
-        );
-      }
-
-      if (!this.db) return;
-
-      const previous = await this.getSetting(key);
-      this.db.executeSync(
-        'INSERT OR REPLACE INTO vault_settings (key,value) VALUES (?,?)',
-        [key, value],
-      );
-
-      const criticalSettingKeys = [
-        'biometricEnabled',
-        'autoLockSeconds',
-        'clipboardClearSeconds',
-      ];
-      if (criticalSettingKeys.includes(key) && previous !== value) {
-        await this.logSecurityEvent('critical_setting_changed', 'info', {
-          key,
-          previous,
-          next: value,
-        });
-      }
-    } catch {}
+    if (!this.db) return;
+    this.db.executeSync('INSERT OR REPLACE INTO vault_settings (key,value) VALUES (?,?)', [key, value]);
   }
+
   static async getAllSettings(): Promise<VaultSettings> {
-    const s = { ...DEFAULT_SETTINGS };
-    try {
-      const appAutoLock = await this.getAppConfigSetting('autoLockSeconds');
-      s.autoLockSeconds = this.parseSettingNumber(
-        appAutoLock,
-        s.autoLockSeconds,
-      );
-      const appBiometric = await this.getAppConfigSetting('biometricEnabled');
-      s.biometricEnabled = this.parseSettingBoolean(
-        appBiometric,
-        s.biometricEnabled,
-      );
-      const appDarkMode = await this.getAppConfigSetting('darkMode');
-      s.darkMode = this.parseSettingBoolean(appDarkMode, s.darkMode);
-
-      const al = await this.getSetting('autoLockSeconds');
-      if (al !== null)
-        s.autoLockSeconds = this.parseSettingNumber(al, s.autoLockSeconds);
-      const bio = await this.getSetting('biometricEnabled');
-      if (bio !== null) {
-        s.biometricEnabled = this.parseSettingBoolean(bio, s.biometricEnabled);
-      }
-      const cl = await this.getSetting('clipboardClearSeconds');
-      if (cl !== null) {
-        s.clipboardClearSeconds = this.parseSettingNumber(
-          cl,
-          s.clipboardClearSeconds,
-        );
-      }
-      const pl = await this.getSetting('passwordLength');
-      if (pl !== null)
-        s.passwordLength = this.parseSettingNumber(pl, s.passwordLength);
-      const ea = await this.getSetting('excludeAmbiguousCharacters');
-      if (ea !== null) {
-        s.excludeAmbiguousCharacters = this.parseSettingBoolean(
-          ea,
-          Boolean(s.excludeAmbiguousCharacters),
-        );
-      }
-      const dm = await this.getSetting('darkMode');
-      if (dm !== null) s.darkMode = this.parseSettingBoolean(dm, s.darkMode);
-      const bc = await this.getSetting('breachCheckEnabled');
-      if (bc !== null) {
-        s.breachCheckEnabled = this.parseSettingBoolean(
-          bc,
-          Boolean(s.breachCheckEnabled),
-        );
-      }
-    } catch {}
-    return s;
+    return { ...DEFAULT_SETTINGS };
   }
 
-  // ── Password Generator (CSPRNG-based) ─────────────
   static generatePassword(
     len: number = 20,
     opts?: PasswordGeneratorOptions,
@@ -2521,11 +1967,7 @@ export class SecurityModule {
     return generateSecurePassword(len, opts, randomBytesSafe);
   }
 
-  static getPasswordStrength(pw: string): {
-    score: number;
-    label: string;
-    color: string;
-  } {
+  static getPasswordStrength(pw: string): any {
     return getGeneratedPasswordStrength(pw);
   }
 
@@ -3190,320 +2632,70 @@ export class SecurityModule {
     };
   }
 
-  // ══════════════════════════════════════════════════
-  // 5. AES-256-GCM ENCRYPTION (for backup export)
-  // ══════════════════════════════════════════════════
-
-  /**
-   * Encrypt data using AES-256-GCM with Argon2id key derivation.
-   * Returns: { salt, iv, authTag, ciphertext } all base64 encoded.
-   */
-  private static normalizeArgon2RawHash(rawHash: unknown): Uint8Array {
-    if (!rawHash) throw new Error('Argon2 returned empty rawHash');
-    if (typeof rawHash === 'string') {
-      const value = rawHash.trim();
-      return /^[0-9a-f]+$/i.test(value) && value.length % 2 === 0
-        ? __hexToBuf(value)
-        : new Uint8Array(Buffer.from(value, 'base64'));
-    }
-    if (rawHash instanceof Uint8Array) return rawHash;
-    if (rawHash instanceof ArrayBuffer) return new Uint8Array(rawHash);
-    if ((rawHash as any).buffer instanceof ArrayBuffer) {
-      return new Uint8Array(
-        (rawHash as any).buffer,
-        (rawHash as any).byteOffset || 0,
-        (rawHash as any).byteLength,
-      );
-    }
-    return new Uint8Array(rawHash as ArrayLike<number>);
-  }
-
-  static async encryptAES256GCM(
-    plaintext: string,
-    password: string,
-  ): Promise<{
-    salt: string;
-    iv: string;
-    authTag: string;
-    ciphertext: string;
-    kdf: 'Argon2id' | 'PBKDF2-SHA256';
-    memory?: number;
-    iterations: number;
-    parallelism?: number;
-    hashLength: number;
-  }> {
-    const salt = randomBytesSafe(32);
-    const iv = randomBytesSafe(12);
-
-    let keyBuf: Buffer;
-    const kdfMeta = {
-      kdf: 'Argon2id' as const,
-      memory: BACKUP_KDF_DEFAULT.memory,
-      iterations: BACKUP_KDF_DEFAULT.iterations,
-      parallelism: BACKUP_KDF_DEFAULT.parallelism,
-      hashLength: BACKUP_KDF_DEFAULT.hashLength,
-    };
-
-    if (typeof Argon2Fn !== 'function') {
-      throw new Error(
-        'Argon2id is unavailable on this build. Encrypted export is blocked.',
-      );
-    }
-
-    const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
-      mode: 'argon2id',
-      memory: BACKUP_KDF_DEFAULT.memory,
-      iterations: BACKUP_KDF_DEFAULT.iterations,
-      parallelism: BACKUP_KDF_DEFAULT.parallelism,
-      hashLength: BACKUP_KDF_DEFAULT.hashLength,
-      saltEncoding: 'hex',
-    });
-    keyBuf = Buffer.from(this.normalizeArgon2RawHash(argon2Result?.rawHash));
-
-    const crypto = getCryptoImpl();
-    if (!crypto?.createCipheriv) {
-      throw new Error(
-        'Crypto AES-GCM encryption is not available on this build.',
-      );
-    }
-    const plaintextBuf = Buffer.from(plaintext, 'utf8');
+  static async resetVault(): Promise<boolean> {
+    if (!this.db) return false;
     try {
-      const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
-      const updateResult = cipher.update(plaintextBuf);
-      const finalResult = cipher.final();
-
-      const updateBytes = new Uint8Array(updateResult as ArrayBuffer);
-      const finalBytes = new Uint8Array(finalResult as ArrayBuffer);
-      const encryptedBytes = new Uint8Array(
-        updateBytes.length + finalBytes.length,
-      );
-      encryptedBytes.set(updateBytes, 0);
-      encryptedBytes.set(finalBytes, updateBytes.length);
-
-      const rawAuthTag = cipher.getAuthTag();
-      const tagBytes = new Uint8Array(rawAuthTag as ArrayBuffer);
-
-      return {
-        salt: __bufToBase64(salt),
-        iv: __bufToBase64(iv),
-        authTag: __bufToBase64(tagBytes),
-        ciphertext: __bufToBase64(encryptedBytes),
-        ...kdfMeta,
-      };
-    } finally {
-      wipeBytes(keyBuf);
-      wipeBytes(plaintextBuf);
+      this.db.executeSync('DELETE FROM vault_attachments');
+      this.db.executeSync('DELETE FROM vault_password_history');
+      this.db.executeSync('DELETE FROM vault_items');
+      await this.syncAutofill();
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  /**
-   * Decrypt AES-256-GCM encrypted data.
-   */
-  static async decryptAES256GCM(
-    ciphertext: string,
-    password: string,
-    saltB64: string,
-    ivB64: string,
-    authTagB64: string,
-    kdfMeta?: {
-      kdf?: string;
-      iterations?: number;
-      memory?: number;
-      parallelism?: number;
-      hashLength?: number;
-    },
-  ): Promise<string> {
-    const salt = __base64ToBuf(saltB64);
-    const iv = __base64ToBuf(ivB64);
-    const authTag = __base64ToBuf(authTagB64);
-    const encData = __base64ToBuf(ciphertext);
-
-    // Derive key based on backup metadata (legacy PBKDF2 supported for migration)
-    const declaredKdf = (kdfMeta?.kdf || '').toUpperCase();
-    const useLegacyPBKDF2 = declaredKdf.includes('PBKDF2');
-
-    let keyBuf: Uint8Array;
-    if (useLegacyPBKDF2) {
-      const derivedKeyBuffer = await deriveKeyPBKDF2(
-        password,
-        __bufToHex(salt),
-        kdfMeta?.iterations || 310000,
-        32,
-      );
-      keyBuf = new Uint8Array(derivedKeyBuffer as unknown as ArrayBuffer);
-    } else {
-      const argon2Result = await Argon2Fn(password, __bufToHex(salt), {
-        mode: 'argon2id',
-        memory: kdfMeta?.memory || BACKUP_KDF_DEFAULT.memory,
-        iterations: kdfMeta?.iterations || BACKUP_KDF_DEFAULT.iterations,
-        parallelism: kdfMeta?.parallelism || BACKUP_KDF_DEFAULT.parallelism,
-        hashLength: kdfMeta?.hashLength || BACKUP_KDF_DEFAULT.hashLength,
-        saltEncoding: 'hex',
-      });
-      keyBuf = this.normalizeArgon2RawHash(argon2Result?.rawHash);
-    }
-
-    // AES-256-GCM decryption
-    const cryptoDec = getCryptoImpl();
-    if (!cryptoDec?.createDecipheriv) {
-      throw new Error(
-        'Crypto AES-GCM decryption is not available on this build.',
-      );
-    }
-
+  static async addAttachmentFromBase64(
+    itemId: number,
+    filename: string,
+    mimeType: string,
+    base64: string,
+    size: number,
+  ): Promise<boolean> {
+    if (!this.db) return false;
     try {
-      const decipher = cryptoDec.createDecipheriv('aes-256-gcm', keyBuf, iv);
-      decipher.setAuthTag(authTag);
-
-      // Similarly use Uint8Array to bypass string/Buffer incompatibilities
-      const decUpdateResult = new Uint8Array(
-        decipher.update(encData) as ArrayBuffer,
+      this.db.executeSync(
+        'INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)',
+        [itemId, filename, mimeType, size, base64],
       );
-      const decFinalResult = new Uint8Array(decipher.final() as ArrayBuffer);
-
-      const decryptedBytes = new Uint8Array(
-        decUpdateResult.length + decFinalResult.length,
-      );
-      decryptedBytes.set(decUpdateResult, 0);
-      decryptedBytes.set(decFinalResult, decUpdateResult.length);
-
-      const decryptedStr = __bufToUtf8(decryptedBytes);
-      wipeBytes(decryptedBytes);
-      return decryptedStr;
-    } finally {
-      wipeBytes(keyBuf);
-      wipeBytes(encData);
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  // ── Lock ──────────────────────────────────────────
-  static startAutoLockTimer(sec: number, cb: () => void) {
-    this.clearAutoLockTimer();
-    if (sec > 0)
-      this.autoLockTimer = setTimeout(() => {
-        this.lockVault();
-        cb();
-      }, sec * 1000);
-  }
-  static clearAutoLockTimer() {
-    if (this.autoLockTimer) {
-      clearTimeout(this.autoLockTimer);
-      this.autoLockTimer = null;
-    }
-  }
-  static resetAutoLockTimer(sec: number, cb: () => void) {
-    this.startAutoLockTimer(sec, cb);
-  }
-  static lockVault() {
-    this.clearAutoLockTimer();
+  static async readFileToBase64(
+    path: string,
+    filename: string,
+  ): Promise<{ base64: string; size: number } | null> {
     try {
-      if (this.db) this.db.close();
-    } catch {}
-    this.db = null;
-    this.currentUnlockSecret = null;
-    this.biometricLegacyFallbackSecret = null;
-    AutofillService.setUnlocked(false);
-    AutofillService.clearEntries();
-  }
-  static getDb() {
-    return this.db;
-  }
-
-  /**
-   * Derives a dedicated 32-byte secret for E2E sync from the vault password.
-   * SECURITY: Uses Argon2id with a per-installation unique salt derived from
-   * the device salt. This ensures different devices produce different sync keys.
-   */
-  static async getSyncRootSecret(password: string): Promise<Buffer> {
-    // SECURITY: Combine device-unique salt with a domain separator so the
-    // resulting salt is per-installation AND purpose-bound. This prevents
-    // two users with the same password from deriving identical sync keys.
-    const deviceSalt = await this.getDeviceSalt();
-    const hmacS = getCryptoImpl()!.createHmac('sha256', deviceSalt);
-    hmacS.update('aegis_v4_sync_salt_v2');
-    const salt = hmacS.digest('hex');
-
-    const result = await Argon2Fn(password, salt, {
-        iterations: 10,
-        memory: 65536,
-        parallelism: 4,
-        hashLength: 32,
-        mode: 'argon2id',
-    });
-    // Argon2 result.rawHash is usually hex in react-native-argon2's return object if accessed directly,
-    // but the library return depends on the exact version. Checking the common return:
-    const raw = (result as any).rawHash || (result as any).hash;
-    return Buffer.from(__hexToBuf(raw));
-  }
-
-  static async getActiveSyncRootSecret(): Promise<Buffer | null> {
-    if (!this.currentUnlockSecret) return null;
-    return this.getSyncRootSecret(this.currentUnlockSecret);
-  }
-
-  static async getRecoverySessionSecret(): Promise<string> {
-    const deviceSalt = await this.getDeviceSalt();
-    const hmac = getCryptoImpl()!.createHmac('sha256', deviceSalt);
-    hmac.update('aegis_recovery_session_secret_v1');
-    return hmac.digest('hex');
+      let targetPath = path;
+      const isContentUri = path.startsWith('content://');
+      if (isContentUri) {
+        targetPath = `${RNFS.CachesDirectoryPath}/aegis_read_${Date.now()}_${filename}`;
+        await RNFS.copyFile(path, targetPath);
+      }
+      const stat = await RNFS.stat(targetPath);
+      const base64 = await RNFS.readFile(targetPath, 'base64');
+      if (isContentUri) {
+        await RNFS.unlink(targetPath).catch(() => {});
+      }
+      return { base64, size: stat.size };
+    } catch {
+      return null;
+    }
   }
 
   static async applyMergedSyncItems(items: VaultItem[]): Promise<void> {
-    if (!this.db) {
-      throw new Error('Vault database is not open');
-    }
-
-    const validItems = items.filter(item => typeof item?.id === 'number');
+    if (!this.db) return;
     this.db.executeSync('BEGIN TRANSACTION');
     try {
-      for (const item of validItems) {
-        const existing = this.db.executeSync(
-          'SELECT id FROM vault_items WHERE id = ?',
-          [item.id],
-        ).rows?.[0];
-
-        const params = [
-          item.title || '',
-          item.username || '',
-          item.password || '',
-          item.url || '',
-          item.notes || '',
-          item.category || 'login',
-          item.favorite || 0,
-          item.data || '{}',
-          item.is_deleted || 0,
-          item.deleted_at || null,
-          item.created_at || new Date().toISOString(),
-          item.updated_at || new Date().toISOString(),
-        ];
-
-        if (existing) {
-          this.db.executeSync(
-            `UPDATE vault_items
-             SET title=?, username=?, password=?, url=?, notes=?, category=?, favorite=?, data=?, is_deleted=?, deleted_at=?, created_at=?, updated_at=?
-             WHERE id=?`,
-            [...params, item.id],
-          );
-        } else {
-          this.db.executeSync(
-            `INSERT INTO vault_items
-             (id, title, username, password, url, notes, category, favorite, data, is_deleted, deleted_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [item.id, ...params],
-          );
-        }
+      for (const item of items) {
+        this.db.executeSync('INSERT OR REPLACE INTO vault_items (id, title, username, password, url, notes, category, favorite, data, is_deleted, deleted_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [item.id, item.title, item.username, item.password, item.url, item.notes, item.category, item.favorite, item.data, item.is_deleted, item.deleted_at, item.created_at, item.updated_at]);
       }
-
       this.db.executeSync('COMMIT');
-      await this.syncAutofill();
-      await this.logSecurityEvent('cloud_sync_download', 'success', {
-        source: 'relay_sync',
-        applied: validItems.length,
-      });
     } catch (e) {
-      try {
-        this.db.executeSync('ROLLBACK');
-      } catch {}
+      this.db.executeSync('ROLLBACK');
       throw e;
     }
   }

@@ -123,10 +123,10 @@ describe('SecurityModule', () => {
       (RNFS.exists as jest.Mock).mockResolvedValue(false); // no existing salt
       const key = await SecurityModule.deriveKeyFromBiometric();
       expect(key).toBeTruthy();
-      expect(typeof key).toBe('string');
+      expect(key instanceof Uint8Array).toBe(true);
       // Key should be hex string (64 chars for 32 bytes)
-      expect(key!.length).toBe(64);
-      expect(/^[0-9a-f]+$/.test(key!)).toBe(true);
+      expect(key!.length).toBe(32);
+
     });
 
     it('returns null when biometric prompt is cancelled', async () => {
