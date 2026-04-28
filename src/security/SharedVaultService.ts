@@ -92,6 +92,66 @@ export const parseSharedAssignment = (
   };
 };
 
+export const mergeSharedAssignmentIntoData = (
+  data: Record<string, any>,
+  assignment?: Partial<SharedItemAssignment> | null,
+): Record<string, any> => {
+  const next = { ...data };
+  if (!assignment?.spaceId?.trim()) {
+    delete next.shared;
+    return next;
+  }
+
+  next.shared = {
+    spaceId: assignment.spaceId.trim(),
+    role:
+      assignment.role === 'editor' || assignment.role === 'viewer'
+        ? assignment.role
+        : 'viewer',
+    ...(assignment.sharedBy?.trim()
+      ? { sharedBy: assignment.sharedBy.trim() }
+      : {}),
+    ...(assignment.isSensitive !== undefined
+      ? { isSensitive: Boolean(assignment.isSensitive) }
+      : {}),
+    ...(assignment.emergencyAccess !== undefined
+      ? { emergencyAccess: Boolean(assignment.emergencyAccess) }
+      : {}),
+    ...(assignment.notes?.trim() ? { notes: assignment.notes.trim() } : {}),
+    ...(assignment.lastReviewedAt?.trim()
+      ? { lastReviewedAt: assignment.lastReviewedAt.trim() }
+      : {}),
+  };
+  return next;
+};
+
+export const upsertSharedSpace = (
+  spaces: SharedVaultSpace[],
+  input: Partial<SharedVaultSpace>,
+  generateId: (prefix: string) => string,
+): { space: SharedVaultSpace | null; spaces: SharedVaultSpace[] } => {
+  const space = sanitizeSharedSpace(input, generateId);
+  if (!space.name.trim()) return { space: null, spaces };
+  const nextSpaces = spaces.some(item => item.id === space.id)
+    ? spaces.map(item => (item.id === space.id ? space : item))
+    : [...spaces, space];
+  return { space, spaces: nextSpaces };
+};
+
+export const removeSharedSpace = (
+  spaces: SharedVaultSpace[],
+  spaceId: string,
+): { removed: boolean; safeSpaceId: string; spaces: SharedVaultSpace[] } => {
+  const safeSpaceId = spaceId.trim();
+  if (!safeSpaceId) return { removed: false, safeSpaceId, spaces };
+  const nextSpaces = spaces.filter(space => space.id !== safeSpaceId);
+  return {
+    removed: nextSpaces.length !== spaces.length,
+    safeSpaceId,
+    spaces: nextSpaces,
+  };
+};
+
 export const generateSharingOverview = (
   spaces: SharedVaultSpace[],
   items: VaultItem[],

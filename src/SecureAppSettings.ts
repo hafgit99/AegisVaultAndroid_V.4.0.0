@@ -203,10 +203,10 @@ const DEFAULT_STATE: SecureAppSettingsState = {
   sharedSpaces: [],
   sharingAuditLog: [],
   browserPairings: [],
-  deviceTrustPolicy: 'strict',
+  deviceTrustPolicy: 'moderate',
   rootDetectionEnabled: true,
-  rootBlocksVault: true,
-  degradedDeviceAction: 'block',
+  rootBlocksVault: false,
+  degradedDeviceAction: 'warn',
 };
 
 // ═══════════════════════════════════════════════════════════════

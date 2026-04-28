@@ -14,7 +14,7 @@ import {
 import ReactNativeBiometrics from 'react-native-biometrics';
 import { useTranslation } from 'react-i18next';
 import { switchLanguage } from '../i18n';
-import { SecurityModule } from '../SecurityModule';
+import { SecurityModule, VaultUnlockResult } from '../SecurityModule';
 import { SecureAppSettings } from '../SecureAppSettings';
 import { AutofillService } from '../AutofillService';
 import { IntegrityModule, IntegritySignals } from '../IntegrityModule';
@@ -38,6 +38,36 @@ interface LockScreenProps {
 }
 
 const rnBiometrics = new ReactNativeBiometrics({ allowDeviceCredentials: true });
+
+const getUnlockFailureStatus = (
+  result: VaultUnlockResult,
+  t: ReturnType<typeof useTranslation>['t'],
+) => {
+  if (result.remainingSeconds && result.remainingSeconds > 0) {
+    return t('lock_screen.failed_attempts', {
+      count: result.failedAttempts ?? 0,
+      seconds: result.remainingSeconds,
+    });
+  }
+  switch (result.reason) {
+    case 'integrity_blocked':
+      return t('lock_screen.integrity_blocked');
+    case 'lockout':
+      return t('lock_screen.locked_out', {
+        seconds: result.remainingSeconds ?? 0,
+      });
+    case 'migration_failed':
+      return t('lock_screen.migration_failed');
+    case 'storage_unavailable':
+      return t('lock_screen.storage_unavailable');
+    case 'wrong_secret':
+      return t('lock_screen.wrong_secret');
+    default:
+      return t('lock_screen.failed', {
+        count: result.failedAttempts ?? 0,
+      });
+  }
+};
 
 export const LockScreen: React.FC<LockScreenProps> = ({
   palette,
@@ -119,22 +149,25 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         setAuthStatus(t('lock_screen.cancelled'));
         return;
       }
-      if (await SecurityModule.unlockVault(unlockSecret)) {
+      const unlockDetailed = SecurityModule.unlockVaultDetailed;
+      const unlockResult =
+        typeof unlockDetailed === 'function'
+          ? await unlockDetailed.call(SecurityModule, unlockSecret)
+          : { ok: await SecurityModule.unlockVault(unlockSecret) };
+      if (unlockResult.ok) {
         setFailCount(0);
         setLockoutRemaining(0);
         await SecureAppSettings.init(SecurityModule.db);
         SecurityModule.cleanupOldTrash();
         onUnlocked();
       } else {
-        const fails = await SecurityModule.getFailedAttempts();
+        const fails =
+          unlockResult.failedAttempts ?? (await SecurityModule.getFailedAttempts());
+        const newRemaining =
+          unlockResult.remainingSeconds ?? (await SecurityModule.getRemainingLockout());
         setFailCount(fails);
-        const newRemaining = await SecurityModule.getRemainingLockout();
         setLockoutRemaining(newRemaining);
-        if (newRemaining > 0) {
-          setAuthStatus(t('lock_screen.failed_attempts', { count: fails, seconds: newRemaining }));
-        } else {
-          setAuthStatus(t('lock_screen.failed', { count: fails }));
-        }
+        setAuthStatus(getUnlockFailureStatus(unlockResult, t));
       }
     } catch {
       setAuthStatus(t('lock_screen.error'));

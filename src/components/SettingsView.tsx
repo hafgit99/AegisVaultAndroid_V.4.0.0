@@ -14,6 +14,11 @@ import { ToggleRow } from './FormFields';
 import { SecurityHardeningSettings } from './SecurityHardeningSettings';
 import { SyncSettings } from './SyncSettings';
 import { PasskeySettings } from './PasskeySettings';
+import {
+  SettingsActionCard,
+  SettingsCard,
+  SettingsSectionTitle,
+} from './settings/SettingsPrimitives';
 
 interface SettingsViewProps {
   theme: any;
@@ -237,76 +242,34 @@ export const SettingsView = ({
         onUpdate={upd}
       />
 
-      <Text style={[s.sec, { color: theme.navy }]}>
+      <SettingsSectionTitle styles={s} theme={theme}>
         {t('settings.autofill.title')}
-      </Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      </SettingsSectionTitle>
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('settings.autofill.enable')}
+        description={t('settings.autofill.enable_desc')}
         onPress={() => AutofillService.openSettings()}
-        activeOpacity={0.7}
-        accessibilityRole="button"
         accessibilityLabel={t('settings.autofill.enable')}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('settings.autofill.enable')}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.muted,
-                marginTop: 4,
-                lineHeight: 17,
-              }}
-            >
-              {t('settings.autofill.enable_desc')}
-            </Text>
-            <Text style={{ fontSize: 11, color: theme.sage, marginTop: 6 }}>
-              {t('settings.autofill.support')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
-      <View
-        style={[
-          s.sCard,
-          { backgroundColor: theme.sageLight, borderColor: theme.cardBorder },
-        ]}
-      >
+      />
+      <SettingsCard styles={s} theme={theme} backgroundColor={theme.sageLight}>
         <Text style={{ fontSize: 13, fontWeight: '800', color: theme.navy, marginBottom: 8 }}>
           {t('settings.autofill.how_to')}
         </Text>
         <Text style={{ fontSize: 12, color: theme.navy, lineHeight: 19 }}>
           {t('settings.autofill.steps')}
         </Text>
-      </View>
+      </SettingsCard>
 
-      <Text style={[s.sec, { color: theme.navy }]}>
+      <SettingsSectionTitle styles={s} theme={theme}>
         {t('wear_os.title')}
-      </Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      </SettingsSectionTitle>
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('wear_os.sync')}
+        description={t('wear_os.desc')}
         onPress={async () => {
           const allItems = await SecurityModule.getAllItems();
           const ok = await WearOSModule.syncFavoritesToWatch(allItems);
@@ -315,232 +278,48 @@ export const SettingsView = ({
             ok ? t('wear_os.security_warning') : t('wear_os.no_watch'),
           );
         }}
-        activeOpacity={0.7}
-        accessibilityRole="button"
         accessibilityLabel={t('wear_os.sync')}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('wear_os.sync')}
-            </Text>
-            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4, lineHeight: 17 }}>
-              {t('wear_os.desc')}
-            </Text>
-          </View>
-          <Text style={{ fontSize: 20 }}>{'\u231A'}</Text>
-        </View>
-      </TouchableOpacity>
+        right={<Text style={{ fontSize: 20 }}>{'\u231A'}</Text>}
+      />
 
-      <Text style={[s.sec, { color: theme.navy }]}>
+      <SettingsSectionTitle styles={s} theme={theme}>
         {t('settings.security')}
-      </Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      </SettingsSectionTitle>
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('roadmap_center.title')}
+        description={t('roadmap_center.subtitle')}
         onPress={onRoadmap}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('roadmap_center.title')}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.muted,
-                marginTop: 4,
-                lineHeight: 17,
-              }}
-            >
-              {t('roadmap_center.subtitle')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      />
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('pairing_workspace.title')}
+        description={t('pairing_workspace.entrypoint_desc')}
         onPress={onPairingWorkspace}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('pairing_workspace.title')}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.muted,
-                marginTop: 4,
-                lineHeight: 17,
-              }}
-            >
-              {t('pairing_workspace.entrypoint_desc')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      />
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('validation_workspace.title')}
+        description={t('validation_workspace.entrypoint_desc')}
         onPress={onValidationWorkspace}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('validation_workspace.title')}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.muted,
-                marginTop: 4,
-                lineHeight: 17,
-              }}
-            >
-              {t('validation_workspace.entrypoint_desc')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      />
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('settings.security_report.title')}
+        description={t('settings.security_report.entrypoint_desc')}
         onPress={onSecurityReport}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('settings.security_report.title')}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.muted,
-                marginTop: 4,
-                lineHeight: 17,
-              }}
-            >
-              {t('settings.security_report.entrypoint_desc')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      />
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('settings.shared_vaults.title')}
+        description={t('settings.shared_vaults.desc')}
         onPress={onSharedVaults}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}>
-              {t('settings.shared_vaults.title')}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.muted,
-                marginTop: 4,
-                lineHeight: 17,
-              }}
-            >
-              {t('settings.shared_vaults.desc')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
+      />
       <View
         style={[
           s.sCard,
@@ -1040,152 +819,48 @@ export const SettingsView = ({
           {t('settings.exclude_ambiguous_desc')}
         </Text>
       </View>
-      <Text style={[s.sec, { color: theme.navy }]}>{t('settings.backup')}</Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      <SettingsSectionTitle styles={s} theme={theme}>
+        {t('settings.backup')}
+      </SettingsSectionTitle>
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('settings.import_export')}
+        description={t('settings.import_export_desc')}
         onPress={onBackup}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}
-            >
-              {t('settings.import_export')}
-            </Text>
-            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
-              {t('settings.import_export_desc')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
+      />
 
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('settings.cloud')}
+        description={t('settings.cloud_desc')}
         onPress={onCloud}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}
-            >
-              {t('settings.cloud')}
-            </Text>
-            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
-              {t('settings.cloud_desc')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
+      />
 
       <SyncSettings theme={theme} />
       <PasskeySettings theme={theme} bindings={bindings} onRefresh={loadPasskeyBindings} />
 
-      <Text style={[s.sec, { color: theme.navy }]}>{t('trash.title')}</Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      <SettingsSectionTitle styles={s} theme={theme}>
+        {t('trash.title')}
+      </SettingsSectionTitle>
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('trash.subtitle')}
         onPress={onTrash}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}
-            >
-              {t('trash.subtitle')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
+      />
 
-      <Text style={[s.sec, { color: theme.navy }]}>{t('donation.title')}</Text>
-      <TouchableOpacity
-        style={[
-          s.sCard,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
-        ]}
+      <SettingsSectionTitle styles={s} theme={theme}>
+        {t('donation.title')}
+      </SettingsSectionTitle>
+      <SettingsActionCard
+        styles={s}
+        theme={theme}
+        title={t('donation.subtitle')}
+        description={t('donation.description')}
         onPress={onDonation}
-        activeOpacity={0.7}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontSize: 14, fontWeight: '700', color: theme.navy }}
-            >
-              {t('donation.subtitle')}
-            </Text>
-            <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
-              {t('donation.description')}
-            </Text>
-          </View>
-          <Text
-            style={{
-              fontSize: 22,
-              color: theme.muted,
-              fontWeight: '300',
-              marginLeft: 12,
-            }}
-          >{'\u203A'}</Text>
-        </View>
-      </TouchableOpacity>
+      />
 
       <Text style={[s.sec, { color: theme.navy }]}>{t('settings.about')}</Text>
       <View

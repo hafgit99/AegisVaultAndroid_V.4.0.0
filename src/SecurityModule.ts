@@ -280,6 +280,33 @@ export interface SecurityPolicy {
   degradedDeviceAction: 'block' | 'warn' | 'allow';
 }
 
+export type VaultUnlockFailureReason =
+  | 'lockout'
+  | 'integrity_blocked'
+  | 'wrong_secret'
+  | 'migration_failed'
+  | 'storage_unavailable'
+  | 'unknown';
+
+export interface VaultUnlockResult {
+  ok: boolean;
+  reason?: VaultUnlockFailureReason;
+  remainingSeconds?: number;
+  failedAttempts?: number;
+  riskLevel?: string;
+  message?: string;
+}
+
+interface VaultKdfMigrationState {
+  version: 1;
+  status: 'started' | 'rekeyed' | 'verified' | 'failed';
+  from: 'argon2id_legacy_32mb_4iter';
+  to: 'argon2id_strong_64mb_6iter';
+  startedAt: string;
+  updatedAt: string;
+  reason?: string;
+}
+
 export interface VaultSettings {
   autoLockSeconds: number;
   biometricEnabled: boolean;
@@ -450,11 +477,11 @@ const DEFAULT_SETTINGS: VaultSettings = {
   breachCheckEnabled: false,
   excludeAmbiguousCharacters: false,
   deviceTrustPolicy: {
-    deviceTrustPolicy: 'strict',
+    deviceTrustPolicy: 'moderate',
     requireBiometric: true,
     rootDetectionEnabled: true,
-    rootBlocksVault: true,
-    degradedDeviceAction: 'block',
+    rootBlocksVault: false,
+    degradedDeviceAction: 'warn',
   },
 };
 
@@ -471,6 +498,8 @@ const AUDIT_BUFFER_SECURE_KEY = 'aegis_audit_buffer_secure_v1';
 const SHARED_SPACES_SETTING_KEY = 'sharedVaultSpaces';
 const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
 const APP_CONFIG_SECURE_KEY = 'aegis_app_config_secure_v2';
+const VAULT_KDF_MIGRATION_FILE = `${RNFS.DocumentDirectoryPath}/aegis_kdf_migration_state.json`;
+const VAULT_KDF_MIGRATION_SECURE_KEY = 'aegis_vault_kdf_migration_state_v1';
 const BACKUP_KDF_DEFAULT = {
   algorithm: 'Argon2id',
   memory: 32768,
@@ -973,6 +1002,65 @@ export class SecurityModule {
     }
   }
 
+  private static classifyUnlockFailure(e: unknown): VaultUnlockFailureReason {
+    const message = e instanceof Error ? e.message : String(e);
+    const normalized = message.toLowerCase();
+    if (
+      normalized.includes('unlock failed') ||
+      normalized.includes('file is not a database') ||
+      normalized.includes('not an error')
+    ) {
+      return 'wrong_secret';
+    }
+    if (normalized.includes('migration') || normalized.includes('rekey')) {
+      return 'migration_failed';
+    }
+    if (
+      normalized.includes('securestorage') ||
+      normalized.includes('keystore') ||
+      normalized.includes('storage')
+    ) {
+      return 'storage_unavailable';
+    }
+    return 'unknown';
+  }
+
+  private static async setVaultKdfMigrationState(
+    status: VaultKdfMigrationState['status'],
+    previous?: VaultKdfMigrationState | null,
+    reason?: string,
+  ): Promise<VaultKdfMigrationState> {
+    const now = new Date().toISOString();
+    const state: VaultKdfMigrationState = {
+      version: 1,
+      status,
+      from: 'argon2id_legacy_32mb_4iter',
+      to: 'argon2id_strong_64mb_6iter',
+      startedAt: previous?.startedAt || now,
+      updatedAt: now,
+      ...(reason ? { reason } : {}),
+    };
+    try {
+      await this.writeSecureJson(
+        VAULT_KDF_MIGRATION_SECURE_KEY,
+        VAULT_KDF_MIGRATION_FILE,
+        state,
+      );
+    } catch (e) {
+      debugWarn('[Security] Failed to persist KDF migration state:', e);
+    }
+    return state;
+  }
+
+  private static async clearVaultKdfMigrationState(): Promise<void> {
+    if (SecureStorage?.removeItem) {
+      await SecureStorage.removeItem(VAULT_KDF_MIGRATION_SECURE_KEY).catch(
+        () => {},
+      );
+    }
+    await RNFS.unlink(VAULT_KDF_MIGRATION_FILE).catch(() => {});
+  }
+
   // ══════════════════════════════════════════════════
   // 4. VAULT UNLOCK (with brute force protection)
   // ══════════════════════════════════════════════════
@@ -983,10 +1071,10 @@ export class SecurityModule {
    * ✅ NEW: Device integrity validation (root/tamper detection)
    * Vault kilit aç ve brute force korumasını kontrol et
    */
-  static async unlockVault(
+  static async unlockVaultDetailed(
     unlockSecret: string,
     userSecurityPolicy?: SecurityPolicy,
-  ): Promise<boolean> {
+  ): Promise<VaultUnlockResult> {
     try {
       debugLog('[Security] Unlocking vault...');
       // Check brute force lockout
@@ -998,7 +1086,12 @@ export class SecurityModule {
           reason: 'lockout_active',
           remainingSeconds: remaining,
         });
-        return false;
+        return {
+          ok: false,
+          reason: 'lockout',
+          remainingSeconds: remaining,
+          failedAttempts: await this.getFailedAttempts(),
+        };
       }
 
       // ✅ NEW FEATURE #1: Device Integrity Check (Cihaz Bütünlüğü Kontrol)
@@ -1033,7 +1126,11 @@ export class SecurityModule {
           console.error(
             '[Security] Vault unlock blocked: Device integrity policy failed',
           );
-          return false;
+          return {
+            ok: false,
+            reason: 'integrity_blocked',
+            riskLevel: integrityResult.riskLevel,
+          };
         }
         if (policy.degradedDeviceAction === 'warn' && degradedDevice) {
           await this.logSecurityEvent('vault_unlock', 'info', {
@@ -1072,18 +1169,35 @@ export class SecurityModule {
           throw new Error('Vault unlock failed for strong and legacy KDF profiles');
         }
 
+        let migrationState = await this.setVaultKdfMigrationState('started');
         openedDb.executeSync(
           this.buildSqlCipherRawKeyPragma('rekey', strongKeyHex),
+        );
+        migrationState = await this.setVaultKdfMigrationState(
+          'rekeyed',
+          migrationState,
         );
         openedDb.close();
         openedDb = this.tryOpenVaultWithKey(strongKeyHex);
         if (!openedDb) {
+          await this.setVaultKdfMigrationState(
+            'failed',
+            migrationState,
+            'strong_profile_reopen_failed',
+          );
           throw new Error('Vault KDF migration completed but reopen failed');
         }
+        migrationState = await this.setVaultKdfMigrationState(
+          'verified',
+          migrationState,
+        );
         await this.logSecurityEvent('vault_kdf_migrated', 'success', {
-          from: 'argon2id_legacy_32mb_4iter',
-          to: 'argon2id_strong_64mb_6iter',
+          from: migrationState.from,
+          to: migrationState.to,
+          startedAt: migrationState.startedAt,
+          verifiedAt: migrationState.updatedAt,
         });
+        await this.clearVaultKdfMigrationState();
       }
 
       this.db = openedDb;
@@ -1211,16 +1325,39 @@ export class SecurityModule {
       await this.syncAutofill();
 
       debugLog('[Security] Vault unlocked. Dynamic salt + Argon2id.');
-      return true;
+      return { ok: true };
     } catch (e) {
       // Record failed attempt
       await this.recordFailedAttempt();
+      const remainingSeconds = await this.getRemainingLockout();
+      const failedAttempts = await this.getFailedAttempts();
+      const failureReason = this.classifyUnlockFailure(e);
+      if (failureReason === 'migration_failed') {
+        await this.setVaultKdfMigrationState(
+          'failed',
+          null,
+          e instanceof Error ? e.message : String(e),
+        );
+      }
       await this.logSecurityEvent('vault_unlock', 'failed', {
         reason: e instanceof Error ? e.message : String(e),
       });
       console.error('[Security] Unlock failed:', e);
-      return false;
+      return {
+        ok: false,
+        reason: failureReason,
+        remainingSeconds,
+        failedAttempts,
+        message: e instanceof Error ? e.message : String(e),
+      };
     }
+  }
+
+  static async unlockVault(
+    unlockSecret: string,
+    userSecurityPolicy?: SecurityPolicy,
+  ): Promise<boolean> {
+    return (await this.unlockVaultDetailed(unlockSecret, userSecurityPolicy)).ok;
   }
 
   // ── Autofill Sync ─────────────────────────────────
@@ -1298,10 +1435,7 @@ export class SecurityModule {
       } catch {}
     }
 
-    const redacted = safeEvents.map(ev => ({
-      ...ev,
-      details: '{}',
-    }));
+    const redacted = AuditService.redactBufferedAuditEvents(safeEvents);
     await RNFS.writeFile(AUDIT_BUFFER_FILE, JSON.stringify(redacted), 'utf8');
   }
 
@@ -1320,12 +1454,13 @@ export class SecurityModule {
     try {
       let events = await this.readBufferedAuditEvents();
 
-      events.push({
-        event_type: eventType,
-        event_status: eventStatus,
-        details: JSON.stringify(this.sanitizeAuditDetails(details)),
-        created_at: new Date().toISOString(),
-      });
+      events.push(
+        AuditService.buildBufferedAuditEvent(
+          eventType,
+          eventStatus,
+          this.sanitizeAuditDetails(details),
+        ),
+      );
 
       await this.writeBufferedAuditEvents(events);
     } catch (e) {
@@ -1376,7 +1511,7 @@ export class SecurityModule {
   }
 
   static async getAuditEvents(limit: number = 100): Promise<AuditEvent[]> {
-    const safeLimit = Math.max(1, Math.min(500, limit));
+    const safeLimit = AuditService.normalizeAuditLimit(limit);
     const fromDb: AuditEvent[] = [];
 
     if (this.db) {
@@ -1399,25 +1534,12 @@ export class SecurityModule {
     const fromBuffer: AuditEvent[] = [];
     try {
       const events = await this.readBufferedAuditEvents();
-      events.forEach((ev, index) => {
-        fromBuffer.push({
-          id: -(index + 1),
-          event_type: ev.event_type,
-          event_status: ev.event_status,
-          details: ev.details || '{}',
-          created_at: ev.created_at || new Date().toISOString(),
-        });
-      });
+      fromBuffer.push(...(AuditService.toBufferedAuditRows(events) as AuditEvent[]));
     } catch (e) {
       console.error('getAuditEvents(buffer):', e);
     }
 
-    return [...fromDb, ...fromBuffer]
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )
-      .slice(0, safeLimit);
+    return AuditService.sortAndLimitAuditRows([...fromDb, ...fromBuffer], safeLimit);
   }
 
   static async clearAuditEvents(): Promise<boolean> {
@@ -1877,32 +1999,9 @@ export class SecurityModule {
     assignment?: Partial<SharedItemAssignment> | null,
   ): string {
     const parsed = this.parseDataJson(data);
-    if (!assignment?.spaceId?.trim()) {
-      delete parsed.shared;
-      return JSON.stringify(parsed);
-    }
-
-    parsed.shared = {
-      spaceId: assignment.spaceId.trim(),
-      role:
-        assignment.role === 'editor' || assignment.role === 'viewer'
-          ? assignment.role
-          : 'viewer',
-      ...(assignment.sharedBy?.trim()
-        ? { sharedBy: assignment.sharedBy.trim() }
-        : {}),
-      ...(assignment.isSensitive !== undefined
-        ? { isSensitive: Boolean(assignment.isSensitive) }
-        : {}),
-      ...(assignment.emergencyAccess !== undefined
-        ? { emergencyAccess: Boolean(assignment.emergencyAccess) }
-        : {}),
-      ...(assignment.notes?.trim() ? { notes: assignment.notes.trim() } : {}),
-      ...(assignment.lastReviewedAt?.trim()
-        ? { lastReviewedAt: assignment.lastReviewedAt.trim() }
-        : {}),
-    };
-    return JSON.stringify(parsed);
+    return JSON.stringify(
+      SharedVaultService.mergeSharedAssignmentIntoData(parsed, assignment),
+    );
   }
 
   static async getSharedVaultSpaces(): Promise<SharedVaultSpace[]> {
@@ -1922,13 +2021,12 @@ export class SecurityModule {
   static async saveSharedVaultSpace(
     input: Partial<SharedVaultSpace>,
   ): Promise<SharedVaultSpace | null> {
-    const normalized = this.sanitizeSharedSpace(input);
-    if (!normalized.name.trim()) return null;
-
     const spaces = await this.getSharedVaultSpaces();
-    const nextSpaces = spaces.some(space => space.id === normalized.id)
-      ? spaces.map(space => (space.id === normalized.id ? normalized : space))
-      : [...spaces, normalized];
+    const { space: normalized, spaces: nextSpaces } =
+      SharedVaultService.upsertSharedSpace(spaces, input, prefix =>
+        this.generateId(prefix),
+      );
+    if (!normalized) return null;
 
     await this.setSetting(
       SHARED_SPACES_SETTING_KEY,
@@ -1953,12 +2051,13 @@ export class SecurityModule {
   }
 
   static async deleteSharedVaultSpace(spaceId: string): Promise<boolean> {
-    const safeSpaceId = spaceId.trim();
-    if (!safeSpaceId) return false;
-
     const spaces = await this.getSharedVaultSpaces();
-    const nextSpaces = spaces.filter(space => space.id !== safeSpaceId);
-    if (nextSpaces.length === spaces.length) return false;
+    const {
+      removed,
+      safeSpaceId,
+      spaces: nextSpaces,
+    } = SharedVaultService.removeSharedSpace(spaces, spaceId);
+    if (!removed) return false;
 
     await this.setSetting(
       SHARED_SPACES_SETTING_KEY,

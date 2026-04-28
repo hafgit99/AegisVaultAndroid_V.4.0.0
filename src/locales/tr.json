@@ -20,7 +20,11 @@
         "failed_attempts": "{{count}}. başarısız deneme • {{seconds}} sn bekleniyor",
         "bio_not_found": "Biyometri bulunamadı",
         "integrity_warning_title": "⚠ Cihaz bütünlük riski algılandı",
-        "integrity_warning_desc": "Risk seviyesi: {{level}} • Güven skoru: {{score}}/100"
+        "integrity_warning_desc": "Risk seviyesi: {{level}} • Güven skoru: {{score}}/100",
+        "integrity_blocked": "Cihaz güvenlik politikası nedeniyle kasa açılmadı. Güvenlik sertleştirmesini Orta seviyeye almayı deneyin.",
+        "wrong_secret": "Kasa anahtarı doğrulanamadı. Biyometrik kilidi sıfırlayıp kurtarma yedeğinizle tekrar deneyin.",
+        "migration_failed": "Kasa anahtarı yükseltmesi tamamlanamadı. Verilerinizi korumak için işlem durduruldu.",
+        "storage_unavailable": "Güvenli depolama şu anda kullanılamıyor. Cihaz kilidini ve biyometrik ayarları kontrol edin."
     },
     "nav": {
         "vault": "Kasa",
@@ -837,6 +841,8 @@
         "show_plain_exports": "Gelismis: CSV / JSON disari aktarimlarini goster",
         "hide_plain_exports": "Duz metin disari aktarimlari gizle",
         "err_min_len": "Sifre en az {{count}} karakter olmalidir.",
+        "show_password": "Goster",
+        "hide_password": "Gizle",
         "msg_plain_exp_err": "Şifresiz dışa aktarma başarısız oldu.",
         "msg_enc_exp_ok": "🔍 Şifreli Dışa Aktarıldı",
         "msg_pw_req": "Şifre giriniz.",

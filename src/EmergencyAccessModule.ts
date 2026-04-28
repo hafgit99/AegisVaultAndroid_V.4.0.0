@@ -268,14 +268,18 @@ export class EmergencyAccessModule {
     try {
       if (await RNFS.exists(legacyFile)) {
         const parsed = JSON.parse(await RNFS.readFile(legacyFile, 'utf8'));
+        let legacyMap: Record<string, T>;
         if (parsed?.id) {
-          return this.readLegacyDirectoryMap<T>(legacyDir);
+          legacyMap = await this.readLegacyDirectoryMap<T>(legacyDir);
+        } else {
+          legacyMap = this.normalizeMap<T>(parsed);
         }
-        return this.normalizeMap<T>(parsed);
+        return this.migrateLegacyMap(key, legacyDir, legacyMap);
       }
     } catch {}
 
-    return this.readLegacyDirectoryMap<T>(legacyDir);
+    const legacyMap = await this.readLegacyDirectoryMap<T>(legacyDir);
+    return this.migrateLegacyMap(key, legacyDir, legacyMap);
   }
 
   private static async writeSecureMap<T>(
@@ -336,6 +340,40 @@ export class EmergencyAccessModule {
     } catch {
       return {};
     }
+  }
+
+  private static async migrateLegacyMap<T>(
+    key: string,
+    legacyDir: string,
+    legacyMap: Record<string, T>,
+  ): Promise<Record<string, T>> {
+    if (!Object.keys(legacyMap).length || !SecureStorage?.setItem) {
+      return legacyMap;
+    }
+    try {
+      await this.writeSecureMap(key, legacyDir, legacyMap);
+      await this.deleteLegacyJsonFiles(legacyDir);
+      await SecurityModule.logSecurityEvent('emergency_legacy_storage_migrated', 'success', {
+        recordCount: Object.keys(legacyMap).length,
+      });
+    } catch (e) {
+      await SecurityModule.logSecurityEvent('emergency_legacy_storage_migrated', 'failed', {
+        reason: e instanceof Error ? e.message : String(e),
+      });
+    }
+    return legacyMap;
+  }
+
+  private static async deleteLegacyJsonFiles(legacyDir: string): Promise<void> {
+    try {
+      if (!(await RNFS.exists(legacyDir))) return;
+      const files = await RNFS.readDir(legacyDir);
+      await Promise.all(
+        files
+          .filter(file => file.name.endsWith('.json'))
+          .map(file => RNFS.unlink(file.path).catch(() => {})),
+      );
+    } catch {}
   }
 
   private static async readLegacyRecord<T>(

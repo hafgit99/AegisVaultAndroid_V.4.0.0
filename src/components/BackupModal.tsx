@@ -9,7 +9,6 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
-  TextInput,
 } from 'react-native';
 import { pick } from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
@@ -23,6 +22,12 @@ import {
   ImportResult,
   ExportFormat,
 } from '../BackupModule';
+import {
+  BackupResultPanel,
+  ExportFormatCard,
+  ImportSourceCard,
+  BackupPasswordModal,
+} from './backup/BackupModalParts';
 
 const C = {
   bg: '#F0EEE9',
@@ -101,6 +106,30 @@ export const BackupModal = ({
     return path;
   };
 
+  const closeEncryptModal = () => {
+    setShowEncryptModal(false);
+    setEncryptPassword('');
+    setEncryptConfirm('');
+    setShowEncryptPw(false);
+    setShowEncryptConfirmPw(false);
+  };
+
+  const closeDecryptModal = () => {
+    setShowDecryptModal(false);
+    setDecryptPassword('');
+    setShowDecryptPw(false);
+  };
+
+  const encryptValidationMessages = [
+    encryptPassword.length > 0 &&
+    encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH
+      ? t('backup.err_min_len', { count: MIN_BACKUP_PASSWORD_LENGTH })
+      : '',
+    encryptConfirm.length > 0 && encryptPassword !== encryptConfirm
+      ? t('backup.err_match')
+      : '',
+  ].filter(Boolean) as string[];
+
   useEffect(() => {
     if (visible) {
       setResult(null);
@@ -173,10 +202,7 @@ export const BackupModal = ({
       );
     }
     setLoading(false);
-    setEncryptPassword('');
-    setEncryptConfirm('');
-    setShowEncryptPw(false);
-    setShowEncryptConfirmPw(false);
+    closeEncryptModal();
   };
 
   // ── Import Handlers ─────────────────────────────────────
@@ -260,8 +286,7 @@ export const BackupModal = ({
       Alert.alert(t('backup.msg_err'), e?.message || t('backup.msg_dec_err'));
     }
     setLoading(false);
-    setDecryptPassword('');
-    setShowDecryptPw(false);
+    closeDecryptModal();
   };
 
   // ── Render ──────────────────────────────────────────────
@@ -275,7 +300,7 @@ export const BackupModal = ({
               {t('backup.title')}
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Text style={[st.closeBtn, { color: cc.muted }]}>✕</Text>
+              <Text style={[st.closeBtn, { color: cc.muted }]}>x</Text>
             </TouchableOpacity>
           </View>
 
@@ -324,7 +349,7 @@ export const BackupModal = ({
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 24 }}
+            contentContainerStyle={st.scrollContent}
           >
             {loading && (
               <View style={st.loadingBox}>
@@ -336,86 +361,12 @@ export const BackupModal = ({
             )}
 
             {!loading && result && (
-              <View
-                style={[
-                  st.resultBox,
-                  { backgroundColor: cc.card },
-                  result.imported > 0
-                    ? { borderColor: cc.green }
-                    : { borderColor: cc.amber },
-                ]}
-              >
-                <Text style={[st.resultTitle, { color: cc.navy }]}>
-                  {result.imported > 0
-                    ? t('backup.res_success')
-                    : t('backup.res_warn')}
-                </Text>
-                <View style={st.resultRow}>
-                  <View style={st.resultStat}>
-                    <Text style={[st.resultNum, { color: cc.sage }]}>
-                      {result.total}
-                    </Text>
-                    <Text style={[st.resultLabel, { color: cc.muted }]}>
-                      {t('backup.res_total')}
-                    </Text>
-                  </View>
-                  <View style={st.resultStat}>
-                    <Text style={[st.resultNum, { color: cc.green }]}>
-                      {result.imported}
-                    </Text>
-                    <Text style={[st.resultLabel, { color: cc.muted }]}>
-                      {t('backup.res_imported')}
-                    </Text>
-                  </View>
-                  <View style={st.resultStat}>
-                    <Text style={[st.resultNum, { color: cc.red }]}>
-                      {result.skipped}
-                    </Text>
-                    <Text style={[st.resultLabel, { color: cc.muted }]}>
-                      {t('backup.res_skipped')}
-                    </Text>
-                  </View>
-                </View>
-                {result.errors.length > 0 && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '700',
-                        color: cc.muted,
-                        marginBottom: 4,
-                      }}
-                    >
-                      {t('backup.res_errors')}
-                    </Text>
-                    {result.errors.slice(0, 5).map((e, i) => (
-                      <Text
-                        key={i}
-                        style={{ fontSize: 11, color: cc.red, marginBottom: 2 }}
-                      >
-                        • {e}
-                      </Text>
-                    ))}
-                    {result.errors.length > 5 && (
-                      <Text style={{ fontSize: 11, color: cc.muted }}>
-                        {t('backup.err_more', {
-                          count: result.errors.length - 5,
-                        })}
-                      </Text>
-                    )}
-                  </View>
-                )}
-                <TouchableOpacity
-                  style={st.resultCloseBtn}
-                  onPress={() => setResult(null)}
-                >
-                  <Text
-                    style={{ fontSize: 13, fontWeight: '700', color: cc.sage }}
-                  >
-                    {t('backup.btn_ok')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <BackupResultPanel
+                cc={cc}
+                result={result}
+                t={t}
+                onClose={() => setResult(null)}
+              />
             )}
 
             {!loading && !result && tab === 'export' && (
@@ -455,7 +406,7 @@ export const BackupModal = ({
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 13 }}>⚠️</Text>
+                  <Text style={st.warningIcon}>!</Text>
                   <Text
                     style={[
                       st.warningText,
@@ -475,46 +426,15 @@ export const BackupModal = ({
                       fmt.id === 'aegis_encrypted' || showPlainExportOptions,
                   )
                   .map(fmt => (
-                  <TouchableOpacity
-                    key={fmt.id}
-                    style={[
-                      st.formatCard,
-                      { backgroundColor: cc.card, borderColor: cc.cardBorder },
-                      fmt.id === 'aegis_encrypted' && [
-                        st.encryptedCard,
-                        {
-                          borderColor: cc.sageMid,
-                          backgroundColor: cc.sageLight,
-                        },
-                      ],
-                    ]}
-                    onPress={() => handleExport(fmt)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        st.formatIconBox,
-                        { backgroundColor: cc.sageLight },
-                      ]}
-                    >
-                      <Text style={{ fontSize: 24 }}>{fmt.icon}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[st.formatTitle, { color: cc.navy }]}>
-                        {fmt.label}
-                      </Text>
-                      <Text style={[st.formatDesc, { color: cc.muted }]}>
-                        {fmt.description}
-                      </Text>
-                      {fmt.id === 'aegis_encrypted' && (
-                        <Text style={[st.recommendedBadge, { color: cc.sage }]}>
-                          {t('backup.encrypted_recommended')}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={{ fontSize: 18, color: cc.muted }}>›</Text>
-                  </TouchableOpacity>
-                ))}
+                    <ExportFormatCard
+                      key={fmt.id}
+                      cc={cc}
+                      format={fmt}
+                      isEncrypted={fmt.id === 'aegis_encrypted'}
+                      t={t}
+                      onPress={() => handleExport(fmt)}
+                    />
+                  ))}
 
                 {exportPath && (
                   <View
@@ -523,22 +443,11 @@ export const BackupModal = ({
                       { backgroundColor: cc.card, borderColor: cc.cardBorder },
                     ]}
                   >
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '700',
-                        color: cc.muted,
-                        marginBottom: 4,
-                      }}
-                    >
+                    <Text style={[st.pathLabel, { color: cc.muted }]}>
                       {t('backup.last_export')}
                     </Text>
                     <Text
-                      style={{
-                        fontSize: 12,
-                        color: cc.sage,
-                        fontWeight: '700',
-                      }}
+                      style={[st.pathValue, { color: cc.sage }]}
                       numberOfLines={2}
                     >
                       {exportPath}
@@ -569,29 +478,13 @@ export const BackupModal = ({
                     ].includes(s.id),
                   )
                   .map(src => (
-                    <TouchableOpacity
+                    <ImportSourceCard
                       key={src.id}
-                      style={[
-                        st.sourceCard,
-                        {
-                          backgroundColor: cc.card,
-                          borderColor: cc.cardBorder,
-                        },
-                      ]}
+                      cc={cc}
+                      source={src}
+                      subtitle={src.extensions.join(', ')}
                       onPress={() => handleImport(src.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={st.sourceIcon}>{src.icon}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[st.sourceTitle, { color: cc.navy }]}>
-                          {src.label}
-                        </Text>
-                        <Text style={[st.sourceExt, { color: cc.muted }]}>
-                          {src.extensions.join(', ')}
-                        </Text>
-                      </View>
-                      <Text style={{ fontSize: 18, color: cc.muted }}>›</Text>
-                    </TouchableOpacity>
+                    />
                   ))}
 
                 <Text style={[st.groupTitle, { color: cc.navy }]}>
@@ -608,29 +501,13 @@ export const BackupModal = ({
                     ].includes(s.id),
                   )
                   .map(src => (
-                    <TouchableOpacity
+                    <ImportSourceCard
                       key={src.id}
-                      style={[
-                        st.sourceCard,
-                        {
-                          backgroundColor: cc.card,
-                          borderColor: cc.cardBorder,
-                        },
-                      ]}
+                      cc={cc}
+                      source={src}
+                      subtitle={src.extensions.join(', ')}
                       onPress={() => handleImport(src.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={st.sourceIcon}>{src.icon}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[st.sourceTitle, { color: cc.navy }]}>
-                          {src.label}
-                        </Text>
-                        <Text style={[st.sourceExt, { color: cc.muted }]}>
-                          {src.extensions.join(', ')}
-                        </Text>
-                      </View>
-                      <Text style={{ fontSize: 18, color: cc.muted }}>›</Text>
-                    </TouchableOpacity>
+                    />
                   ))}
 
                 <Text style={[st.groupTitle, { color: cc.navy }]}>
@@ -639,29 +516,13 @@ export const BackupModal = ({
                 {getImportSources(t)
                   .filter(s => ['generic_csv', 'generic_json'].includes(s.id))
                   .map(src => (
-                    <TouchableOpacity
+                    <ImportSourceCard
                       key={src.id}
-                      style={[
-                        st.sourceCard,
-                        {
-                          backgroundColor: cc.card,
-                          borderColor: cc.cardBorder,
-                        },
-                      ]}
+                      cc={cc}
+                      source={src}
+                      subtitle={t('backup.auto_detect')}
                       onPress={() => handleImport(src.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={st.sourceIcon}>{src.icon}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[st.sourceTitle, { color: cc.navy }]}>
-                          {src.label}
-                        </Text>
-                        <Text style={[st.sourceExt, { color: cc.muted }]}>
-                          {t('backup.auto_detect')}
-                        </Text>
-                      </View>
-                      <Text style={{ fontSize: 18, color: cc.muted }}>›</Text>
-                    </TouchableOpacity>
+                    />
                   ))}
               </>
             )}
@@ -669,121 +530,35 @@ export const BackupModal = ({
         </View>
       </View>
 
-      {/* Encrypt Password Modal */}
-      <Modal visible={showEncryptModal} animationType="fade" transparent>
-        <View style={st.pwOverlay}>
-          <View style={[st.pwContainer, { backgroundColor: cc.bg }]}>
-            <Text style={[st.pwTitle, { color: cc.navy }]}>
-              {t('backup.enc_exp_title')}
-            </Text>
-            <Text style={[st.pwDesc, { color: cc.muted }]}>
-              {t('backup.enc_exp_desc')}
-            </Text>
-
-            <View style={st.pwInputRow}>
-              <TextInput
-                style={[
-                  st.pwInput,
-                  {
-                    backgroundColor: cc.inputBg,
-                    borderColor: cc.cardBorder,
-                    color: cc.navy,
-                  },
-                ]}
-                placeholder={t('backup.pw_ph')}
-                placeholderTextColor={cc.muted}
-                secureTextEntry={!showEncryptPw}
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={encryptPassword}
-                onChangeText={setEncryptPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowEncryptPw(!showEncryptPw)}
-                style={st.pwEye}
-              >
-                <Text style={{ fontSize: 16 }}>
-                  {showEncryptPw ? '🙈' : '👁️'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={st.pwInputRow}>
-              <TextInput
-                style={[
-                  st.pwInput,
-                  {
-                    backgroundColor: cc.inputBg,
-                    borderColor: cc.cardBorder,
-                    color: cc.navy,
-                  },
-                ]}
-                placeholder={t('backup.pw_conf_ph')}
-                placeholderTextColor={cc.muted}
-                secureTextEntry={!showEncryptConfirmPw}
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={encryptConfirm}
-                onChangeText={setEncryptConfirm}
-              />
-              <TouchableOpacity
-                onPress={() => setShowEncryptConfirmPw(!showEncryptConfirmPw)}
-                style={st.pwEye}
-              >
-                <Text style={{ fontSize: 16 }}>
-                  {showEncryptConfirmPw ? '🙈' : '👁️'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {encryptPassword.length > 0 &&
-              encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH && (
-              <Text style={{ fontSize: 11, color: cc.red, marginTop: 4 }}>
-                {t('backup.err_min_len', {
-                  count: MIN_BACKUP_PASSWORD_LENGTH,
-                })}
-              </Text>
-            )}
-            {encryptConfirm.length > 0 &&
-              encryptPassword !== encryptConfirm && (
-                <Text style={{ fontSize: 11, color: cc.red, marginTop: 4 }}>
-                  {t('backup.err_match')}
-                </Text>
-              )}
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-              <TouchableOpacity
-                style={[st.pwBtn, { backgroundColor: cc.sageLight }]}
-                onPress={() => {
-                  setShowEncryptModal(false);
-                  setEncryptPassword('');
-                  setEncryptConfirm('');
-                  setShowEncryptPw(false);
-                  setShowEncryptConfirmPw(false);
-                }}
-              >
-                <Text style={{ color: cc.navy, fontWeight: '700' }}>
-                  {t('backup.btn_cancel')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[st.pwBtn, { backgroundColor: cc.sage, flex: 2 }]}
-                onPress={handleEncryptedExport}
-                disabled={
-                  encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH ||
-                  encryptPassword !== encryptConfirm
-                }
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  {t('backup.btn_enc_exp')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
+      <BackupPasswordModal
+        cc={cc}
+        visible={showEncryptModal}
+        title={t('backup.enc_exp_title')}
+        description={t('backup.enc_exp_desc')}
+        passwordPlaceholder={t('backup.pw_ph')}
+        password={encryptPassword}
+        showPassword={showEncryptPw}
+        confirmPlaceholder={t('backup.pw_conf_ph')}
+        confirmPassword={encryptConfirm}
+        showConfirmPassword={showEncryptConfirmPw}
+        validationMessages={encryptValidationMessages}
+        primaryLabel={t('backup.btn_enc_exp')}
+        cancelLabel={t('backup.btn_cancel')}
+        showPasswordLabel={t('backup.show_password')}
+        hidePasswordLabel={t('backup.hide_password')}
+        primaryDisabled={
+          encryptPassword.length < MIN_BACKUP_PASSWORD_LENGTH ||
+          encryptPassword !== encryptConfirm
+        }
+        onPasswordChange={setEncryptPassword}
+        onTogglePassword={() => setShowEncryptPw(value => !value)}
+        onConfirmPasswordChange={setEncryptConfirm}
+        onToggleConfirmPassword={() =>
+          setShowEncryptConfirmPw(value => !value)
+        }
+        onCancel={closeEncryptModal}
+        onPrimary={handleEncryptedExport}
+      />
       <Modal visible={showPlainExportWarning} animationType="fade" transparent>
         <View style={st.pwOverlay}>
           <View
@@ -819,7 +594,7 @@ export const BackupModal = ({
                 },
               ]}
             >
-              <Text style={{ fontSize: 13 }}>⚠️</Text>
+              <Text style={st.warningIcon}>!</Text>
               <Text
                 style={[
                   st.warningText,
@@ -830,7 +605,7 @@ export const BackupModal = ({
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+            <View style={st.modalButtonRow}>
               <TouchableOpacity
                 style={[st.pwBtn, { backgroundColor: cc.sageLight }]}
                 onPress={() => {
@@ -838,7 +613,7 @@ export const BackupModal = ({
                   setPendingPlainExport(null);
                 }}
               >
-                <Text style={{ color: cc.navy, fontWeight: '700' }}>
+                <Text style={[st.modalSecondaryText, { color: cc.navy }]}>
                   {t('backup.btn_cancel')}
                 </Text>
               </TouchableOpacity>
@@ -853,7 +628,7 @@ export const BackupModal = ({
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                <Text style={st.modalPrimaryText}>
                   {t('backup.btn_plain_continue')}
                 </Text>
               </TouchableOpacity>
@@ -862,72 +637,24 @@ export const BackupModal = ({
         </View>
       </Modal>
 
-      {/* Decrypt Password Modal */}
-      <Modal visible={showDecryptModal} animationType="fade" transparent>
-        <View style={st.pwOverlay}>
-          <View style={[st.pwContainer, { backgroundColor: cc.bg }]}>
-            <Text style={[st.pwTitle, { color: cc.navy }]}>
-              {t('backup.dec_imp_title')}
-            </Text>
-            <Text style={[st.pwDesc, { color: cc.muted }]}>
-              {t('backup.dec_imp_desc')}
-            </Text>
-
-            <View style={st.pwInputRow}>
-              <TextInput
-                style={[
-                  st.pwInput,
-                  {
-                    backgroundColor: cc.inputBg,
-                    borderColor: cc.cardBorder,
-                    color: cc.navy,
-                  },
-                ]}
-                placeholder={t('backup.dec_pw_ph')}
-                placeholderTextColor={cc.muted}
-                secureTextEntry={!showDecryptPw}
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={decryptPassword}
-                onChangeText={setDecryptPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowDecryptPw(!showDecryptPw)}
-                style={st.pwEye}
-              >
-                <Text style={{ fontSize: 16 }}>
-                  {showDecryptPw ? '🙈' : '👁️'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-              <TouchableOpacity
-                style={[st.pwBtn, { backgroundColor: cc.sageLight }]}
-                onPress={() => {
-                  setShowDecryptModal(false);
-                  setDecryptPassword('');
-                  setShowDecryptPw(false);
-                }}
-              >
-                <Text style={{ color: cc.navy, fontWeight: '700' }}>
-                  {t('backup.btn_cancel')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[st.pwBtn, { backgroundColor: cc.sage, flex: 2 }]}
-                onPress={handleDecryptImport}
-                disabled={!decryptPassword}
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
-                  {t('backup.btn_dec_imp')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <BackupPasswordModal
+        cc={cc}
+        visible={showDecryptModal}
+        title={t('backup.dec_imp_title')}
+        description={t('backup.dec_imp_desc')}
+        passwordPlaceholder={t('backup.dec_pw_ph')}
+        password={decryptPassword}
+        showPassword={showDecryptPw}
+        primaryLabel={t('backup.btn_dec_imp')}
+        cancelLabel={t('backup.btn_cancel')}
+        showPasswordLabel={t('backup.show_password')}
+        hidePasswordLabel={t('backup.hide_password')}
+        primaryDisabled={!decryptPassword}
+        onPasswordChange={setDecryptPassword}
+        onTogglePassword={() => setShowDecryptPw(value => !value)}
+        onCancel={closeDecryptModal}
+        onPrimary={handleDecryptImport}
+      />
     </Modal>
   );
 };
@@ -953,6 +680,15 @@ const st = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.navy },
   closeBtn: { fontSize: 22, color: C.muted, padding: 4 },
+  scrollContent: {
+    paddingBottom: 24,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  chevron: {
+    fontSize: 18,
+  },
 
   tabRow: {
     flexDirection: 'row',
@@ -993,6 +729,10 @@ const st = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 17,
   },
+  warningIcon: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
 
   formatCard: {
     flexDirection: 'row',
@@ -1029,6 +769,9 @@ const st = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 14,
   },
+  formatIcon: {
+    fontSize: 24,
+  },
   formatTitle: { fontSize: 15, fontWeight: '700', color: C.navy },
   formatDesc: { fontSize: 12, color: C.muted, marginTop: 3 },
   recommendedBadge: {
@@ -1045,6 +788,15 @@ const st = StyleSheet.create({
     marginTop: 8,
     borderWidth: 1,
     borderColor: C.cardBorder,
+  },
+  pathLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  pathValue: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   groupTitle: {
@@ -1107,6 +859,25 @@ const st = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
   },
+  resultCloseText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resultErrors: {
+    marginTop: 12,
+  },
+  resultErrorsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  resultErrorText: {
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  resultMoreText: {
+    fontSize: 11,
+  },
 
   pwOverlay: {
     flex: 1,
@@ -1117,25 +888,22 @@ const st = StyleSheet.create({
   pwContainer: { backgroundColor: C.bg, borderRadius: 24, padding: 24 },
   pwTitle: { fontSize: 20, fontWeight: '800', color: C.navy, marginBottom: 8 },
   pwDesc: { fontSize: 13, color: C.muted, lineHeight: 19, marginBottom: 20 },
-  pwInputRow: { flexDirection: 'row', alignItems: 'center' },
-  pwInput: {
-    flex: 1,
-    backgroundColor: C.inputBg,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: C.navy,
-    borderWidth: 1,
-    borderColor: C.cardBorder,
-    fontWeight: '500',
-    marginBottom: 10,
-  },
-  pwEye: { padding: 10, marginBottom: 10, marginLeft: 4 },
   pwBtn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  modalSecondaryText: {
+    fontWeight: '700',
+  },
+  modalPrimaryText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });

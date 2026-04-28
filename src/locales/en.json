@@ -20,7 +20,11 @@
         "failed_attempts": "Failed: {{count}} • wait {{seconds}}s",
         "bio_not_found": "Biometrics not found",
         "integrity_warning_title": "⚠ Device integrity risk detected",
-        "integrity_warning_desc": "Risk level: {{level}} • Trust score: {{score}}/100"
+        "integrity_warning_desc": "Risk level: {{level}} • Trust score: {{score}}/100",
+        "integrity_blocked": "The vault was not opened because of the device security policy. Try switching security hardening to Moderate.",
+        "wrong_secret": "The vault key could not be verified. Reset biometric unlock and try again with your recovery backup.",
+        "migration_failed": "The vault key upgrade could not be completed. The operation was stopped to protect your data.",
+        "storage_unavailable": "Secure storage is currently unavailable. Check your device lock and biometric settings."
     },
     "nav": {
         "vault": "Vault",
@@ -828,6 +832,8 @@
         "err_len8": "Password must be at least 8 characters.",
         "err_min_len": "Password must be at least {{count}} characters.",
         "err_match": "Passwords do not match.",
+        "show_password": "Show",
+        "hide_password": "Hide",
         "btn_cancel": "Cancel",
         "btn_enc_exp": "🔐 Encrypt & Export",
         "dec_imp_title": "🔓 Encrypted File",

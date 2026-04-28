@@ -613,6 +613,35 @@ describe('SecurityModule', () => {
     });
   });
 
+  describe('vault KDF migration state', () => {
+    it('persists migration progress with stable start time', async () => {
+      const started = await (SecurityModule as any).setVaultKdfMigrationState(
+        'started',
+      );
+      const rekeyed = await (SecurityModule as any).setVaultKdfMigrationState(
+        'rekeyed',
+        started,
+      );
+
+      expect(started.status).toBe('started');
+      expect(rekeyed.status).toBe('rekeyed');
+      expect(rekeyed.startedAt).toBe(started.startedAt);
+      expect(RNFS.writeFile).toHaveBeenCalledWith(
+        '/doc/aegis_kdf_migration_state.json',
+        expect.stringContaining('"status":"rekeyed"'),
+        'utf8',
+      );
+    });
+
+    it('clears migration state from legacy file storage', async () => {
+      await (SecurityModule as any).clearVaultKdfMigrationState();
+
+      expect(RNFS.unlink).toHaveBeenCalledWith(
+        '/doc/aegis_kdf_migration_state.json',
+      );
+    });
+  });
+
   describe('password helpers', () => {
     it('generatePassword respects requested character classes', () => {
       const password = SecurityModule.generatePassword(12, {

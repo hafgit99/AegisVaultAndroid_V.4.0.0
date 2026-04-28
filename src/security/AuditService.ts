@@ -41,6 +41,14 @@ export interface AuditLogEntry {
   timestamp: string;
 }
 
+export interface AuditEventRow {
+  id?: number;
+  event_type: string;
+  event_status: AuditStatus;
+  details: string;
+  created_at: string;
+}
+
 /**
  * Builds a structured audit log entry.
  * Automatically derives status from event type if not explicitly provided.
@@ -84,3 +92,47 @@ export const truncateAuditLog = (entries: AuditLogEntry[]): AuditLogEntry[] => {
   if (entries.length <= MAX_AUDIT_LOG_ENTRIES) return entries;
   return entries.slice(entries.length - MAX_AUDIT_LOG_ENTRIES);
 };
+
+export const normalizeAuditLimit = (limit: number): number =>
+  Math.max(1, Math.min(MAX_AUDIT_LOG_ENTRIES, limit));
+
+export const buildBufferedAuditEvent = (
+  eventType: string,
+  eventStatus: AuditStatus,
+  details: Record<string, unknown>,
+): AuditEventRow => ({
+  event_type: eventType,
+  event_status: eventStatus,
+  details: JSON.stringify(details),
+  created_at: new Date().toISOString(),
+});
+
+export const redactBufferedAuditEvents = (
+  events: AuditEventRow[],
+): AuditEventRow[] =>
+  events.slice(-200).map(ev => ({
+    ...ev,
+    details: '{}',
+  }));
+
+export const toBufferedAuditRows = (
+  events: AuditEventRow[],
+): AuditEventRow[] =>
+  events.map((ev, index) => ({
+    id: -(index + 1),
+    event_type: ev.event_type,
+    event_status: ev.event_status,
+    details: ev.details || '{}',
+    created_at: ev.created_at || new Date().toISOString(),
+  }));
+
+export const sortAndLimitAuditRows = <T extends { created_at: string }>(
+  rows: T[],
+  limit: number,
+): T[] =>
+  rows
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+    .slice(0, normalizeAuditLimit(limit));
