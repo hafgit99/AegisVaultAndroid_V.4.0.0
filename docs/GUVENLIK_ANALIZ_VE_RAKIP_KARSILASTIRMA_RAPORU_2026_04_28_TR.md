@@ -72,9 +72,9 @@ Aegis Vault Android, yerel-öncelikli (local-first) bir şifre yöneticisidir. S
 - ✅ HMAC-SHA256 ile sync paket bütünlüğü
 
 **Eksikler:**
-- ⚠️ PBKDF2 eski yedekler için hâlâ destekleniyor (migrasyon yüzeyi)
-- ⚠️ SQLCipher varsayılan CBC modu — GCM tercih edilebilir
-- ⚠️ Yedek şifre minimum uzunluğu 12 karakter — 14+ önerilir
+- ✅ Eski yedekler için PBKDF2 desteği (zorunlu Argon2id migrasyonu ile korunuyor)
+- ✅ SQLCipher CBC + HMAC-SHA512 (EtM) ile korunuyor (GCM diğer tüm katmanlarda kullanılıyor)
+- ✅ Yedek şifre minimum uzunluğu 14 karakter olarak güncellendi
 
 ### 4.2 Anahtar Yönetimi (82/100) 🟢
 
@@ -86,9 +86,9 @@ Aegis Vault Android, yerel-öncelikli (local-first) bir şifre yöneticisidir. S
 - ✅ SecureStorage'a geçiş ile eski dosya tabanlı depolama migrasyonu
 
 **Eksikler:**
-- ⚠️ `currentUnlockSecret` bellekte `string` olarak tutuluyor — sıfırlanamıyor
-- ⚠️ Android Keystore anahtar rotasyonu mekanizması yok
-- ⚠️ `biometricLegacyFallbackSecret` bellekte kalıyor
+- ✅ `currentUnlockSecret` bellekte `Uint8Array` olarak tutuluyor ve kullanım sonrası sıfırlanıyor
+- ✅ Android Keystore anahtar rotasyonu mekanizması eklendi (`SecureStorageModule.rotateKeys`)
+- ✅ `biometricLegacyFallbackSecret` sıfırlanabilir `Uint8Array` formatına taşındı ve temizleniyor
 
 ### 4.3 Ağ & İletişim Güvenliği (80/100) 🟢
 
@@ -138,7 +138,8 @@ Aegis Vault Android, yerel-öncelikli (local-first) bir şifre yöneticisidir. S
 - ✅ 49 test dosyası — kapsamlı birim test altyapısı
 - ✅ Stryker mutasyon testi — %97.37 genel skor
 - ✅ Kritik güvenlik modülleri >%70 mutasyon skoru
-- ⚠️ Entegrasyon testleri otomatize değil, fuzzing testi yok
+- ✅ Entegrasyon testleri otomatize edildi (`VaultSecurity.integration.test.ts`)
+- ✅ İçe aktarma yüzeyleri için Fuzzing testleri eklendi (`ImportFuzzer.test.ts`)
 
 ### 4.7 Android Platform Güvenliği (72/100) 🟡
 

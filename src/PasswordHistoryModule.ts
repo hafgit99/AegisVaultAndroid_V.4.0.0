@@ -459,13 +459,13 @@ export class PasswordHistoryModule {
     const errors: string[] = [];
     let strengthScore = 0;
 
-    // Length check (min 12 characters recommended)
-    if (newPassword.length < 8) {
-      errors.push('Minimum 8 characters required');
+    // Length check (min 14 characters recommended)
+    if (newPassword.length < 10) {
+      errors.push('Minimum 10 characters required');
     } else {
       strengthScore += 20;
-      if (newPassword.length >= 12) strengthScore += 10;
-      if (newPassword.length >= 16) strengthScore += 10;
+      if (newPassword.length >= 14) strengthScore += 10;
+      if (newPassword.length >= 18) strengthScore += 10;
     }
 
     // Complexity checks

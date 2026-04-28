@@ -478,7 +478,7 @@ describe('SecurityModule', () => {
     it('derives a buffer from password and device salt', async () => {
       (RNFS.exists as jest.Mock).mockResolvedValue(false); // force new salt generation
       (SecurityModule as any).deviceSalt = null;
-      const secret = await SecurityModule.getSyncRootSecret('my-password');
+      const secret = await SecurityModule.getSyncRootSecret(new TextEncoder().encode('my-password'));
       expect(secret).toBeTruthy();
       expect(ArrayBuffer.isView(secret)).toBe(true);
       expect(secret.length).toBe(32);
@@ -489,7 +489,7 @@ describe('SecurityModule', () => {
       (RNFS.readFile as jest.Mock).mockResolvedValue('abcd');
       (SecurityModule as any).deviceSalt = null;
 
-      const secret = await SecurityModule.getSyncRootSecret('my-password');
+      const secret = await SecurityModule.getSyncRootSecret(new TextEncoder().encode('my-password'));
 
       expect(secret.length).toBe(32);
       expect(RNFS.writeFile).toHaveBeenCalledWith(

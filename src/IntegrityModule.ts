@@ -1,4 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
+import { TamperDetectionService } from './security/TamperDetectionService';
+
 
 const { DeviceIntegrity } = NativeModules;
 
@@ -18,6 +20,10 @@ export interface IntegritySignals {
   playIntegrityTokenReceived?: boolean;
   playIntegrityTokenLength?: number;
   playIntegrityNonce?: string | null;
+  fridaDetected: boolean;
+  xposedDetected: boolean;
+  signatureValid: boolean;
+  tamperRiskLevel: 'clean' | 'medium' | 'high' | 'critical';
   score: number;
   riskLevel: 'critical' | 'high' | 'medium' | 'low';
   reasons: string[];
@@ -41,6 +47,10 @@ const FAIL_CLOSED_SIGNALS: IntegritySignals = {
   playIntegrityTokenReceived: false,
   playIntegrityTokenLength: 0,
   playIntegrityNonce: null,
+  fridaDetected: true,
+  xposedDetected: true,
+  signatureValid: false,
+  tamperRiskLevel: 'critical',
   score: 0,
   riskLevel: 'critical',
   reasons: ['native_integrity_module_unavailable'],
@@ -63,6 +73,19 @@ export const IntegrityModule = {
 
     try {
       const raw = await DeviceIntegrity.getIntegritySignals();
+      const tamperResult = await TamperDetectionService.performFullScan();
+
+      const combinedReasons = [
+        ...(Array.isArray(raw?.reasons) ? raw.reasons : []),
+        ...tamperResult.threats,
+      ];
+
+      // Recalculate aggregate risk level based on both native signals and tamper scan
+      let finalRiskLevel: IntegritySignals['riskLevel'] = (raw?.riskLevel || 'low') as any;
+      if (tamperResult.riskLevel === 'critical') finalRiskLevel = 'critical';
+      else if (tamperResult.riskLevel === 'high' && finalRiskLevel !== 'critical') finalRiskLevel = 'high';
+      else if (tamperResult.riskLevel === 'medium' && (finalRiskLevel === 'low')) finalRiskLevel = 'medium';
+
       return {
         rooted: !!raw?.rooted,
         emulator: !!raw?.emulator,
@@ -78,9 +101,13 @@ export const IntegrityModule = {
           typeof raw?.playIntegrityNonce === 'string'
             ? raw.playIntegrityNonce
             : null,
-        score: Number(raw?.score ?? 100),
-        riskLevel: (raw?.riskLevel || 'low') as IntegritySignals['riskLevel'],
-        reasons: Array.isArray(raw?.reasons) ? raw.reasons : [],
+        fridaDetected: tamperResult.fridaDetected,
+        xposedDetected: tamperResult.xposedDetected,
+        signatureValid: tamperResult.signatureValid,
+        tamperRiskLevel: tamperResult.riskLevel,
+        score: Math.min(Number(raw?.score ?? 100), 100 - tamperResult.threatScore),
+        riskLevel: finalRiskLevel,
+        reasons: combinedReasons,
         artifacts: Array.isArray(raw?.artifacts) ? raw.artifacts : [],
         checkedAt: raw?.checkedAt
           ? new Date(Number(raw.checkedAt)).toISOString()
@@ -122,10 +149,24 @@ export const IntegrityModule = {
       };
     }
 
-    // Highest risk: rooted or emulator
-    if (signals.rooted || signals.emulator) {
+    // Highest risk: rooted, emulator, frida, or signature mismatch
+    if (
+      signals.rooted ||
+      signals.emulator ||
+      signals.fridaDetected ||
+      !signals.signatureValid
+    ) {
       return {
         riskLevel: 'critical',
+        score: signals.score,
+        reasons: signals.reasons,
+      };
+    }
+
+    // High risk: Xposed
+    if (signals.xposedDetected) {
+      return {
+        riskLevel: 'high',
         score: signals.score,
         reasons: signals.reasons,
       };

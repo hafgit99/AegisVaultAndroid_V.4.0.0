@@ -9,6 +9,7 @@ import RNFS from 'react-native-fs';
 import QuickCrypto from 'react-native-quick-crypto';
 import { Buffer } from '@craftzdog/react-native-buffer';
 import { SecurityModule } from './SecurityModule';
+import { stringToSecureBytes, wipeBytes } from './security/CryptoService';
 
 export interface EncryptedFileMetadata {
   originalName: string;
@@ -18,68 +19,23 @@ export interface EncryptedFileMetadata {
 }
 
 const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-const INVALID_FILENAME_CHARS = new Set(['<', '>', ':', '"', '/', '\\', '|', '?', '*']);
 
-export const sanitizeVaultFileName = (name?: string): string => {
-  const leaf = String(name || '')
-    .split(/[\\/]/)
-    .filter(Boolean)
-    .pop() || 'decrypted_file';
-  const cleaned = leaf
-    .split('')
-    .map(char => (
-      char.charCodeAt(0) <= 31 || INVALID_FILENAME_CHARS.has(char)
-        ? '_'
-        : char
-    ))
-    .join('')
-    .replace(/\s+/g, ' ')
-    .replace(/^\.+/, '')
-    .replace(/[. ]+$/, '')
-    .trim();
-  const safe = cleaned || 'decrypted_file';
-  return RESERVED_WINDOWS_NAMES.test(safe) ? `_${safe}` : safe;
-};
+function sanitizeVaultFileName(name: string): string {
+  if (!name) return 'decrypted_file';
+  // eslint-disable-next-line no-control-regex
+  let sanitized = name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+  sanitized = sanitized.trim();
+  if (RESERVED_WINDOWS_NAMES.test(sanitized)) {
+    sanitized = `_${sanitized}`;
+  }
+  return sanitized || 'decrypted_file';
+}
+
+const ENCRYPTED_DIR = `${RNFS.DocumentDirectoryPath}/encrypted_vault_files`;
 
 export class FileEncryptionModule {
-  private static readonly ENCRYPTED_FILES_DIR = `${RNFS.DocumentDirectoryPath}/encrypted_vault_files`;
-  private static readonly CHUNK_SIZE = 1024 * 1024; // 1MB chunks for large files
-  private static readonly LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;
-
-  private static async readFileBase64(
-    sourcePath: string,
-    fileSize: number,
-    onProgress?: (progress: number) => void,
-  ): Promise<string> {
-    if (
-      fileSize <= this.LARGE_FILE_THRESHOLD ||
-      typeof (RNFS as any).read !== 'function'
-    ) {
-      return RNFS.readFile(sourcePath, 'base64');
-    }
-
-    const segments: string[] = [];
-    let position = 0;
-    while (position < fileSize) {
-      const length = Math.min(this.CHUNK_SIZE, fileSize - position);
-      const chunk = await (RNFS as any).read(
-        sourcePath,
-        length,
-        position,
-        'base64',
-      );
-      segments.push(chunk);
-      position += length;
-      if (onProgress) {
-        onProgress(Math.min(99, Math.floor((position / fileSize) * 100)));
-      }
-    }
-    return segments.join('');
-  }
-
   /**
-   * Encrypt a file from a local path
-   * Yerel yoldaki bir dosyayı şifrele
+   * Encrypt a file at sourcePath and save to encryptedPath
    */
   static async encryptFile(
     sourcePath: string,
@@ -87,14 +43,13 @@ export class FileEncryptionModule {
     _onProgress?: (progress: number) => void
   ): Promise<{ success: boolean; encryptedPath?: string; error?: string }> {
     try {
-      const exists = await RNFS.exists(sourcePath);
-      if (!exists) throw new Error('Source file not found');
+      if (!(await RNFS.exists(sourcePath))) {
+        throw new Error(`Source file not found: ${sourcePath}`);
+      }
 
-      await RNFS.mkdir(this.ENCRYPTED_FILES_DIR).catch(() => {});
-
-      const fileName = sanitizeVaultFileName(sourcePath);
-      const encryptedPath = `${this.ENCRYPTED_FILES_DIR}/${fileName}.aegis_enc`;
-      
+      await RNFS.mkdir(ENCRYPTED_DIR);
+      const fileName = sourcePath.split('/').pop() || 'file';
+      const encryptedPath = `${ENCRYPTED_DIR}/${fileName}.aegis_enc`;
       const fileStat = await RNFS.stat(sourcePath);
       
       const base64 = await this.readFileBase64(
@@ -160,7 +115,9 @@ export class FileEncryptionModule {
       }
 
       if (obj.v === 1) {
-        const key = await SecurityModule.getSyncRootSecret(password);
+        const passwordBytes = stringToSecureBytes(password);
+        const key = await SecurityModule.getSyncRootSecret(passwordBytes);
+        wipeBytes(passwordBytes);
         const iv = Buffer.from(obj.iv, 'base64');
         const tag = Buffer.from(obj.tag, 'base64');
         const data = Buffer.from(obj.data, 'base64');
@@ -173,13 +130,14 @@ export class FileEncryptionModule {
           decipher.final()
         ]);
 
-        const originalName = sanitizeVaultFileName(obj.meta?.originalName);
+        const parsed = JSON.parse(decrypted.toString('utf8'));
+        const originalName = sanitizeVaultFileName(parsed.meta?.originalName || parsed.originalName);
         const decryptedPath = `${targetDir}/${originalName}`;
-        await RNFS.writeFile(decryptedPath, decrypted.toString('base64'), 'base64');
+        await RNFS.writeFile(decryptedPath, parsed.data, 'base64');
         return { success: true, decryptedPath, originalName };
       }
 
-      throw new Error('Unsupported encryption version');
+      throw new Error(`Unsupported encryption version: ${obj.v}`);
     } catch (e: any) {
       console.error('[FileEncryption] Decryption failed:', e);
       return { success: false, error: e.message };
@@ -187,35 +145,47 @@ export class FileEncryptionModule {
   }
 
   /**
-   * List all encrypted files in the vault
+   * List all encrypted files in the vault directory
    */
   static async listEncryptedFiles(): Promise<EncryptedFileMetadata[]> {
     try {
-      const exists = await RNFS.exists(this.ENCRYPTED_FILES_DIR);
-      if (!exists) return [];
-
-      const files = await RNFS.readDir(this.ENCRYPTED_FILES_DIR);
-      const list: EncryptedFileMetadata[] = [];
-
-      for (const file of files) {
-        if (file.name.endsWith('.aegis_enc')) {
-          try {
-            // Read only the first bit or assume from filename
-            // For performance, we'll just return basic info from stat for now
-            list.push({
-              originalName: file.name.replace('.aegis_enc', ''),
-              size: file.size,
-              encryptedAt: file.mtime?.toISOString() || new Date().toISOString(),
-              mimeType: 'application/octet-stream'
-            });
-          } catch {}
-        }
-      }
-      return list;
-    } catch {
+      if (!(await RNFS.exists(ENCRYPTED_DIR))) return [];
+      const files = await RNFS.readDir(ENCRYPTED_DIR);
+      return files
+        .filter(f => f.name.endsWith('.aegis_enc'))
+        .map(f => ({
+          originalName: f.name.replace('.aegis_enc', ''),
+          size: f.size,
+          encryptedAt: f.mtime?.toISOString() || new Date().toISOString(),
+          mimeType: 'application/octet-stream',
+        }));
+    } catch (e) {
+      console.error('[FileEncryption] List failed:', e);
       return [];
     }
   }
+
+  private static async readFileBase64(
+    path: string,
+    size: number,
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
+    if (size < 10 * 1024 * 1024) {
+      return await RNFS.readFile(path, 'base64');
+    }
+    
+    // Chunked read for larger files
+    let result = '';
+    const chunkSize = 1024 * 1024;
+    let offset = 0;
+    while (offset < size) {
+      const chunk = await RNFS.read(path, chunkSize, offset, 'base64');
+      result += chunk;
+      offset += chunkSize;
+      if (onProgress) onProgress(Math.min(100, Math.floor((offset / size) * 100)));
+    }
+    return result;
+  }
 }
 
-export default FileEncryptionModule;
+export { sanitizeVaultFileName };

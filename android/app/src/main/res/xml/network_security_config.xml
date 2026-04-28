@@ -1,4 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Aegis Vault Android — Network Security Configuration
+  Ağ Güvenliği Yapılandırması
+
+  Enforces TLS-only connections and certificate pinning for
+  security-critical API endpoints.
+
+  Güvenlik açısından kritik API uç noktaları için yalnızca TLS
+  bağlantılarını ve sertifika sabitlemeyi zorunlu kılar.
+-->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <!-- Global: Cleartext traffic disabled for all domains -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+      HIBP Pwned Passwords API — Certificate Pinning
+      api.pwnedpasswords.com (Cloudflare) için sertifika sabitleme.
+
+      Pins are SHA-256 SPKI hashes of the certificate chain.
+      expiration="2027-06-01" ensures graceful fallback if pins
+      become stale (avoids hard lockout).
+    -->
+    <domain-config>
+        <domain includeSubdomains="true">api.pwnedpasswords.com</domain>
+        <domain includeSubdomains="true">haveibeenpwned.com</domain>
+        <pin-set expiration="2027-06-01">
+            <!-- Cloudflare Inc ECC CA-3 (current leaf issuer) -->
+            <pin digest="SHA-256">Ly5wRU2thKFNiEDMiad3F0dECBLNQ6CbA2yKGSVosHE=</pin>
+            <!-- DigiCert Global Root G2 (root CA backup) -->
+            <pin digest="SHA-256">i7WTqTvh0OioIruIfFR4kMPnBqrS2rdiVPl/s2uC/CY=</pin>
+            <!-- Let's Encrypt ISRG Root X1 (alternate root) -->
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
+        </pin-set>
+    </domain-config>
 </network-security-config>

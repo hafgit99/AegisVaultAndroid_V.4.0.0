@@ -21,6 +21,7 @@ class MainApplication : Application(), ReactApplication {
           add(IntegrityPackage())
           add(SecureStoragePackage())
           add(ScreenSecurityPackage())
+          add(TamperDetectionPackage())
         },
     )
   }

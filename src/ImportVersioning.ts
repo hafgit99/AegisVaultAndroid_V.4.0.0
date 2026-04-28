@@ -79,6 +79,35 @@ export interface MigrationResult {
 
 export class ImportVersioning {
   /**
+   * Dedicated parser for Aegis JSON format (internal)
+   */
+  static async parseAegisJson(data: string): Promise<any> {
+    const parsed = JSON.parse(data);
+    if (!parsed || typeof parsed !== 'object') throw new Error('Invalid JSON');
+    return parsed;
+  }
+
+  /**
+   * Dedicated parser for Generic CSV format
+   */
+  static async parseGenericCsv(data: string): Promise<any[]> {
+    if (!data) return [];
+    const lines = data.split(/\r?\n/);
+    return lines.map(line => line.split(/[;,]/));
+  }
+
+  /**
+   * Dedicated parser for Bitwarden JSON format
+   */
+  static async parseBitwardenJson(data: string): Promise<any> {
+    const parsed = JSON.parse(data);
+    if (!parsed.items || !Array.isArray(parsed.items)) {
+      throw new Error('Not a valid Bitwarden export');
+    }
+    return parsed;
+  }
+
+  /**
    * Detect KDF version and parameters from backup file
    * Yedek dosyanın KDF sürümünü algıla
    */
@@ -566,50 +595,3 @@ export const ImportVersioningWithAudit = {
     return result;
   }
 };
-
-/**
- * ImportVersioning Module Summary (Tavsiye #10)
- * 
- * Features:
- * ✅ Auto-detect KDF version from backup metadata
- * ✅ Decrypt PBKDF2-SHA256 (legacy v1.0) backups
- * ✅ Decrypt Argon2id (modern v2.0+) backups
- * ✅ Full backward compatibility with legacy imports
- * ✅ User prompts to upgrade to Argon2id
- * ✅ KDF migration: Old → New encryption
- * ✅ Security audit logging for migrations
- * ✅ Version compatibility matrix
- * ✅ Migration dialog flow for user confirmation
- * ✅ Audit trail for compliance and troubleshooting
- * 
- * Migration Path:
- * 1. User imports old PBKDF2 backup
- * 2. App decrypts with legacy KDF
- * 3. App shows MigrationDialog: "Legacy encryption detected"
- * 4. User confirms → Import with decryption
- * 5. AuditLogger tracks: action, status, KDF versions
- * 6. User exports with Settings → Export (auto uses Argon2id)
- * 7. Old PBKDF2 backup safely replaced
- * 8. Final migration audit log entry: success
- * 
- * Security Considerations:
- * - PBKDF2: 310,000 iterations (RFC 2898 compliant, legacy only)
- * - Argon2id: Memory-hard (32 MB), GPU-resistant, recommended
- * - Auto-upgrade to stronger KDF on re-export
- * - Audit trail prevents accidental downgrades
- * 
- * Testing Strategy:
- * ✅ Test KDF detection: old vs. new format
- * ✅ Test PBKDF2 decryption: legacy data integrity
- * ✅ Test Argon2id decryption: modern security
- * ✅ Test migration flow: old→new encryption
- * ✅ Test dialog generation: warning content
- * ✅ Test audit logging: action tracking
- * ✅ Test error handling: corrupted backups
- * ✅ Test compatibility matrix: version support
- * - No mixing of algorithms in single vault
- * 
- * Implementation:
- * Used in BackupModule.importBackup() and exportAsAegisEncrypted()
- * Integrates with SecurityModule.logSecurityEvent() for audit trail
- */

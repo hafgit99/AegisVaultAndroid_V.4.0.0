@@ -129,6 +129,7 @@ const { SecureStorage } = NativeModules as {
     getItem?: (key: string) => Promise<string | null>;
     setItem?: (key: string, value: string) => Promise<boolean>;
     removeItem?: (key: string) => Promise<boolean>;
+    rotateKeys?: () => Promise<boolean>;
   };
 };
 const debugLog = (...args: any[]) => {
@@ -164,32 +165,7 @@ const randomBytesSafe = (size: number): Buffer => {
   return Buffer.from(crypto.randomBytes(size));
 };
 
-const deriveKeyPBKDF2 = async (
-  password: string,
-  saltHex: string,
-  iterations: number,
-  keyLen: number,
-): Promise<Buffer> => {
-  const crypto = getCryptoImpl();
-  if (typeof crypto?.pbkdf2 === 'function') {
-    return new Promise<Buffer>((resolve, reject) => {
-      crypto.pbkdf2(
-        password,
-        saltHex,
-        iterations,
-        keyLen,
-        'sha256',
-        (err: any, key: any) => (err ? reject(err) : resolve(Buffer.from(key))),
-      );
-    });
-  }
-  if (typeof crypto?.pbkdf2Sync === 'function') {
-    return Buffer.from(
-      crypto.pbkdf2Sync(password, saltHex, iterations, keyLen, 'sha256'),
-    );
-  }
-  throw new Error('Crypto PBKDF2 is not available on this build.');
-};
+
 /* Stryker restore all */
 
 // ── Types ───────────────────────────────────────────
@@ -503,13 +479,7 @@ const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
 const APP_CONFIG_SECURE_KEY = 'aegis_app_config_secure_v2';
 const VAULT_KDF_MIGRATION_FILE = `${RNFS.DocumentDirectoryPath}/aegis_kdf_migration_state.json`;
 const VAULT_KDF_MIGRATION_SECURE_KEY = 'aegis_vault_kdf_migration_state_v1';
-const BACKUP_KDF_DEFAULT = {
-  algorithm: 'Argon2id',
-  memory: 32768,
-  iterations: 4,
-  parallelism: 2,
-  hashLength: 32,
-} as const;
+
 
 const VAULT_KDF_STRONG = {
   memory: 65536,
@@ -752,6 +722,10 @@ export class SecurityModule {
         name: 'aegis_android_vault.sqlite',
         encryptionKey,
       });
+      // NOTE: SQLCipher 4+ uses AES-256-CBC with HMAC-SHA512 by default.
+      // While GCM is generally preferred for AEAD, SQLCipher's page-level
+      // encryption uses Encrypt-then-MAC (EtM) which is considered strong.
+      // We use AES-256-GCM for all non-database storage (backups, files).
       db.executeSync('SELECT count(*) AS count FROM sqlite_master;');
       return db;
     } catch {
@@ -784,13 +758,14 @@ export class SecurityModule {
     return null;
   }
 
-  private static async writeBiometricUnlockSecret(secret: string): Promise<boolean> {
-    if (!secret || secret.length < 32) return false;
+  private static async writeBiometricUnlockSecret(secretBytes: Uint8Array): Promise<boolean> {
+    if (!secretBytes || secretBytes.length < 16) return false;
     if (SecureStorage?.setItem) {
       try {
-        await SecureStorage.setItem(BIOMETRIC_UNLOCK_SECRET_SECURE_KEY, secret);
-        const savedSecret = await this.readBiometricUnlockSecret();
-        return savedSecret === secret;
+        const secretHex = secureBytesToHex(secretBytes);
+        await SecureStorage.setItem(BIOMETRIC_UNLOCK_SECRET_SECURE_KEY, secretHex);
+        const savedSecretHex = await this.readBiometricUnlockSecret();
+        return savedSecretHex === secretHex;
       } catch {}
     }
     return false;
@@ -1146,10 +1121,10 @@ export class SecurityModule {
 
       if (
         this.biometricLegacyFallbackSecret &&
-        secureBytesToHex(unlockSecret) === secureBytesToHex(this.biometricLegacyFallbackSecret)
+        Buffer.compare(Buffer.from(unlockSecret), Buffer.from(this.biometricLegacyFallbackSecret)) === 0
       ) {
         try {
-          const persisted = await this.writeBiometricUnlockSecret(secureBytesToHex(unlockSecret));
+          const persisted = await this.writeBiometricUnlockSecret(unlockSecret);
           if (persisted) {
             wipeBytes(this.biometricLegacyFallbackSecret);
             this.biometricLegacyFallbackSecret = null;
@@ -1812,6 +1787,27 @@ export class SecurityModule {
     }
   }
 
+
+
+  static async rotateSecureStorageKeys(): Promise<boolean> {
+    if (SecureStorage?.rotateKeys) {
+      try {
+        const ok = await SecureStorage.rotateKeys();
+        if (ok) {
+          await this.logSecurityEvent('keystore_rotation', 'success', {
+            provider: 'AndroidKeystore',
+            algorithm: 'AES256_GCM',
+          });
+        }
+        return ok;
+      } catch (e) {
+        console.error('[Security] Keystore rotation failed:', e);
+        return false;
+      }
+    }
+    return false;
+  }
+
   static async startAutoLockTimer(secondsOverride?: number, onLock?: () => void) {
     await this.clearAutoLockTimer();
     const seconds = secondsOverride !== undefined ? secondsOverride : Number(await this.getAppConfigSetting('autoLockSeconds'));
@@ -1854,9 +1850,10 @@ export class SecurityModule {
     });
   }
 
-  static async getSyncRootSecret(password: string): Promise<Buffer> {
+  static async getSyncRootSecret(passwordBytes: Uint8Array): Promise<Buffer> {
     const salt = await this.getDeviceSalt();
-    const result = await Argon2Fn(password, salt.toString('hex'), {
+    const passwordHex = secureBytesToHex(passwordBytes);
+    const result = await Argon2Fn(passwordHex, salt.toString('hex'), {
       iterations: 10,
       memory: 65536,
       parallelism: 4,
@@ -1868,7 +1865,7 @@ export class SecurityModule {
 
   static async getActiveSyncRootSecret(): Promise<Buffer | null> {
     if (!this.currentUnlockSecret) return null;
-    return this.getSyncRootSecret(secureBytesToHex(this.currentUnlockSecret));
+    return this.getSyncRootSecret(this.currentUnlockSecret);
   }
 
   static async getRecoverySessionSecret(): Promise<string> {
@@ -2526,7 +2523,7 @@ export class SecurityModule {
         const maxLen = Math.max(a.length, b.length);
         const similar =
           distance <= 2 ||
-          (distance <= 3 && maxLen >= 12) ||
+          (distance <= 3 && maxLen >= 14) ||
           a.startsWith(b) ||
           b.startsWith(a);
         if (!similar) continue;

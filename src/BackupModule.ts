@@ -1,7 +1,7 @@
 import RNFS from 'react-native-fs';
 import { SecurityModule, VaultItem } from './SecurityModule';
 
-export const MIN_BACKUP_PASSWORD_LENGTH = 12;
+export const MIN_BACKUP_PASSWORD_LENGTH = 14;
 
 /* Stryker disable all: debug-only logging has no production behavior impact and creates equivalent mutants. */
 const debugLog = (...args: any[]) => {

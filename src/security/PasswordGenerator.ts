@@ -66,18 +66,25 @@ export const generatePassword = (
   return password;
 };
 
+import { calculateEntropy } from './EntropyService';
+import i18n from '../i18n';
+
 export const getPasswordStrength = (password: string): PasswordStrength => {
-  if (!password) return { score: 0, label: 'Yok', color: '#94a3b8' };
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (password.length >= 12) score++;
-  if (password.length >= 16) score++;
-  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
-  if (/\d/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  if (password.length >= 20) score++;
-  if (score <= 2) return { score, label: 'Zayıf', color: '#ef4444' };
-  if (score <= 4) return { score, label: 'Orta', color: '#f59e0b' };
-  if (score <= 5) return { score, label: 'Güçlü', color: '#22c55e' };
-  return { score, label: 'Çok Güçlü', color: '#06b6d4' };
+  if (!password) return { score: 0, label: i18n.t('security.entropy_critical'), color: '#94a3b8' };
+  
+  const result = calculateEntropy(password);
+  
+  const labelMap: Record<string, string> = {
+    critical: i18n.t('security.entropy_critical'),
+    weak:     i18n.t('security.entropy_weak'),
+    fair:     i18n.t('security.entropy_fair'),
+    strong:   i18n.t('security.entropy_strong'),
+    excellent:i18n.t('security.entropy_excellent'),
+  };
+
+  return {
+    score: result.score,
+    label: labelMap[result.level],
+    color: result.color,
+  };
 };
