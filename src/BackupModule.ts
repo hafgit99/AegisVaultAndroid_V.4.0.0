@@ -1,5 +1,27 @@
 import RNFS from 'react-native-fs';
-import { SecurityModule, VaultItem } from './SecurityModule';
+import { SecurityModule, VaultItem, __base64ToBuf, __bufToHex } from './SecurityModule';
+import { toCanonicalVaultRecords } from './compat/CanonicalVaultSchema';
+import QuickCrypto from 'react-native-quick-crypto';
+import { Buffer } from '@craftzdog/react-native-buffer';
+import Argon2 from 'react-native-argon2';
+
+const Argon2Fn: any = (Argon2 as any)?.default ?? (Argon2 as any);
+const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
+
+/**
+ * Detect if a parsed JSON object is a Desktop Aegis Vault encrypted backup.
+ * Desktop format uses 'format: aegis-vault-backup' instead of 'encrypted: true'.
+ */
+export function isDesktopEncryptedBackup(json: any): boolean {
+  return (
+    json &&
+    typeof json === 'object' &&
+    (json.format === 'aegis-vault-backup' || json.format === 'aegis-encrypted-v1') &&
+    typeof json.payload === 'string' &&
+    typeof json.salt === 'string' &&
+    typeof json.iv === 'string'
+  );
+}
 
 export const MIN_BACKUP_PASSWORD_LENGTH = 14;
 
@@ -41,7 +63,7 @@ export interface ImportResult {
 }
 
 export interface ExportFormat {
-  id: 'csv' | 'json' | 'aegis_encrypted';
+  id: 'csv' | 'json' | 'canonical_json' | 'aegis_encrypted';
   label: string;
   icon: string;
   description: string;
@@ -60,6 +82,12 @@ export const getExportFormats = (t: any): ExportFormat[] => [
     label: 'JSON',
     icon: '📋',
     description: t('backup.fmt_json_desc'),
+  },
+  {
+    id: 'canonical_json',
+    label: t('backup.fmt_canonical_lbl'),
+    icon: 'V5',
+    description: t('backup.fmt_canonical_desc'),
   },
   {
     id: 'aegis_encrypted',
@@ -819,9 +847,16 @@ export class BackupModule {
   private static parseAegisVaultJSON(content: string): Partial<VaultItem>[] {
     const json = JSON.parse(content);
 
-    // Check if encrypted
+    // Check if encrypted (Android native format)
     if (json.encrypted && json.data) {
       // Encrypted Aegis Vault backup - cannot import without password
+      // Will be handled by importEncryptedAegis method
+      return [];
+    }
+
+    // Check if encrypted (Desktop format)
+    if (isDesktopEncryptedBackup(json)) {
+      // Desktop encrypted backup - cannot import without password
       // Will be handled by importEncryptedAegis method
       return [];
     }
@@ -969,6 +1004,12 @@ export class BackupModule {
       const content = await RNFS.readFile(filePath, 'utf8');
       const json = JSON.parse(content);
 
+      // ── Desktop format detection ──
+      if (isDesktopEncryptedBackup(json)) {
+        return this.importDesktopEncryptedAegis(json, password);
+      }
+
+      // ── Android native format ──
       if (!json.encrypted || !json.data || !json.salt || !json.iv) {
         result.errors.push('Geçersiz şifreli Aegis Vault dosyası.');
         return result;
@@ -1046,6 +1087,198 @@ export class BackupModule {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // IMPORT DESKTOP ENCRYPTED AEGIS BACKUP
+  // Desktop uses: Argon2id (64MB/3iter/1par/64byte), AES-256-GCM,
+  //   base64 encoding, GCM auth tag embedded in ciphertext,
+  //   HMAC-SHA256 integrity envelope.
+  // ═══════════════════════════════════════════════════════════════
+  private static async importDesktopEncryptedAegis(
+    json: any,
+    password: string,
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      total: 0,
+      imported: 0,
+      skipped: 0,
+      errors: [],
+      source: 'aegis_vault',
+    };
+    try {
+      debugLog('[AEGIS-IMPORT] Desktop encrypted backup detected');
+      debugLog('[AEGIS-IMPORT] Envelope version:', json.envelope_version || 1);
+      debugLog('[AEGIS-IMPORT] Payload kind:', json.payload_kind || 'legacy-array');
+
+      // Step 1: Decode base64 salt & iv
+      const saltBytes = __base64ToBuf(json.salt);
+      const ivBytes = __base64ToBuf(json.iv);
+      const cipherBytes = __base64ToBuf(json.payload);
+
+      // Step 2: Derive key using Desktop's Argon2id parameters
+      // Desktop uses: 64MB memory, 3 iterations, parallelism=1, 64-byte output
+      // The first 32 bytes = encryption key, last 32 bytes = integrity key
+      const argon2Result = await Argon2Fn(password, __bufToHex(saltBytes), {
+        mode: 'argon2id',
+        iterations: 3,
+        memory: 65536,     // 64 MB
+        parallelism: 1,
+        hashLength: 64,    // 64 bytes (32 enc + 32 integrity)
+        saltEncoding: 'hex',
+      });
+
+      const rawHash = typeof argon2Result.rawHash === 'string'
+        ? argon2Result.rawHash
+        : Buffer.from(argon2Result.rawHash).toString('hex');
+      const derivedAll = Buffer.from(rawHash, 'hex');
+      const encryptionKey = derivedAll.slice(0, 32);
+
+      // Step 3: Decrypt using AES-256-GCM
+      // Desktop's Web Crypto AES-GCM embeds the auth tag at the end of ciphertext.
+      // Standard GCM tag is last 16 bytes of the ciphertext.
+      if (cipherBytes.length < 16) {
+        result.errors.push('Şifreli veri çok kısa, bozuk dosya.');
+        return result;
+      }
+
+      const actualCipher = Buffer.from(cipherBytes.slice(0, cipherBytes.length - 16));
+      const authTag = Buffer.from(cipherBytes.slice(cipherBytes.length - 16));
+
+      const crypto = QC;
+      const decipher = crypto.createDecipheriv(
+        'aes-256-gcm',
+        encryptionKey,
+        Buffer.from(ivBytes),
+      );
+      decipher.setAuthTag(authTag);
+
+      const decryptedBuf = Buffer.concat([
+        decipher.update(actualCipher),
+        decipher.final(),
+      ]);
+
+      const plaintext = decryptedBuf.toString('utf8');
+      debugLog('[AEGIS-IMPORT] Desktop backup decrypted successfully');
+
+      // Step 4: Parse decrypted data
+      const parsedPlaintext = JSON.parse(plaintext);
+
+      // Desktop export may be:
+      // - An array of entries (legacy-array)
+      // - A canonical payload { kind, records }
+      // - An object with { items } field
+      let items: any[] = [];
+      if (Array.isArray(parsedPlaintext)) {
+        // legacy-array: flat array of vault entries
+        items = parsedPlaintext;
+      } else if (parsedPlaintext?.kind === 'aegis-vault-canonical' && Array.isArray(parsedPlaintext?.records)) {
+        // Canonical format
+        items = parsedPlaintext.records.map((rec: any) => ({
+          title: rec.title || '',
+          username: rec.username || '',
+          password: rec.password || rec.pass || '',
+          url: rec.website || rec.url || '',
+          notes: rec.notes || '',
+          category: rec.category || 'login',
+          favorite: rec.favorite ? 1 : 0,
+          data: rec.data ? (typeof rec.data === 'string' ? rec.data : JSON.stringify(rec.data)) : '{}',
+        }));
+      } else if (parsedPlaintext?.items) {
+        items = parsedPlaintext.items;
+      }
+
+      // Step 5: Map desktop field names to Android field names
+      result.total = items.length;
+      for (const item of items) {
+        try {
+          const mapped: Partial<VaultItem> = {
+            title: item.title || '',
+            username: item.username || '',
+            password: item.password || item.pass || '',
+            url: item.website || item.url || '',
+            notes: item.notes || '',
+            category: item.category || 'login',
+            favorite: item.favorite ? 1 : 0,
+            data: item.data
+              ? typeof item.data === 'string'
+                ? item.data
+                : JSON.stringify(item.data)
+              : '{}',
+          };
+
+          // Handle desktop card details
+          if (item.cardDetails || item.category === 'card') {
+            const card = item.cardDetails || {};
+            const cardData: any = {};
+            cardData.cardholder = card.cardholder_name || card.cardholder || '';
+            cardData.card_number = card.card_number || '';
+            cardData.expiry = card.expiry_month && card.expiry_year
+              ? `${card.expiry_month}/${card.expiry_year}`
+              : card.expiry || '';
+            cardData.cvv = card.cvv || '';
+            cardData.pin = card.pin || '';
+            cardData.brand = card.brand || '';
+            mapped.data = JSON.stringify(cardData);
+          }
+
+          // Handle desktop identity details
+          if (item.identityDetails || item.category === 'identity') {
+            const id = item.identityDetails || {};
+            const idData: any = {};
+            idData.first_name = id.first_name || '';
+            idData.last_name = id.last_name || '';
+            idData.email = id.email || '';
+            idData.phone = id.phone || '';
+            idData.address = id.address || '';
+            mapped.data = JSON.stringify(idData);
+          }
+
+          // Handle TOTP from desktop tags/data
+          if (item.tags && Array.isArray(item.tags)) {
+            const existingData = mapped.data ? JSON.parse(mapped.data) : {};
+            existingData.tags = item.tags;
+            mapped.data = JSON.stringify(existingData);
+          }
+
+          if (!mapped.title || mapped.title.trim() === '') {
+            mapped.title = mapped.url || mapped.username || 'İçe Aktarılan';
+          }
+
+          await SecurityModule.addItem(mapped);
+          result.imported++;
+        } catch (e: any) {
+          result.skipped++;
+          result.errors.push(`"${item.title || 'Bilinmeyen'}": ${e?.message || 'Error'}`);
+        }
+      }
+
+      await SecurityModule.logSecurityEvent(
+        'backup_import_desktop_encrypted',
+        'success',
+        {
+          total: result.total,
+          imported: result.imported,
+          skipped: result.skipped,
+          envelopeVersion: json.envelope_version || 1,
+          payloadKind: json.payload_kind || 'legacy-array',
+        },
+      );
+    } catch (e: any) {
+      result.errors.push(
+        `Masaüstü yedek şifre çözme hatası: ${
+          e?.message || 'Geçersiz şifre veya bozuk dosya'
+        }`,
+      );
+      await SecurityModule.logSecurityEvent(
+        'backup_import_desktop_encrypted',
+        'failed',
+        {
+          reason: e?.message || 'desktop_decrypt_failed',
+        },
+      );
+    }
+    return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // EXPORT LOGIC
   // ═══════════════════════════════════════════════════════════════
 
@@ -1081,12 +1314,18 @@ export class BackupModule {
   static async exportToJSON(): Promise<string> {
     const items = await SecurityModule.getItems();
     const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
+    const canonicalItems = toCanonicalVaultRecords(items);
     const exportData = {
-      version: '1.0.0',
+      version: '1.1.0',
       app: 'Aegis Vault Android',
       exported_at: new Date().toISOString(),
       count: items.length,
       sharedSpaces,
+      canonical: {
+        kind: 'aegis-vault-canonical',
+        schemaVersion: '5.0.0',
+        items: canonicalItems,
+      },
       items: items.map(({ id: _id, ...rest }) => rest),
     };
     const json = JSON.stringify(exportData, null, 2);
@@ -1101,6 +1340,39 @@ export class BackupModule {
     return path;
   }
 
+  static async exportCanonicalJSON(): Promise<string> {
+    const items = await SecurityModule.getItems();
+    const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
+    const canonicalItems = toCanonicalVaultRecords(items);
+    const exportData = {
+      kind: 'aegis-vault-canonical',
+      schemaVersion: '5.0.0',
+      app: 'Aegis Vault Android',
+      exported_at: new Date().toISOString(),
+      count: canonicalItems.length,
+      sharedSpaces,
+      items: canonicalItems,
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const path = await writeExportFile(
+      `aegis_vault_canonical_v5_${ts}.json`,
+      json,
+      {
+        preferPrivate: true,
+      },
+    );
+    await SecurityModule.logSecurityEvent(
+      'backup_export_canonical_json',
+      'success',
+      {
+        itemCount: canonicalItems.length,
+        output: path.split('/').pop(),
+      },
+    );
+    return path;
+  }
+
   static async exportEncrypted(password: string): Promise<string> {
     if (!password || password.length < MIN_BACKUP_PASSWORD_LENGTH) {
       throw new Error(
@@ -1111,9 +1383,17 @@ export class BackupModule {
     const items = await SecurityModule.getItems();
     const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
     const plainItems = items.map(({ id: _id, ...rest }) => rest);
+    const canonicalItems = toCanonicalVaultRecords(items);
     const plaintext = JSON.stringify({
+      kind: 'aegis-vault-encrypted-bundle',
+      schemaVersion: '5.0.0',
       items: plainItems,
       sharedSpaces,
+      canonical: {
+        kind: 'aegis-vault-canonical',
+        schemaVersion: '5.0.0',
+        items: canonicalItems,
+      },
     });
 
     // AES-256-GCM encryption (authenticated encryption + Argon2id KDF)
@@ -1133,6 +1413,7 @@ export class BackupModule {
     const exportData = {
       version: '2.0.0',
       app: 'Aegis Vault Android',
+      compatibility: ['android-legacy-items', 'desktop-v5-canonical'],
       encrypted: true,
       algorithm: 'AES-256-GCM',
       kdf,
@@ -1182,6 +1463,8 @@ export class BackupModule {
         if (json.db?.entries && (json.header || json.version))
           return 'aegis_auth';
         if (json.app === 'Aegis Vault Android' || json.encrypted)
+          return 'aegis_vault';
+        if ((json.format === 'aegis-vault-backup' || json.format === 'aegis-encrypted-v1') && json.payload)
           return 'aegis_vault';
         if (json.items && json.folders !== undefined) return 'bitwarden';
         if (json.AUTHENTIFIANT || json.credentials) return 'dashlane';

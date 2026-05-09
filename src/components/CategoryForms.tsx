@@ -2,6 +2,8 @@ import React from 'react';
 
 import {
   CardForm,
+  CryptoWalletForm,
+  DocumentForm,
   IdentityForm,
   LoginForm,
   NoteForm,
@@ -46,6 +48,18 @@ export const CategoryForm = ({
           theme={theme}
         />
       );
+    case 'crypto_wallet':
+      return (
+        <CryptoWalletForm
+          form={form}
+          setForm={setForm}
+          showPw={showPw}
+          t={t}
+          theme={theme}
+        />
+      );
+    case 'document':
+      return <DocumentForm form={form} setForm={setForm} t={t} theme={theme} />;
     case 'passkey':
       return <PasskeyForm form={form} setForm={setForm} t={t} theme={theme} />;
     default:

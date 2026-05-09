@@ -23,6 +23,11 @@ describe('SyncConflictService', () => {
     expect(result.merged).toHaveLength(2);
     expect(result.modifiedCount).toBe(1);
     expect(result.conflicts).toHaveLength(0);
+    expect(result.summary).toMatchObject({
+      policy: 'last_write_wins',
+      remoteInsertions: 1,
+      modifiedCount: 1,
+    });
   });
 
   it('resolves conflict with Last-Write-Wins (Remote newer)', () => {
@@ -33,6 +38,12 @@ describe('SyncConflictService', () => {
     expect(result.merged[0].title).toBe('RemoteTitle');
     expect(result.modifiedCount).toBe(1);
     expect(result.conflicts).toHaveLength(1); // Content mismatch + same ID
+    expect(result.conflicts[0]).toMatchObject({
+      id: '1',
+      winner: 'remote',
+      reason: 'newer_timestamp',
+    });
+    expect(result.summary.remoteWins).toBe(1);
   });
 
   it('resolves conflict with Last-Write-Wins (Local newer)', () => {
@@ -43,6 +54,7 @@ describe('SyncConflictService', () => {
     expect(result.merged[0].title).toBe('LocalTitle');
     expect(result.modifiedCount).toBe(0);
     expect(result.conflicts).toHaveLength(1);
+    expect(result.summary.localWins).toBe(1);
   });
 
   it('does not report conflict if contents are identical', () => {
@@ -55,7 +67,12 @@ describe('SyncConflictService', () => {
   });
 
   it('handles empty lists', () => {
-    expect(SyncConflictService.resolve([], [])).toEqual({ merged: [], modifiedCount: 0, conflicts: [] });
+    expect(SyncConflictService.resolve([], [])).toEqual({
+      merged: [],
+      modifiedCount: 0,
+      conflicts: [],
+      summary: SyncConflictService.emptySummary(),
+    });
   });
 
   it('flags conflicts when sensitive fields differ even if title and URL stay the same', () => {
@@ -79,5 +96,28 @@ describe('SyncConflictService', () => {
   it('returns remote from mergeOne when local is missing', () => {
     const remote = makeItem(9, '2024-01-05T10:00:00Z', { title: 'Remote Only' });
     expect(SyncConflictService.mergeOne(undefined, remote)).toBe(remote);
+  });
+
+  it('combines conflict summaries for multi-envelope pulls', () => {
+    expect(
+      SyncConflictService.combineSummaries(
+        {
+          ...SyncConflictService.emptySummary(),
+          conflictCount: 1,
+          localWins: 1,
+        },
+        {
+          ...SyncConflictService.emptySummary(),
+          conflictCount: 2,
+          remoteWins: 2,
+          modifiedCount: 2,
+        },
+      ),
+    ).toMatchObject({
+      conflictCount: 3,
+      localWins: 1,
+      remoteWins: 2,
+      modifiedCount: 2,
+    });
   });
 });

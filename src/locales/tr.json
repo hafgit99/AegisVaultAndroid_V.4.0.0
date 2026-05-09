@@ -50,7 +50,9 @@
             "card": "Kartlar",
             "identity": "Kimlikler",
             "note": "Notlar",
-            "wifi": "WiFi Ağları"
+            "wifi": "WiFi Ağları",
+            "crypto_wallet": "Kripto Kasa",
+            "document": "Belgeler"
         }
     },
     "fields": {
@@ -87,6 +89,16 @@
         "shared_space": "Ortak Alan",
         "shared_role": "Paylaşım Rolü",
         "shared_notes": "Paylaşım Notu",
+        "wallet_network": "Ag / Zincir",
+        "wallet_address": "Genel Adres",
+        "wallet_derivation_path": "Turetme Yolu",
+        "wallet_balance": "Manuel Bakiye",
+        "wallet_secret": "Seed / Ozel Anahtar (Istege bagli)",
+        "wallet_secret_placeholder": "Watch-only kayit icin bos birakin",
+        "document_type": "Belge Turu",
+        "document_number": "Belge Numarasi",
+        "document_issuer": "Duzenleyen Kurum",
+        "document_expiry": "Gecerlilik Tarihi",
         "copied": "Kopyalandı",
         "copy": "Panoya Kopyala",
         "copied_symbol": "✓",
@@ -364,11 +376,12 @@
             "clear_title": "Kayıtları Temizle",
             "clear_confirm": "Tüm güvenlik olay kayıtları silinsin mi?",
             "clear_btn": "Temizle",
+            "compacted_unlock": "{{count}} kasa açılışı tek audit kaydında toplandı",
             "status": {
                 "success": "Başarılı",
                 "failed": "Başarısız",
                 "blocked": "Engellendi",
-                "info": "FIDO2 Passkey bind kayıtlarını buradan yönetebilir, çalınan cihazların erişimini iptal edebilirsiniz."
+                "info": "Bilgi"
             },
             "events": {
                 "vault_unlock": "Kasa kilidi açma",
@@ -483,28 +496,47 @@
         "risk_medium": "Orta Risk",
         "risk_high": "Yüksek Risk",
         "metrics": {
+            "missingSecondFactor": "Eksik 2FA",
+            "passkeyReady": "Passkey Hazir",
+            "agingCredentials": "Eski Kimlik Bilgileri",
+            "sensitiveSharing": "Hassas Paylasim",
+            "aliasExposure": "Alias Riski",
+            "weakPasswords": "Zayif Parolalar",
+            "reusedPasswords": "Tekrar Kullanilan Parolalar",
             "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
             "passkey_ready": "Passkey Destekli",
             "aging_credentials": "Bu sır 180 günden eski görünüyor.",
-            "sensitive_sharing": "Bu paylaşılan kaydın incelemesi yapılmamış."
+            "sensitive_sharing": "Bu paylaşılan kaydın incelemesi yapılmamış.",
+            "alias_exposure": "Alias Riski",
+            "weak_password": "Zayif Parolalar",
+            "reused_password": "Tekrar Kullanilan Parolalar"
         },
         "issue": {
             "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
             "aging_credentials": "Bu sır 180 günden eski görünüyor.",
             "sensitive_sharing": "Bu paylaşılan kaydın incelemesi yapılmamış.",
-            "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik."
+            "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik.",
+            "alias_exposure": "Alias adresi aciga cikmis, fazla yeniden kullanilmis veya rotasyon bekliyor.",
+            "weak_password": "Kisa, dusuk cesitlilikte veya tekrarli karakter iceren parola kayitlari var.",
+            "reused_password": "Ayni parola birden fazla kasa kaydinda tekrar kullaniliyor."
         },
         "action": {
             "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
             "aging_credentials": "Bu sır 180 günden eski görünüyor.",
             "sensitive_sharing": "Bu paylaşılan kaydın incelemesi yapılmamış.",
-            "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik."
+            "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik.",
+            "alias_exposure": "Aciga cikan alias adreslerini yenileyin ve onemli servislerde tekil alias kullanin.",
+            "weak_password": "Zayif sirlari guclu uretilmis parolalarla degistirin.",
+            "reused_password": "Her onemli hesap icin benzersiz parola olacak sekilde tekrar kullanilan parolalari degistirin."
         },
         "detail": {
             "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
             "aging_credentials": "Bu sır 180 günden eski görünüyor.",
             "sensitive_sharing": "Bu paylaşılan kaydın incelemesi yapılmamış.",
-            "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik."
+            "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik.",
+            "alias_exposure": "Bu login kaydinda acik alias, rotasyon isareti veya yuksek alias yeniden kullanimi var.",
+            "weak_password": "Bu parola yerel Watchtower guc kontrolunden gecemedi.",
+            "reused_password": "Bu parola baska bir kasa kaydinda da kullaniliyor."
         },
         "triage_title": "Eylem Kuyruğu ({{count}})",
         "reviewed_title": "İncelenenler ({{count}})",
@@ -598,6 +630,8 @@
         "list_subtitle": "Bekleyen pairinglear, browser extension veya desktop istemcisi kodu sunduktan sonra onaylanabilir.",
         "empty": "Henuz browser veya desktop koprusu yok.",
         "pairing_code": "Pairing kodu: {{code}}",
+        "expires_at": "Kod suresi: {{date}}",
+        "capabilities": "Desktop v5 yetenekleri: {{count}}",
         "platforms": {
             "browser_extension": "Browser extension",
             "desktop_app": "Desktop uygulamasi"
@@ -605,11 +639,15 @@
         "status": {
             "pending": "Bekliyor",
             "paired": "Eslesti",
-            "revoked": "Iptal edildi"
+            "revoked": "Iptal edildi",
+            "expired": "Suresi doldu",
+            "stale": "Inceleme gerekli"
         },
         "metrics": {
             "paired": "Eslesen kopruler",
             "pending": "Bekleyen kopruler",
+            "expired": "Suresi dolan kodlar",
+            "stale": "Inceleme gerekenler",
             "browser": "Browser kopruleri",
             "desktop": "Desktop kopruleri"
         },
@@ -837,6 +875,8 @@
         "msg_exp_ok": "✅ Dışa Aktarıldı",
         "msg_saved": "Dosya kaydedildi:\\\\n{{path}}",
         "msg_err": "Hata",
+        "fmt_canonical_lbl": "V5 Canonical JSON",
+        "fmt_canonical_desc": "Masaustu v5 ile uyumlu canonical disari aktarim; gecis, senkronizasyon dogrulama ve sifreli yedek denetimi icin kullanilir.",
         "encrypted_recommended": "Onerilen sifreli format",
         "show_plain_exports": "Gelismis: CSV / JSON disari aktarimlarini goster",
         "hide_plain_exports": "Duz metin disari aktarimlari gizle",

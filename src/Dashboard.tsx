@@ -83,6 +83,8 @@ const getCatIcon = (c: string) =>
     identity: '\uD83E\uDEAA',
     note: '\uD83D\uDCDD',
     wifi: '\uD83D\uDCF6',
+    crypto_wallet: '\u20BF',
+    document: '\uD83D\uDCC4',
   }[c] || '\uD83D\uDD11');
 const getCatColor = (c: string) =>
   ({
@@ -92,6 +94,8 @@ const getCatColor = (c: string) =>
     identity: 'rgba(245,158,11,0.15)',
     note: 'rgba(139,92,246,0.15)',
     wifi: 'rgba(59,130,246,0.15)',
+    crypto_wallet: 'rgba(34,197,94,0.15)',
+    document: 'rgba(100,116,139,0.15)',
   }[c] || C.sageLight);
 const getCats = (t: any) => [
   { id: 'all', label: t('vault.categories.all'), icon: '\uD83D\uDCCB' },
@@ -101,6 +105,8 @@ const getCats = (t: any) => [
   { id: 'identity', label: t('vault.categories.identity'), icon: '\uD83E\uDEAA' },
   { id: 'note', label: t('vault.categories.note'), icon: '\uD83D\uDCDD' },
   { id: 'wifi', label: t('vault.categories.wifi'), icon: '\uD83D\uDCF6' },
+  { id: 'crypto_wallet', label: t('vault.categories.crypto_wallet'), icon: '\u20BF' },
+  { id: 'document', label: t('vault.categories.document'), icon: '\uD83D\uDCC4' },
 ];
 export type { Tab };
 
@@ -586,7 +592,7 @@ const VaultView = ({
       >
         <Text style={{ fontSize: 16, marginRight: 8 }}>{'\uD83D\uDD0D'}</Text>
         <TextInput
-          style={s.srchIn}
+          style={[s.srchIn, { color: theme.navy }]}
           placeholder={t('vault.search')}
           placeholderTextColor={theme.muted}
           value={search}

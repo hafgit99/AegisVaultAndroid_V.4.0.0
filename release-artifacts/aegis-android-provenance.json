@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "https://aegis-vault.dev/provenance/android-release/v1",
+  "generatedAt": "2026-05-08T21:06:51.663Z",
+  "subject": {
+    "name": "AegisAndroid",
+    "version": "4.2.0",
+    "packageName": "com.aegisandroid"
+  },
+  "source": {
+    "repository": "",
+    "commit": "",
+    "branch": "",
+    "dirty": false
+  },
+  "build": {
+    "node": "v22.20.0",
+    "platform": "win32",
+    "arch": "x64",
+    "commands": [
+      "npm ci",
+      "npm run lint",
+      "npx tsc --noEmit",
+      "cd android && ./gradlew assembleRelease"
+    ]
+  },
+  "materials": [
+    {
+      "path": "package-lock.json",
+      "sha256": "887759d4faa04d2f214eb668a5a64a241effa1a124d0df9a2602fed6e3286844"
+    },
+    {
+      "path": "android/app/build.gradle",
+      "sha256": "8e40f71f9192f81ad7df4b90b11726429fe04b1ead6db7122a24b73b1d203048"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "AegisVault_V.4.2.0.apk",
+      "path": "android/app/build/outputs/apk/release/AegisVault_V.4.2.0.apk",
+      "sha256": "d7d4f98eb261f06880b93c94f31f87c0322cee76a3600200cb110cd1439026f7",
+      "bytes": 20394397
+    }
+  ],
+  "sbom": {
+    "path": "release-artifacts/aegis-android-sbom.cdx.json"
+  }
+}

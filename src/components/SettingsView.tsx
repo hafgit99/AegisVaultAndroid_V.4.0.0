@@ -96,6 +96,26 @@ export const SettingsView = ({
     return i18n.exists(key) ? t(key) : status;
   };
 
+  const auditDetailsLabel = (ev: any) => {
+    if (ev.event_type === 'audit_log_cleared') {
+      return '';
+    }
+    try {
+      const d = ev.details ? JSON.parse(ev.details) : {};
+      if (ev.event_type === 'vault_unlock' && ev.event_status === 'success') {
+        return Number(d.count || 0) > 1
+          ? t('settings.audit.compacted_unlock', { count: d.count })
+          : '';
+      }
+      return Object.entries(d)
+        .slice(0, 2)
+        .map(([k, v]) => `${k}:${String(v)}`)
+        .join(' \u2022 ');
+    } catch {
+      return '';
+    }
+  };
+
   const loadAudit = async () => {
     setAuditLoading(true);
     const events = await SecurityModule.getAuditEvents(30);
@@ -220,7 +240,7 @@ export const SettingsView = ({
       </View>
 
       <Text style={[s.sec, { color: theme.navy }]}>
-        {t('settings.security.title')}
+        {t('settings.security')}
       </Text>
       <View
         style={[
@@ -436,16 +456,7 @@ export const SettingsView = ({
           </Text>
         ) : (
           auditEvents.slice(0, 12).map(ev => {
-            let detailsText = '';
-            try {
-              const d = ev.details ? JSON.parse(ev.details) : {};
-              detailsText = Object.entries(d)
-                .slice(0, 2)
-                .map(([k, v]) => `${k}:${String(v)}`)
-                .join(' \u2022 ');
-            } catch {
-              detailsText = '';
-            }
+            const detailsText = auditDetailsLabel(ev);
 
             const statusColor =
               ev.event_status === 'success'

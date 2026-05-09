@@ -105,6 +105,8 @@ export const PairingWorkspaceModal = ({
             {[
               { key: 'paired', value: summary.paired },
               { key: 'pending', value: summary.pending },
+              { key: 'expired', value: summary.expiredPending },
+              { key: 'stale', value: summary.stalePaired },
               { key: 'browser', value: summary.browserExtension },
               { key: 'desktop', value: summary.desktopApp },
             ].map(metric => (
@@ -230,7 +232,16 @@ export const PairingWorkspaceModal = ({
               </View>
             ) : (
               <View style={{ gap: 10, marginTop: 12 }}>
-                {records.map(record => (
+                {records.map(record => {
+                  const session = BrowserPairingService.getSessionState(record);
+                  const handshake = BrowserPairingService.buildDesktopV5Handshake(record);
+                  const stateKey = session.expired
+                    ? 'expired'
+                    : session.stale
+                    ? 'stale'
+                    : record.status;
+
+                  return (
                   <View
                     key={record.id}
                     style={{
@@ -255,7 +266,7 @@ export const PairingWorkspaceModal = ({
                         </Text>
                         <Text style={{ color: theme.muted, fontSize: 11, marginTop: 4 }}>
                           {t(`pairing_workspace.platforms.${record.platform}`)} •{' '}
-                          {t(`pairing_workspace.status.${record.status}`)}
+                          {t(`pairing_workspace.status.${stateKey}`)}
                         </Text>
                         {record.origin ? (
                           <Text style={{ color: theme.muted, fontSize: 11, marginTop: 2 }}>
@@ -267,11 +278,21 @@ export const PairingWorkspaceModal = ({
                             code: record.pairingCode,
                           })}
                         </Text>
+                        <Text style={{ color: theme.muted, fontSize: 11, marginTop: 4 }}>
+                          {t('pairing_workspace.expires_at', {
+                            date: new Date(session.expiresAt).toLocaleString(),
+                          })}
+                        </Text>
+                        <Text style={{ color: theme.muted, fontSize: 11, marginTop: 4 }}>
+                          {t('pairing_workspace.capabilities', {
+                            count: handshake.capabilities.length,
+                          })}
+                        </Text>
                       </View>
                     </View>
 
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-                      {record.status === 'pending' ? (
+                      {record.status === 'pending' && !session.expired ? (
                         <TouchableOpacity onPress={() => markPaired(record.id)}>
                           <Text style={{ color: theme.sage, fontWeight: '700', fontSize: 12 }}>
                             {t('pairing_workspace.actions.confirm')}
@@ -287,7 +308,8 @@ export const PairingWorkspaceModal = ({
                       ) : null}
                     </View>
                   </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>

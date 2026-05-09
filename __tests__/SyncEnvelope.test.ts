@@ -16,7 +16,12 @@ describe('SyncEnvelopeUtil', () => {
     );
 
     expect(envelope).toMatchObject({
-      version: '1.0',
+      version: '1.1',
+      protocol: {
+        schemaVersion: '1.1',
+        minSupportedVersion: '1.0',
+        compatibility: expect.arrayContaining(['desktop-v5-canonical']),
+      },
       sessionId: 'session-1',
       deviceId: 'device-1',
       sequenceNumber: 7,
@@ -26,6 +31,8 @@ describe('SyncEnvelopeUtil', () => {
       metadata: {
         entryCount: 3,
         vaultId: 'vault-a',
+        delta: true,
+        conflictPolicy: 'last_write_wins',
       },
     });
     expect(SyncEnvelopeUtil.validate(envelope)).toBe(true);
@@ -45,6 +52,19 @@ describe('SyncEnvelopeUtil', () => {
     );
 
     expect(envelope.metadata).toBeUndefined();
+  });
+
+  it('accepts legacy v1 envelopes for backward compatibility', () => {
+    expect(
+      SyncEnvelopeUtil.validate({
+        version: '1.0',
+        sessionId: 'session-legacy',
+        deviceId: 'device-legacy',
+        payload: 'payload',
+        iv: 'iv',
+        hmac: 'hmac',
+      } as any),
+    ).toBe(true);
   });
 
   it('rejects malformed or unsupported envelopes', () => {

@@ -11,10 +11,55 @@ import type { VaultItem } from './SecurityModule';
 export interface SyncConflictResult {
   merged: VaultItem[];
   modifiedCount: number;
-  conflicts: Array<{ local: VaultItem; remote: VaultItem }>;
+  conflicts: SyncConflict[];
+  summary: SyncConflictSummary;
+}
+
+export interface SyncConflict {
+  id: string;
+  local: VaultItem;
+  remote: VaultItem;
+  winner: 'local' | 'remote';
+  reason: 'newer_timestamp' | 'equal_timestamp_local_preferred';
+  localUpdatedAt?: string;
+  remoteUpdatedAt?: string;
+}
+
+export interface SyncConflictSummary {
+  policy: 'last_write_wins';
+  conflictCount: number;
+  localWins: number;
+  remoteWins: number;
+  remoteInsertions: number;
+  modifiedCount: number;
 }
 
 export class SyncConflictService {
+  static emptySummary(): SyncConflictSummary {
+    return {
+      policy: 'last_write_wins',
+      conflictCount: 0,
+      localWins: 0,
+      remoteWins: 0,
+      remoteInsertions: 0,
+      modifiedCount: 0,
+    };
+  }
+
+  static combineSummaries(
+    left: SyncConflictSummary,
+    right: SyncConflictSummary,
+  ): SyncConflictSummary {
+    return {
+      policy: 'last_write_wins',
+      conflictCount: left.conflictCount + right.conflictCount,
+      localWins: left.localWins + right.localWins,
+      remoteWins: left.remoteWins + right.remoteWins,
+      remoteInsertions: left.remoteInsertions + right.remoteInsertions,
+      modifiedCount: left.modifiedCount + right.modifiedCount,
+    };
+  }
+
   private static buildSignature(item: VaultItem): string {
     return JSON.stringify({
       id: item.id ?? null,
@@ -43,8 +88,11 @@ export class SyncConflictService {
     
     const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
     const merged: VaultItem[] = [];
-    const conflicts: Array<{ local: VaultItem; remote: VaultItem }> = [];
+    const conflicts: SyncConflict[] = [];
     let modifiedCount = 0;
+    let localWins = 0;
+    let remoteWins = 0;
+    let remoteInsertions = 0;
 
     allIds.forEach(id => {
       const l = localMap.get(id);
@@ -59,15 +107,35 @@ export class SyncConflictService {
         const lSig = this.buildSignature(l);
         const rSig = this.buildSignature(r);
 
-        if (lSig !== rSig) {
-            conflicts.push({ local: l, remote: r });
-        }
-
         if (lTime >= rTime) {
           merged.push(l);
+          if (lSig !== rSig) {
+            localWins++;
+            conflicts.push({
+              id,
+              local: l,
+              remote: r,
+              winner: 'local',
+              reason: lTime === rTime ? 'equal_timestamp_local_preferred' : 'newer_timestamp',
+              localUpdatedAt: l.updated_at,
+              remoteUpdatedAt: r.updated_at,
+            });
+          }
         } else {
           merged.push(r);
           modifiedCount++;
+          if (lSig !== rSig) {
+            remoteWins++;
+            conflicts.push({
+              id,
+              local: l,
+              remote: r,
+              winner: 'remote',
+              reason: 'newer_timestamp',
+              localUpdatedAt: l.updated_at,
+              remoteUpdatedAt: r.updated_at,
+            });
+          }
         }
       } else if (l) {
         // Local only
@@ -76,10 +144,23 @@ export class SyncConflictService {
         // Remote only (newly added elsewhere)
         merged.push(r);
         modifiedCount++;
+        remoteInsertions++;
       }
     });
 
-    return { merged, modifiedCount, conflicts };
+    return {
+      merged,
+      modifiedCount,
+      conflicts,
+      summary: {
+        policy: 'last_write_wins',
+        conflictCount: conflicts.length,
+        localWins,
+        remoteWins,
+        remoteInsertions,
+        modifiedCount,
+      },
+    };
   }
 
   /**

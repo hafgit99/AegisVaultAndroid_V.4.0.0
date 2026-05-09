@@ -1,6 +1,6 @@
 {
   "name": "AegisAndroid",
-  "version": "4.2.0",
+  "version": "5.0.0",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "postinstall": "node scripts/patch-gradle-repos.js",
     "relay": "node scripts/relay-server.js",
+    "release:provenance": "node scripts/generate-release-provenance.js",
+    "release:sbom": "node scripts/generate-release-provenance.js",
     "start": "react-native start",
     "test": "jest",
     "test:mutation": "stryker run",

@@ -559,6 +559,63 @@ export const DetailModal = ({
             })}
           </>
         );
+      case 'crypto_wallet':
+        return (
+          <>
+            {DField({
+              label: t('fields.wallet_network'),
+              value: data.network,
+              copyKey: 'cwnet',
+            })}
+            {DField({
+              label: t('fields.wallet_address'),
+              value: data.address,
+              copyKey: 'cwaddr',
+            })}
+            {DField({
+              label: t('fields.wallet_derivation_path'),
+              value: data.derivation_path,
+              copyKey: 'cwpath',
+            })}
+            {DField({
+              label: t('fields.wallet_balance'),
+              value: data.manual_balance,
+              copyKey: 'cwbal',
+            })}
+            {DField({
+              label: t('fields.wallet_secret'),
+              value: item.password,
+              secret: true,
+              copyKey: 'cwsec',
+            })}
+          </>
+        );
+      case 'document':
+        return (
+          <>
+            {DField({
+              label: t('fields.document_type'),
+              value: data.document_type,
+              copyKey: 'doctype',
+            })}
+            {DField({
+              label: t('fields.document_number'),
+              value: data.document_number,
+              secret: true,
+              copyKey: 'docnum',
+            })}
+            {DField({
+              label: t('fields.document_issuer'),
+              value: data.issuer,
+              copyKey: 'docissuer',
+            })}
+            {DField({
+              label: t('fields.document_expiry'),
+              value: data.expires_at,
+              copyKey: 'docexp',
+            })}
+          </>
+        );
       default:
         return (
           <>

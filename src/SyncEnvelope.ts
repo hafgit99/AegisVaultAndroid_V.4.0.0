@@ -8,6 +8,11 @@
 
 export interface SyncEnvelope {
   version: string;
+  protocol?: {
+    schemaVersion: '1.1';
+    minSupportedVersion: '1.0';
+    compatibility: string[];
+  };
   sessionId: string;
   deviceId: string;
   timestamp: string;
@@ -18,6 +23,9 @@ export interface SyncEnvelope {
   metadata?: {
     entryCount: number;
     vaultId?: string;
+    delta?: boolean;
+    conflictPolicy?: 'last_write_wins';
+    baseSequence?: number;
   };
 }
 
@@ -27,10 +35,27 @@ export class SyncEnvelopeUtil {
     iv: string,
     hmac: string,
     deviceId: string,
-    options: { sessionId: string; sequenceNumber: number; entryCount?: number; vaultId?: string }
+    options: {
+      sessionId: string;
+      sequenceNumber: number;
+      entryCount?: number;
+      vaultId?: string;
+      delta?: boolean;
+      baseSequence?: number;
+      compatibility?: string[];
+    }
   ): SyncEnvelope {
     return {
-      version: '1.0',
+      version: '1.1',
+      protocol: {
+        schemaVersion: '1.1',
+        minSupportedVersion: '1.0',
+        compatibility: options.compatibility || [
+          'desktop-v5-canonical',
+          'android-delta-sync',
+          'lww-conflict-summary',
+        ],
+      },
       sessionId: options.sessionId,
       deviceId,
       timestamp: new Date().toISOString(),
@@ -38,9 +63,12 @@ export class SyncEnvelopeUtil {
       payload,
       iv,
       hmac,
-      metadata: options.entryCount ? { 
+      metadata: options.entryCount ? {
           entryCount: options.entryCount,
-          vaultId: options.vaultId
+          vaultId: options.vaultId,
+          delta: options.delta ?? true,
+          conflictPolicy: 'last_write_wins',
+          baseSequence: options.baseSequence,
       } : undefined,
     };
   }
@@ -50,7 +78,13 @@ export class SyncEnvelopeUtil {
     if (!env.version || !env.sessionId || !env.deviceId || !env.payload || !env.iv || !env.hmac) {
       return false;
     }
-    // We only support version 1.0 for now
-    return env.version === '1.0';
+    if (env.version === '1.0') {
+      return true;
+    }
+    if (env.version !== '1.1') {
+      return false;
+    }
+    return env.protocol?.schemaVersion === '1.1' &&
+      env.protocol?.minSupportedVersion === '1.0';
   }
 }

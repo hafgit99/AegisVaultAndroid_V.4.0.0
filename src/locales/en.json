@@ -50,7 +50,9 @@
             "card": "Cards",
             "identity": "Identities",
             "note": "Notes",
-            "wifi": "WiFi Networks"
+            "wifi": "WiFi Networks",
+            "crypto_wallet": "Crypto Vault",
+            "document": "Documents"
         }
     },
     "fields": {
@@ -87,6 +89,16 @@
         "shared_space": "Shared Space",
         "shared_role": "Shared Role",
         "shared_notes": "Sharing Notes",
+        "wallet_network": "Network / Chain",
+        "wallet_address": "Public Address",
+        "wallet_derivation_path": "Derivation Path",
+        "wallet_balance": "Manual Balance",
+        "wallet_secret": "Seed / Private Key (Optional)",
+        "wallet_secret_placeholder": "Leave empty for watch-only records",
+        "document_type": "Document Type",
+        "document_number": "Document Number",
+        "document_issuer": "Issuer",
+        "document_expiry": "Expiry Date",
         "copied": "Copied",
         "copy": "Copy",
         "copied_symbol": "✓",
@@ -364,6 +376,7 @@
             "clear_title": "Clear Audit Logs",
             "clear_confirm": "Clear all security audit events?",
             "clear_btn": "Clear",
+            "compacted_unlock": "{{count}} vault unlocks compacted into one audit entry",
             "status": {
                 "success": "Success",
                 "failed": "Failed",
@@ -483,28 +496,47 @@
         "risk_medium": "Medium Risk",
         "risk_high": "High Risk",
         "metrics": {
+            "missingSecondFactor": "Missing 2FA",
+            "passkeyReady": "Passkey Ready",
+            "agingCredentials": "Aging Credentials",
+            "sensitiveSharing": "Sensitive Sharing",
+            "aliasExposure": "Alias Exposure",
+            "weakPasswords": "Weak Passwords",
+            "reusedPasswords": "Reused Passwords",
             "missing_2fa": "Missing 2FA",
             "passkey_ready": "Passkey Ready",
             "aging_credentials": "Aging Credentials",
-            "sensitive_sharing": "Sensitive Sharing"
+            "sensitive_sharing": "Sensitive Sharing",
+            "alias_exposure": "Alias Exposure",
+            "weak_password": "Weak Passwords",
+            "reused_password": "Reused Passwords"
         },
         "issue": {
             "missing_2fa": "Login entries without TOTP or passkey protection.",
             "aging_credentials": "Credentials older than 180 days that need rotation.",
             "sensitive_sharing": "Shared entries without a completed access review.",
-            "missing_identity": "Login entries missing username or domain metadata."
+            "missing_identity": "Login entries missing username or domain metadata.",
+            "alias_exposure": "Alias addresses that are exposed, reused too broadly, or due for rotation.",
+            "weak_password": "Password entries with short, low-variety, or repeated-character secrets.",
+            "reused_password": "The same password is reused across multiple vault entries."
         },
         "action": {
             "missing_2fa": "Add TOTP or a related passkey to password-based accounts first.",
             "aging_credentials": "Rotate secrets that have not changed for 180+ days.",
             "sensitive_sharing": "Complete the access review for shared sensitive entries.",
-            "missing_identity": "Fill in username/email and domain for login entries."
+            "missing_identity": "Fill in username/email and domain for login entries.",
+            "alias_exposure": "Rotate exposed aliases and prefer one alias per important service.",
+            "weak_password": "Replace weak secrets with strong generated passwords.",
+            "reused_password": "Rotate reused passwords so every important account has a unique secret."
         },
         "detail": {
             "missing_2fa": "This login has no TOTP seed and no related passkey.",
             "aging_credentials": "This credential appears older than 180 days.",
             "sensitive_sharing": "This shared entry has not been reviewed.",
-            "missing_identity": "This entry is missing username or domain metadata."
+            "missing_identity": "This entry is missing username or domain metadata.",
+            "alias_exposure": "This login has an exposed alias, a rotation flag, or high alias reuse.",
+            "weak_password": "This password fails local Watchtower strength checks.",
+            "reused_password": "This password is reused by another vault entry."
         },
         "triage_title": "Action Queue ({{count}})",
         "reviewed_title": "Reviewed ({{count}})",
@@ -598,6 +630,8 @@
         "list_subtitle": "Pending pairings can be approved after the browser extension or desktop client presents the code.",
         "empty": "No browser or desktop bridge exists yet.",
         "pairing_code": "Pairing code: {{code}}",
+        "expires_at": "Code expires: {{date}}",
+        "capabilities": "Desktop v5 capabilities: {{count}}",
         "platforms": {
             "browser_extension": "Browser extension",
             "desktop_app": "Desktop app"
@@ -605,11 +639,15 @@
         "status": {
             "pending": "Pending",
             "paired": "Paired",
-            "revoked": "Revoked"
+            "revoked": "Revoked",
+            "expired": "Expired",
+            "stale": "Needs review"
         },
         "metrics": {
             "paired": "Paired bridges",
             "pending": "Pending bridges",
+            "expired": "Expired codes",
+            "stale": "Review needed",
             "browser": "Browser bridges",
             "desktop": "Desktop bridges"
         },
@@ -843,6 +881,8 @@
         "msg_exp_ok": "✅ Exported",
         "msg_saved": "File saved:\\n{{path}}",
         "msg_err": "Error",
+        "fmt_canonical_lbl": "V5 Canonical JSON",
+        "fmt_canonical_desc": "Desktop v5 compatible canonical export for migration, sync validation, and encrypted bundle audits.",
         "msg_plain_exp_err": "Plain-text export failed.",
         "msg_enc_exp_ok": "\uD83D\uDD10 Encrypted Export Successful",
         "msg_pw_req": "Please enter a password.",

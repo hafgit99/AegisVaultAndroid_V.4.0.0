@@ -1336,6 +1336,27 @@ export class SecurityModule {
       return;
     }
     try {
+      if (eventType === 'vault_unlock' && eventStatus === 'success') {
+        const existingRows = this.db.executeSync(
+          "SELECT id, details FROM vault_audit_log WHERE event_type='vault_unlock' AND event_status='success' ORDER BY created_at DESC LIMIT 1",
+        ).rows || [];
+        const latest = existingRows[0];
+        if (latest?.id !== undefined && latest?.id !== null) {
+          let count = 1;
+          try {
+            const parsed = latest.details ? JSON.parse(latest.details) : {};
+            const parsedCount = Number(parsed.count);
+            count = Number.isFinite(parsedCount) && parsedCount > 0 ? Math.floor(parsedCount) : 1;
+          } catch {
+            count = 1;
+          }
+          this.db.executeSync(
+            'UPDATE vault_audit_log SET details=?, created_at=CURRENT_TIMESTAMP WHERE id=?',
+            [JSON.stringify({ count: count + 1 }), latest.id],
+          );
+          return;
+        }
+      }
       this.db.executeSync(
         'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
         [eventType, eventStatus, JSON.stringify(this.sanitizeAuditDetails(details))],

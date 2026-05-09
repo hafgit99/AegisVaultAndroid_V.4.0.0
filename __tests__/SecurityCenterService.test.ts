@@ -23,7 +23,7 @@ const makeLogin = (overrides: Partial<MockVaultItem> = {}): MockVaultItem => ({
   id: 1,
   title: 'Test Login',
   username: 'user@test.com',
-  password: 'secret123',
+  password: 'Str0ng!Generated!Secret',
   url: 'https://test.com',
   notes: '',
   category: 'login',
@@ -49,6 +49,7 @@ const makeLoginWith2FA = (id: number): MockVaultItem =>
   makeLogin({
     id,
     title: `2FA Login ${id}`,
+    password: `Str0ng!Generated!Secret${id}`,
     data: JSON.stringify({ totp_secret: 'JBSWY3DPEHPK3PXP' }),
   });
 
@@ -174,6 +175,7 @@ describe('SecurityCenterService', () => {
         {
           ...makeLoginWith2FA(2),
           category: 'passkey',
+          password: '',
           title: 'Passkey 1',
         },
         {
@@ -202,6 +204,102 @@ describe('SecurityCenterService', () => {
       const summary = SecurityCenterService.buildSummary(items as any);
       expect(summary.metrics.sensitiveSharing).toBe(1);
       expect(summary.issues.some(i => i.type === 'sensitive_sharing')).toBe(true);
+    });
+
+    it('flags exposed aliases and alias rotation gaps', () => {
+      const items = [
+        makeLoginWith2FA(51),
+        makeLogin({
+          id: 52,
+          title: 'Alias exposed',
+          data: JSON.stringify({
+            totp_secret: 'JBSWY3DPEHPK3PXP',
+            alias: {
+              exposed: true,
+              reuseCount: 1,
+            },
+          }),
+        }),
+        makeLogin({
+          id: 53,
+          title: 'Alias reuse',
+          data: JSON.stringify({
+            totp_secret: 'JBSWY3DPEHPK3PXP',
+            alias: {
+              reuseCount: 4,
+            },
+          }),
+        }),
+      ];
+
+      const summary = SecurityCenterService.buildSummary(items as any);
+
+      expect(summary.metrics.aliasExposure).toBe(2);
+      expect(summary.issues).toEqual(
+        expect.arrayContaining([
+          {
+            type: 'alias_exposure',
+            count: 2,
+            severity: 'medium',
+            messageKey: 'security_center.issue.alias_exposure',
+            actionKey: 'security_center.action.alias_exposure',
+          },
+        ]),
+      );
+      expect(summary.triageItems.filter(i => i.issueType === 'alias_exposure')).toHaveLength(2);
+    });
+
+    it('ignores alias privacy signals on non-login categories', () => {
+      const summary = SecurityCenterService.buildSummary([
+        {
+          ...makeLoginWith2FA(54),
+          category: 'note',
+          password: '',
+          data: JSON.stringify({ alias_exposed: true, alias: { reuseCount: 10 } }),
+        },
+      ] as any);
+
+      expect(summary.metrics.aliasExposure).toBe(0);
+      expect(summary.issues.some(i => i.type === 'alias_exposure')).toBe(false);
+    });
+
+    it('includes imported password-bearing records in local Watchtower checks', () => {
+      const items = [
+        {
+          ...makeLogin({
+            id: 61,
+            category: 'other',
+            title: 'Imported weak card',
+            password: '123456',
+            username: '',
+            url: '',
+          }),
+        },
+        {
+          ...makeLogin({
+            id: 62,
+            category: 'note',
+            title: 'Imported reuse A',
+            password: 'SamePassword123!',
+          }),
+        },
+        {
+          ...makeLogin({
+            id: 63,
+            category: 'card',
+            title: 'Imported reuse B',
+            password: 'SamePassword123!',
+          }),
+        },
+      ];
+
+      const summary = SecurityCenterService.buildSummary(items as any);
+
+      expect(summary.metrics.weakPasswords).toBe(1);
+      expect(summary.metrics.reusedPasswords).toBe(2);
+      expect(summary.issues.some(i => i.type === 'weak_password')).toBe(true);
+      expect(summary.issues.some(i => i.type === 'reused_password')).toBe(true);
+      expect(summary.score).toBeLessThan(100);
     });
 
     it('does not count malformed 2fa or sharing payloads as enabled signals', () => {
@@ -239,6 +337,7 @@ describe('SecurityCenterService', () => {
             updated_at: oldDate,
           }),
           category: 'passkey',
+          password: '',
         },
       ];
 
@@ -314,8 +413,8 @@ describe('SecurityCenterService', () => {
       expect(identityItem).toMatchObject({
         itemId: 0,
         title: 'Untitled',
-        actionKey: 'settings.security_center.action.missing_identity',
-        detailKey: 'settings.security_center.detail.missing_identity',
+        actionKey: 'security_center.action.missing_identity',
+        detailKey: 'security_center.detail.missing_identity',
       });
     });
 
@@ -340,22 +439,22 @@ describe('SecurityCenterService', () => {
             type: 'missing_2fa',
             count: 3,
             severity: 'high',
-            messageKey: 'settings.security_center.issue.missing_2fa',
-            actionKey: 'settings.security_center.action.missing_2fa',
+            messageKey: 'security_center.issue.missing_2fa',
+            actionKey: 'security_center.action.missing_2fa',
           },
           {
             type: 'aging_credentials',
             count: 1,
             severity: 'medium',
-            messageKey: 'settings.security_center.issue.aging_credentials',
-            actionKey: 'settings.security_center.action.aging_credentials',
+            messageKey: 'security_center.issue.aging_credentials',
+            actionKey: 'security_center.action.aging_credentials',
           },
           {
             type: 'sensitive_sharing',
             count: 1,
             severity: 'high',
-            messageKey: 'settings.security_center.issue.sensitive_sharing',
-            actionKey: 'settings.security_center.action.sensitive_sharing',
+            messageKey: 'security_center.issue.sensitive_sharing',
+            actionKey: 'security_center.action.sensitive_sharing',
           },
         ]),
       );
@@ -365,34 +464,38 @@ describe('SecurityCenterService', () => {
 
     it('classifies medium and high risk score boundaries correctly', () => {
       const mediumRiskItems = [
-        makeLogin({ id: 31, username: '', url: '' }),
-        makeLogin({ id: 32, username: '', url: '' }),
-        makeLogin({ id: 33, username: '', url: '' }),
-        makeLogin({ id: 34, username: '', url: '' }),
+        makeLogin({ id: 31, username: '', url: '', password: 'Boundary!Secret31' }),
+        makeLogin({ id: 32, username: '', url: '', password: 'Boundary!Secret32' }),
+        makeLogin({ id: 33, username: '', url: '', password: 'Boundary!Secret33' }),
+        makeLogin({ id: 34, username: '', url: '', password: 'Boundary!Secret34' }),
       ];
       const highRiskItems = [
         makeLogin({
           id: 41,
           username: '',
           url: '',
+          password: 'Boundary!Secret41',
           data: JSON.stringify({ shared_space_id: 'space-41', shared_reviewed: false }),
         }),
         makeLogin({
           id: 42,
           username: '',
           url: '',
+          password: 'Boundary!Secret42',
           data: JSON.stringify({ shared_space_id: 'space-42', shared_reviewed: false }),
         }),
         makeLogin({
           id: 43,
           username: '',
           url: '',
+          password: 'Boundary!Secret43',
           data: JSON.stringify({ shared_space_id: 'space-43', shared_reviewed: false }),
         }),
         makeLogin({
           id: 44,
           username: '',
           url: '',
+          password: 'Boundary!Secret44',
           data: JSON.stringify({ shared_space_id: 'space-44', shared_reviewed: false }),
         }),
       ];

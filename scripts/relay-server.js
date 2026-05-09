@@ -11,6 +11,7 @@ const DATA_FILE = path.join(__dirname, 'relay-data.json');
 const MAX_ENVELOPES_PER_SESSION = 500;
 const MAX_NONCES_PER_SESSION = 400;
 const TOKEN_MAX_AGE_MS = 5 * 60 * 1000;
+const SUPPORTED_SYNC_VERSIONS = new Set(['1.0', '1.1']);
 
 function loadStore() {
   try {
@@ -68,7 +69,7 @@ function isValidEnvelope(env) {
   return Boolean(
     env &&
       typeof env === 'object' &&
-      env.version === '1.0' &&
+      SUPPORTED_SYNC_VERSIONS.has(env.version) &&
       typeof env.sessionId === 'string' &&
       env.sessionId.length > 0 &&
       typeof env.deviceId === 'string' &&
@@ -76,6 +77,20 @@ function isValidEnvelope(env) {
       typeof env.payload === 'string' &&
       typeof env.iv === 'string' &&
       typeof env.hmac === 'string',
+  );
+}
+
+function isValidProtocolMetadata(env) {
+  if (env.version === '1.0') {
+    return true;
+  }
+  return Boolean(
+    env.protocol &&
+      env.protocol.schemaVersion === '1.1' &&
+      env.protocol.minSupportedVersion === '1.0' &&
+      Array.isArray(env.protocol.compatibility) &&
+      env.metadata &&
+      env.metadata.conflictPolicy === 'last_write_wins',
   );
 }
 
@@ -354,6 +369,13 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Invalid envelope' });
         return;
       }
+      if (!isValidProtocolMetadata(envelope)) {
+        sendJson(res, 426, {
+          error: 'Unsupported sync protocol metadata',
+          supportedVersions: Array.from(SUPPORTED_SYNC_VERSIONS),
+        });
+        return;
+      }
 
       const sessionId = envelope.sessionId;
       const current = store.sessions[sessionId] || [];
@@ -375,8 +397,10 @@ const server = http.createServer(async (req, res) => {
 
       sendJson(res, 200, {
         ok: true,
+        protocolVersion: envelope.version,
         stored: store.sessions[sessionId].length,
         sequenceNumber: envelope.sequenceNumber,
+        conflictPolicy: envelope.metadata?.conflictPolicy || 'last_write_wins',
       });
     } catch (error) {
       sendJson(res, 400, { error: error instanceof Error ? error.message : 'Bad request' });
@@ -407,5 +431,7 @@ if (require.main === module) {
 
 module.exports = {
   evaluateIntegrityPayload,
+  isValidEnvelope,
+  isValidProtocolMetadata,
   loadServiceAccount,
 };

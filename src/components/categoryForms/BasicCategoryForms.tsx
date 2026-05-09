@@ -365,6 +365,117 @@ export const WifiForm = ({
   );
 };
 
+export const CryptoWalletForm = ({ form, setForm, showPw, t, theme }: any) => (
+  <View>
+    <Field
+      label={t('fields.wallet_network')}
+      value={form.data?.network}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, network: v } })
+      }
+      placeholder="Bitcoin, Ethereum, Solana..."
+      theme={theme}
+    />
+    <Field
+      label={t('fields.wallet_address')}
+      value={form.data?.address}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, address: v } })
+      }
+      placeholder="bc1..., 0x..., ..."
+      theme={theme}
+    />
+    <Field
+      label={t('fields.wallet_derivation_path')}
+      value={form.data?.derivation_path}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, derivation_path: v } })
+      }
+      placeholder="m/44'/0'/0'/0/0"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.wallet_balance')}
+      value={form.data?.manual_balance}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, manual_balance: v } })
+      }
+      placeholder="0.00"
+      keyboardType="decimal-pad"
+      theme={theme}
+    />
+    <Field
+      label={t('fields.wallet_secret')}
+      value={form.password}
+      onChange={(v: string) => setForm({ ...form, password: v })}
+      placeholder={t('fields.wallet_secret_placeholder')}
+      multiline
+      lines={3}
+      secure={!showPw}
+      theme={theme}
+    />
+    <Field
+      label={t('vault.notes')}
+      value={form.notes}
+      onChange={(v: string) => setForm({ ...form, notes: v })}
+      placeholder="..."
+      multiline
+      lines={3}
+      theme={theme}
+    />
+  </View>
+);
+
+export const DocumentForm = ({ form, setForm, t, theme }: any) => (
+  <View>
+    <Field
+      label={t('fields.document_type')}
+      value={form.data?.document_type}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, document_type: v } })
+      }
+      placeholder="Passport, license, contract..."
+      theme={theme}
+    />
+    <Field
+      label={t('fields.document_number')}
+      value={form.data?.document_number}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, document_number: v } })
+      }
+      placeholder="..."
+      theme={theme}
+    />
+    <Field
+      label={t('fields.document_issuer')}
+      value={form.data?.issuer}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, issuer: v } })
+      }
+      placeholder="..."
+      theme={theme}
+    />
+    <Field
+      label={t('fields.document_expiry')}
+      value={form.data?.expires_at}
+      onChange={(v: string) =>
+        setForm({ ...form, data: { ...form.data, expires_at: v } })
+      }
+      placeholder="YYYY-MM-DD"
+      theme={theme}
+    />
+    <Field
+      label={t('vault.notes')}
+      value={form.notes}
+      onChange={(v: string) => setForm({ ...form, notes: v })}
+      placeholder="..."
+      multiline
+      lines={3}
+      theme={theme}
+    />
+  </View>
+);
+
 const styles = StyleSheet.create({
   flexOne: {
     flex: 1,

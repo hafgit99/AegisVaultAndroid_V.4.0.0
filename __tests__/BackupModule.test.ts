@@ -137,7 +137,24 @@ describe('BackupModule current API', () => {
     expect(parsed.app).toBe('Aegis Vault Android');
     expect(parsed.count).toBe(2);
     expect(parsed.sharedSpaces).toHaveLength(1);
+    expect(parsed.canonical.schemaVersion).toBe('5.0.0');
+    expect(parsed.canonical.items[0].category).toBe('login');
     expect(parsed.items[0].title).toBe('GitHub');
+  });
+
+  test('exportCanonicalJSON writes desktop v5 canonical export data', async () => {
+    const path = await BackupModule.exportCanonicalJSON();
+
+    expect(path).toContain('aegis_vault_canonical_v5_');
+    expect(path.startsWith('/mock/documents/')).toBe(true);
+    const writeCalls = (RNFS.writeFile as jest.Mock).mock.calls;
+    const [, content] = writeCalls[writeCalls.length - 1];
+    const parsed = JSON.parse(content);
+    expect(parsed.kind).toBe('aegis-vault-canonical');
+    expect(parsed.schemaVersion).toBe('5.0.0');
+    expect(parsed.sharedSpaces).toHaveLength(1);
+    expect(parsed.items).toHaveLength(2);
+    expect(parsed.items[0].secret.password).toBe('secret-1');
   });
 
   test('exportEncrypted persists Argon2id metadata', async () => {
@@ -159,6 +176,8 @@ describe('BackupModule current API', () => {
     );
     expect(decryptedPayload.sharedSpaces).toHaveLength(1);
     expect(decryptedPayload.items).toHaveLength(2);
+    expect(decryptedPayload.canonical.schemaVersion).toBe('5.0.0');
+    expect(decryptedPayload.canonical.items).toHaveLength(2);
   });
 
   test('importEncryptedAegis decrypts and imports items', async () => {
@@ -317,6 +336,12 @@ describe('BackupModule current API', () => {
         id: 'json',
         label: 'JSON',
         description: 'tr:backup.fmt_json_desc',
+      }),
+      expect.objectContaining({
+        id: 'canonical_json',
+        label: 'tr:backup.fmt_canonical_lbl',
+        icon: 'V5',
+        description: 'tr:backup.fmt_canonical_desc',
       }),
       expect.objectContaining({
         id: 'aegis_encrypted',

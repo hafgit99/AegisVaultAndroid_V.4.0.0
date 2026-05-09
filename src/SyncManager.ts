@@ -13,7 +13,7 @@
 import { SyncCryptoService, type SyncCryptoPackage } from './SyncCryptoService';
 import { SyncEnvelopeUtil, type SyncEnvelope } from './SyncEnvelope';
 import { SyncDeviceService } from './SyncDeviceService';
-import { SyncConflictService } from './SyncConflictService';
+import { SyncConflictService, type SyncConflictSummary } from './SyncConflictService';
 import { SecureAppSettings } from './SecureAppSettings';
 import { SecurityModule, type VaultItem } from './SecurityModule';
 import { DeltaSyncModule } from './DeltaSyncModule';
@@ -248,7 +248,9 @@ export class SyncManager {
         { 
             sessionId: settings.syncSessionId, 
             sequenceNumber: newSequence, 
-            entryCount: items.length 
+            entryCount: deltaItems.length,
+            delta: true,
+            baseSequence: settings.syncLastSequence,
         }
       );
 
@@ -300,7 +302,11 @@ export class SyncManager {
     rootSecret: Buffer,
     localItems: VaultItem[],
     db: any
-  ): Promise<{ merged: VaultItem[]; newSequence: number } | null> {
+  ): Promise<{
+    merged: VaultItem[];
+    newSequence: number;
+    conflictSummary: SyncConflictSummary;
+  } | null> {
     const settings = SecureAppSettings.get();
     if (!settings.syncSessionId || !settings.relayUrl) return null;
 
@@ -335,13 +341,18 @@ export class SyncManager {
 
       const envelopes = JSON.parse(response.body) as SyncEnvelope[];
       if (envelopes.length === 0) {
-        return { merged: localItems, newSequence: settings.syncLastSequence };
+        return {
+          merged: localItems,
+          newSequence: settings.syncLastSequence,
+          conflictSummary: SyncConflictService.emptySummary(),
+        };
       }
 
       const { encryptionKey, authKey } = SyncCryptoService.deriveSubKeys(rootSecret);
 
       let currentMerged = localItems;
       let maxSeq = settings.syncLastSequence;
+      let aggregateConflictSummary = SyncConflictService.emptySummary();
 
       for (const env of envelopes) {
         if (!SyncEnvelopeUtil.validate(env)) continue;
@@ -362,6 +373,10 @@ export class SyncManager {
         if (remoteItems) {
           const result = SyncConflictService.resolve(currentMerged, remoteItems);
           currentMerged = result.merged;
+          aggregateConflictSummary = SyncConflictService.combineSummaries(
+            aggregateConflictSummary,
+            result.summary,
+          );
           maxSeq = Math.max(maxSeq, env.sequenceNumber);
         }
       }
@@ -374,7 +389,11 @@ export class SyncManager {
         await SecurityModule.applyMergedSyncItems(currentMerged);
       }
 
-      return { merged: currentMerged, newSequence: maxSeq };
+      return {
+        merged: currentMerged,
+        newSequence: maxSeq,
+        conflictSummary: aggregateConflictSummary,
+      };
     } catch (err) {
       console.error('[SyncManager] Pull exception:', err);
       return null;

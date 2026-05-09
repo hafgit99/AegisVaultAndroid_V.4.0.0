@@ -78,8 +78,32 @@ describe('SyncManager', () => {
     
     (SyncEnvelopeUtil.validate as jest.Mock).mockReturnValue(true);
     
-    (SyncConflictService.resolve as jest.Mock).mockImplementation((local, remote) => ({ 
-      merged: [...local, ...remote] 
+    (SyncConflictService.resolve as jest.Mock).mockImplementation((local, remote) => ({
+      merged: [...local, ...remote],
+      summary: {
+        policy: 'last_write_wins',
+        conflictCount: 0,
+        localWins: 0,
+        remoteWins: 0,
+        remoteInsertions: remote.length,
+        modifiedCount: remote.length,
+      },
+    }));
+    (SyncConflictService.emptySummary as jest.Mock).mockReturnValue({
+      policy: 'last_write_wins',
+      conflictCount: 0,
+      localWins: 0,
+      remoteWins: 0,
+      remoteInsertions: 0,
+      modifiedCount: 0,
+    });
+    (SyncConflictService.combineSummaries as jest.Mock).mockImplementation((left, right) => ({
+      policy: 'last_write_wins',
+      conflictCount: left.conflictCount + right.conflictCount,
+      localWins: left.localWins + right.localWins,
+      remoteWins: left.remoteWins + right.remoteWins,
+      remoteInsertions: left.remoteInsertions + right.remoteInsertions,
+      modifiedCount: left.modifiedCount + right.modifiedCount,
     }));
 
     (SyncCryptoService.verifyAndDecrypt as jest.Mock).mockImplementation(() => [{ id: 1, title: 'Test' }]);
@@ -122,6 +146,18 @@ describe('SyncManager', () => {
         expect.stringContaining('"sequenceNumber":11'),
         'sha256/test_pin'
     );
+    expect(SyncEnvelopeUtil.create).toHaveBeenCalledWith(
+      'pkg',
+      'iv',
+      'hmac',
+      'device_123',
+      expect.objectContaining({
+        baseSequence: 10,
+        delta: true,
+        entryCount: 1,
+        sequenceNumber: 11,
+      }),
+    );
     expect(SecureAppSettings.update).toHaveBeenCalledWith(
       expect.objectContaining({
         syncLastSequence: 11,
@@ -157,6 +193,11 @@ describe('SyncManager', () => {
     expect(result?.newSequence).toBe(12);
     expect(result?.merged.length).toBe(1);
     expect(result?.merged[0].title).toBe('Test');
+    expect(result?.conflictSummary).toMatchObject({
+      policy: 'last_write_wins',
+      remoteInsertions: 1,
+      modifiedCount: 1,
+    });
     expect(SecureAppSettings.update).toHaveBeenCalledWith({ syncLastSequence: 12 }, {});
     expect(SecurityModule.applyMergedSyncItems).toHaveBeenCalledWith(result?.merged);
   });
@@ -370,14 +411,40 @@ describe('SyncManager', () => {
       .mockReturnValueOnce([{ id: 1, title: 'Remote 1' }])
       .mockReturnValueOnce([{ id: 2, title: 'Remote 2' }]);
     (SyncConflictService.resolve as jest.Mock)
-      .mockReturnValueOnce({ merged: [{ id: 1, title: 'Remote 1' }] })
-      .mockReturnValueOnce({ merged: [{ id: 1, title: 'Remote 1' }, { id: 2, title: 'Remote 2' }] });
+      .mockReturnValueOnce({
+        merged: [{ id: 1, title: 'Remote 1' }],
+        summary: {
+          policy: 'last_write_wins',
+          conflictCount: 1,
+          localWins: 0,
+          remoteWins: 1,
+          remoteInsertions: 0,
+          modifiedCount: 1,
+        },
+      })
+      .mockReturnValueOnce({
+        merged: [{ id: 1, title: 'Remote 1' }, { id: 2, title: 'Remote 2' }],
+        summary: {
+          policy: 'last_write_wins',
+          conflictCount: 0,
+          localWins: 0,
+          remoteWins: 0,
+          remoteInsertions: 1,
+          modifiedCount: 1,
+        },
+      });
 
     const result = await SyncManager.pullAndMerge(mockSecret, [], {});
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       merged: [{ id: 1, title: 'Remote 1' }, { id: 2, title: 'Remote 2' }],
       newSequence: 15,
+      conflictSummary: {
+        conflictCount: 1,
+        remoteWins: 1,
+        remoteInsertions: 1,
+        modifiedCount: 2,
+      },
     });
     expect(SecureAppSettings.update).toHaveBeenCalledWith({ syncLastSequence: 15 }, {});
   });
@@ -445,7 +512,7 @@ describe('SyncManager', () => {
     const localItems = [{ id: 7, title: 'Local' }] as any;
     const result = await SyncManager.pullAndMerge(mockSecret, localItems, {});
 
-    expect(result).toEqual({ merged: localItems, newSequence: 10 });
+    expect(result).toMatchObject({ merged: localItems, newSequence: 10 });
     expect(global.fetch).toHaveBeenNthCalledWith(
       1,
       'https://relay.aegis.com/v1/sync/pull/session_abc?after=10',
@@ -469,7 +536,7 @@ describe('SyncManager', () => {
     const localItems = [{ id: 5, title: 'Local' }] as any;
     const result = await SyncManager.pullAndMerge(mockSecret, localItems, {});
 
-    expect(result).toEqual({ merged: localItems, newSequence: 10 });
+    expect(result).toMatchObject({ merged: localItems, newSequence: 10 });
     expect(SyncCryptoService.verifyAndDecrypt).not.toHaveBeenCalled();
     expect(SecureAppSettings.update).not.toHaveBeenCalled();
   });
@@ -496,7 +563,7 @@ describe('SyncManager', () => {
     const localItems = [{ id: 5, title: 'Local' }] as any;
     const result = await SyncManager.pullAndMerge(mockSecret, localItems, {});
 
-    expect(result).toEqual({ merged: localItems, newSequence: 10 });
+    expect(result).toMatchObject({ merged: localItems, newSequence: 10 });
     expect(SyncConflictService.resolve).not.toHaveBeenCalled();
     expect(SecureAppSettings.update).not.toHaveBeenCalled();
   });
