@@ -2,143 +2,171 @@
   <img src="docs/screenshots/aegis_android_banner.png" width="880" alt="Aegis Vault Android banner">
 </p>
 
-<h1 align="center">Aegis Vault Android</h1>
+<h1 align="center">Aegis Vault Android 5.0</h1>
 
 <p align="center">
-  Privacy-first Android password manager with local-first storage,
-  hardware-backed protection, and optional end-to-end encrypted sync.
+  Local-first Android password manager with encrypted vault storage, biometric access,
+  desktop v5 interoperability, passkey workflows, and optional end-to-end encrypted sync.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-5.0.0-2563eb?style=for-the-badge" alt="Version 5.0.0">
   <img src="https://img.shields.io/badge/platform-Android-34a853?style=for-the-badge&logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/react%20native-0.84.0-0ea5e9?style=for-the-badge&logo=react&logoColor=white" alt="React Native 0.84.0">
-  <img src="https://img.shields.io/badge/security-AES--256%20GCM-15803d?style=for-the-badge" alt="AES-256-GCM">
+  <img src="https://img.shields.io/badge/React%20Native-0.84.0-0ea5e9?style=for-the-badge&logo=react&logoColor=white" alt="React Native 0.84.0">
+  <img src="https://img.shields.io/badge/security-AES--256--GCM%20%2B%20Argon2-15803d?style=for-the-badge" alt="AES-256-GCM and Argon2">
   <img src="https://img.shields.io/badge/license-MIT-f59e0b?style=for-the-badge" alt="MIT license">
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> |
-  <a href="#core-capabilities">Core Capabilities</a> |
-  <a href="#security-model">Security Model</a> |
-  <a href="#screens">Screens</a> |
-  <a href="#tech-stack">Tech Stack</a> |
-  <a href="#getting-started">Getting Started</a> |
-  <a href="#documentation">Documentation</a>
+  <a href="#what-is-new-in-50">What is New in 5.0</a> |
+  <a href="#core-capabilities">Capabilities</a> |
+  <a href="#security-model">Security</a> |
+  <a href="#desktop-v5-compatibility">Desktop v5</a> |
+  <a href="#build-and-run">Build</a> |
+  <a href="#documentation">Docs</a>
 </p>
 
 ## Overview
 
-**Aegis Vault Android** is a modern Android password manager built for users who want strong local control over their secrets. The project prioritizes secure on-device storage, biometric access, encrypted backup and restore flows, and a zero-knowledge sync architecture for multi-device use cases.
+**Aegis Vault Android 5.0** is an offline-first password manager for Android. It is designed around a simple principle: secrets should remain encrypted, portable, and under the user's control by default.
 
-Unlike cloud-first password managers, Aegis Vault is designed around the idea that your vault should remain under your control by default. Sensitive data stays encrypted at rest, encryption keys are protected through Android security primitives, and optional sync transports do not require surrendering plaintext data to a server.
+The app combines SQLCipher-backed local storage, Android biometric access, encrypted backup/restore, local security scoring, passkey-oriented workflows, and optional encrypted relay sync. Version 5.0 focuses on aligning the Android app with the Aegis desktop v5 data model while improving release trust, auditability, and security-center visibility.
 
-## Why This Project
+## What is New in 5.0
 
-- Local-first by default, with optional encrypted relay sync.
-- Security-focused architecture built around device trust, biometric access, and encrypted persistence.
-- Open source codebase with test automation, mutation testing, and security-oriented documentation.
-- Designed as a product-grade Android app, not just a demo repository.
+- **Desktop v5 canonical vault format**: Android exports and imports a canonical v5 JSON representation for migration, sync validation, and cross-platform compatibility.
+- **Encrypted v5 backup envelope**: Encrypted exports can include the desktop-compatible canonical payload while preserving Android legacy item compatibility.
+- **Crypto wallet and document records**: New category mapping keeps wallet and document entries portable across Android and desktop.
+- **Desktop/browser pairing workspace**: Short-lived pairing records describe bridge capabilities without exposing app secrets.
+- **Relay protocol and conflict metadata**: Sync envelopes now carry protocol versioning, device metadata, conflict summaries, and desktop-v5 compatibility markers.
+- **Security Center improvements**: Local Watchtower-style checks cover weak passwords, reused passwords, missing 2FA/passkeys, aging credentials, sensitive sharing, and alias exposure.
+- **Release provenance and SBOM**: Release metadata can be generated as CycloneDX SBOM plus a provenance manifest for audit-friendly distribution.
+- **Bilingual and dark-mode polish**: Product surfaces continue to support Turkish/English text and dark-mode-safe UI choices.
 
 ## Quick Facts
 
 | Area | Details |
 | --- | --- |
 | Current version | `5.0.0` |
-| Security Status | **Hardened** (Mutation Testing >70-97%) |
+| Android package | `com.aegisandroid` |
 | Runtime | React Native `0.84.0`, React `19.2.3`, Hermes |
-| Minimum Node.js | `18+` |
-| Android support | Android 7.0+ |
-| Local storage | SQLCipher via `@op-engineering/op-sqlite` |
-| Crypto stack | AES-256-GCM, Argon2, Android Keystore |
-| Test stack | Jest + Stryker mutation testing |
+| Language | TypeScript |
+| State management | Zustand |
+| Local database | SQLCipher via `@op-engineering/op-sqlite` |
+| Cryptography | AES-256-GCM, Argon2, Android Keystore integrations |
+| Authentication | Biometric unlock and device-bound flows |
+| Testing | Jest, TypeScript checks, ESLint, Stryker mutation testing |
+| Release trust | SBOM and provenance generation scripts |
 
 ## Core Capabilities
 
-### Vault and authentication
+### Vault management
 
-- Encrypted local vault storage with SQLCipher-backed persistence
-- Biometric unlock support through `react-native-biometrics`
-- Auto-lock controls and secure access policies
-- Device trust and degraded-device policy handling
+- Encrypted local vault records for logins, cards, identities, notes, Wi-Fi, passkeys, crypto wallets, and documents.
+- Fast local search and category filtering.
+- Favorites, trash/restore flows, attachments, password history, and audit logging.
+- Dark-mode-aware and bilingual UI surfaces.
 
-### Password and security workflows
+### Authentication and hardening
 
-- Password record management and local search
-- Security Center analysis and vault health scoring
-- Password history and brute-force protection flows
-- Passkey and WebAuthn-oriented backend preparation
+- Biometric-gated vault unlock.
+- Auto-lock and clipboard-clear controls.
+- Brute-force protection and security audit history.
+- Device trust and security policy controls.
+- Local password generator with bias-resistant generation logic.
 
-### Backup, recovery, and sync
+### Security Center
 
-- Encrypted export and import flows with Universal Import Engine (Desktop v4 compat)
-- Structured backup and restore support
-- Delta sync and relay-based synchronization (Hardened)
-- Emergency access and recovery approval workflows (Hardened)
+- Local vault health score.
+- Weak password and reused password detection.
+- Missing 2FA/passkey analysis.
+- Aging credential and sensitive sharing review.
+- Alias exposure and high-risk account triage.
+
+### Backup, import, and migration
+
+- Encrypted backup export/import.
+- Plain JSON/CSV export paths with explicit risk messaging.
+- Desktop v5 canonical JSON export.
+- Desktop encrypted import compatibility layer.
+- Release-friendly provenance and SBOM generation.
+
+### Sync and ecosystem bridge
+
+- Optional end-to-end encrypted relay sync.
+- Conflict metadata and sync envelope validation.
+- Desktop/browser pairing records with capability negotiation.
+- Self-hosted relay support with HTTPS and certificate pin expectations.
 
 ## Security Model
 
-The application follows a pragmatic zero-knowledge direction:
+Aegis Vault Android follows a pragmatic zero-knowledge architecture:
 
-- Vault data is encrypted before persistence.
-- Sensitive material is protected with Android security primitives wherever possible.
-- Backup flows use strong modern cryptography, including Argon2-based derivation paths.
-- Sync is built around encrypted envelopes so the relay layer does not need plaintext access.
+- Vault secrets are encrypted before they are persisted.
+- Local database access is protected through SQLCipher.
+- Backup and sync payloads are encrypted before leaving the device.
+- Relay infrastructure is treated as an untrusted transport layer.
+- Security-sensitive activity is recorded in a local audit log.
+- Release artifacts can be accompanied by SBOM and provenance files.
 
 ```mermaid
 graph TD
-    A["Biometric / Device Authentication"] --> B["Android Keystore"]
-    B --> C["Derived Session Keys"]
-    C --> D["AES-256-GCM Vault Encryption"]
-    D --> E["SQLCipher Local Storage"]
-    D --> F["Encrypted Backup / Sync Payloads"]
-    E --> G["Security Center and Policy Enforcement"]
+    A["User authentication"] --> B["Android biometric / device security"]
+    B --> C["Key derivation and session material"]
+    C --> D["AES-256-GCM encrypted vault payloads"]
+    D --> E["SQLCipher local storage"]
+    D --> F["Encrypted backup exports"]
+    D --> G["Encrypted relay sync envelopes"]
+    E --> H["Security Center and audit log"]
 ```
 
-### Security quality gates
+### Quality gates
 
-We utilize **Mutation Testing** (Stryker) to ensure our security logic is resilient against logical regressions.
+The project uses layered quality checks:
 
-| Module | Mutation Score | Status |
-| --- | --- | --- |
-| `SecurityModule.ts` | **>70.00%** | ✅ Pass |
-| `DeltaSyncModule.ts` | **>70.00%** | ✅ Pass |
-| `EmergencyAccessModule.ts` | **>70.00%** | ✅ Pass |
-| `SyncEnvelope.ts` | **97.22%** | ✅ Pass |
-| `WearOSModule.ts` | **97.44%** | ✅ Pass |
-| **Overall Project** | **97.37%** | ✅ Pass |
+- `npx tsc --noEmit` for TypeScript correctness.
+- `npm run lint` for static analysis.
+- `npm test` for Jest regression coverage.
+- `npm run test:mutation` for Stryker mutation testing.
+- Targeted security modules are maintained with a goal of **70%+ mutation score**.
+
+> Note: repository-wide mutation score depends on the selected Stryker configuration and included files. Security-critical modules are tracked separately so hardening work remains measurable.
+
+## Desktop v5 Compatibility
+
+Version 5.0 introduces a shared interoperability layer for Android and desktop:
+
+- Canonical schema version: `5.0.0`.
+- Export kind: `aegis-vault-canonical`.
+- Compatibility marker: `desktop-v5-canonical`.
+- Bridge pairing kind: `aegis-desktop-bridge-pairing`.
+- Supported portable categories include login, card, identity, note, Wi-Fi, passkey, crypto wallet, and document.
+
+Useful tests:
+
+```bash
+npx jest --no-coverage --runInBand --testTimeout=30000 --runTestsByPath __tests__/CanonicalVaultSchema.test.ts __tests__/BackupModule.test.ts
+npx jest --no-coverage --runInBand --testTimeout=30000 --runTestsByPath __tests__/SyncEnvelope.test.ts __tests__/RelayProtocol.test.ts __tests__/BrowserPairingService.test.ts
+```
 
 ## Screens
 
 <p align="center">
   <img src="docs/screenshots/mobile-vault.png" width="250" alt="Vault screen">
-  <img src="docs/screenshots/mobile-security.png" width="250" alt="Security screen">
+  <img src="docs/screenshots/mobile-security.png" width="250" alt="Security Center screen">
   <img src="docs/screenshots/mobile-login.png" width="250" alt="Login screen">
 </p>
 
-## Tech Stack
+## Build and Run
 
-- React Native `0.84.0`
-- React `19.2.3`
-- TypeScript
-- Hermes JavaScript engine
-- `@op-engineering/op-sqlite` with SQLCipher enabled
-- `react-native-quick-crypto`
-- `react-native-argon2`
-- `react-native-biometrics`
-- Jest for automated tests
-- Stryker for mutation testing
-
-## Getting Started
-
-### Prerequisites
+### Requirements
 
 - Node.js `18+`
 - JDK `17`
-- Android Studio with Android SDK tooling
-- An Android emulator or a physical Android device
+- Android Studio and Android SDK tooling
+- Android emulator or physical Android device
 
-### Install and run
+### Development build
 
 ```bash
 git clone https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0.git
@@ -153,70 +181,81 @@ In a second terminal:
 npx react-native run-android
 ```
 
-### Useful scripts
+### Release build
 
-```bash
-npm test
-npm run test:mutation
-npm run android
-npm run relay
+Use environment variables for signing secrets. Do not commit passwords, keystores, or generated secret files.
+
+```powershell
+$env:RELEASE_STORE_FILE="F:\path\to\aegis-release.jks"
+$env:RELEASE_STORE_PASSWORD="***"
+$env:RELEASE_KEY_ALIAS="aegis-release"
+$env:RELEASE_KEY_PASSWORD="***"
+cd android
+.\gradlew.bat assembleRelease
 ```
 
-## Quality and Testing
+### Common scripts
 
-The repository includes both conventional automated tests and mutation testing to measure the strength of the test suite.
+```bash
+npm run lint
+npx tsc --noEmit
+npm test
+npm run test:mutation
+npm run relay
+npm run release:provenance
+```
 
-- **High-Fidelity Assertions**: Tests are designed to fail if core logic is altered.
-- **Mutation Resilience**: Achieved >70% coverage on critical security paths.
-- **Security Audit**: Regular `npm audit` checks (0 vulnerabilities).
-- **Hardening**: Ongoing work on passkey, backup, and sync services.
+## Release Trust Chain
+
+The repository includes a release metadata generator:
+
+```bash
+npm run release:provenance
+```
+
+It writes:
+
+- `release-artifacts/aegis-android-sbom.cdx.json`
+- `release-artifacts/aegis-android-provenance.json`
+
+The provenance file records package version, source metadata, build commands, material hashes, and discovered APK/AAB artifacts.
 
 ## Documentation
 
-### English
+### Product and user documentation
 
+- [English User Guide](docs/USER_GUIDE_EN.md)
+- [Turkish User Guide](docs/KULLANICI_KILAVUZU_TR.md)
 - [API Reference](docs/API_REFERENCE.md)
+- [Documentation Index](docs/README.md)
+
+### Security and release documentation
+
 - [Security Architecture](docs/SECURITY_ARCHITECTURE.md)
 - [Threat Model](docs/THREAT_MODEL.md)
-- [User Guide](docs/USER_GUIDE_EN.md)
-- [Release Notes 4.2.0](docs/RELEASE_NOTES_4.2.0.md)
 - [Release Readiness](docs/RELEASE_READINESS.md)
-
-### Turkish
-
-- [Kullanıcı Kılavuzu](docs/KULLANICI_KILAVUZU_TR.md)
-- [Test & Mutation Değerlendirme](docs/TEST_AUDIT_VE_MUTATION_DEGERLENDIRME_2026_04_14_TR.md)
-- [Cihaz Matrisi ve Saha Doğrulama](docs/CIHAZ_MATRISI_VE_SAHA_DOGRULAMA_TR.md)
-- [Kapsamlı Analiz Raporu](docs/KAPSAMLI_ANALIZ_RAPORU_V4_0_2_TR.md)
-- [Öncelikli Güvenlik İyileştirme Planı](docs/ONCELIKLI_GUVENLIK_IYILESTIRME_PLANI_TR.md)
-- [Android Güvenlik Doğrulama Planı](docs/ANDROID_GUVENLIK_DOGRULAMA_PLANI_2026_04_14_TR.md)
+- [Release Notes 5.0.0](docs/RELEASE_NOTES_5.0.0.md)
 - [Passkey WebAuthn ADR](docs/PASSKEY_WEBAUTHN_ADR_TR.md)
+- [Passkey Backend Checklist](docs/PASSKEY_BACKEND_IMPLEMENTATION_CHECKLIST_TR.md)
+- [Device Matrix Test Plan](docs/DEVICE_MATRIX_TEST_PLAN.md)
 
-## Roadmap Direction
+## Roadmap
 
-- Improve import and export interoperability
-- Expand sync reliability and conflict handling
-- Continue Security Center hardening
-- Extend passkey and device-trust workflows
-- Strengthen release engineering and field validation
+- Complete wider real-device validation for passkey, sync, sharing, pairing, and autofill flows.
+- Expand Security Center with stronger breach-intelligence workflows while preserving offline-first behavior.
+- Continue desktop/browser bridge hardening.
+- Improve reproducible release evidence and external audit readiness.
+- Keep mutation testing focused on security-critical modules.
 
-## Contributing
+## Responsible Disclosure
 
-Contributions are welcome, especially around:
-
-- Android security hardening
-- Test quality and mutation coverage
-- UX polish and accessibility
-- Documentation improvements
-- Interoperability and migration flows
-
-Before opening a pull request, review the relevant docs in [docs](docs/), especially the security and release-readiness material.
+Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md) for supported versions and reporting expectations.
 
 ## License
 
 This project is distributed under the [MIT License](LICENSE).
 
 <p align="center">
-  <strong>Your data. Your device. Your control.</strong><br>
+  <strong>Your vault. Your device. Your control.</strong><br>
   Maintained by <a href="https://github.com/hafgit99">hafgit99</a>
 </p>

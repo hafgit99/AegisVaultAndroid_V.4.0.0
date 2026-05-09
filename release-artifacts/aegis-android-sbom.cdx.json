@@ -1,14 +1,14 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:cf587a06-7004-41c9-b9bf-7cac7aaabad7",
+  "serialNumber": "urn:uuid:b7c52d93-2d0c-473c-aa4a-f9718f7dcd69",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-05-08T21:06:51.640Z",
+    "timestamp": "2026-05-09T09:01:32.923Z",
     "component": {
       "type": "application",
       "name": "AegisAndroid",
-      "version": "4.2.0"
+      "version": "5.0.0"
     }
   },
   "components": [
