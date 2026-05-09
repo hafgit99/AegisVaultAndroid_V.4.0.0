@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-4.2.0-2563eb?style=for-the-badge" alt="Version 4.2.0">
+  <img src="https://img.shields.io/badge/version-5.0.0-2563eb?style=for-the-badge" alt="Version 5.0.0">
   <img src="https://img.shields.io/badge/platform-Android-34a853?style=for-the-badge&logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/react%20native-0.84.0-0ea5e9?style=for-the-badge&logo=react&logoColor=white" alt="React Native 0.84.0">
   <img src="https://img.shields.io/badge/security-AES--256%20GCM-15803d?style=for-the-badge" alt="AES-256-GCM">
@@ -44,7 +44,7 @@ Unlike cloud-first password managers, Aegis Vault is designed around the idea th
 
 | Area | Details |
 | --- | --- |
-| Current version | `4.2.0` |
+| Current version | `5.0.0` |
 | Security Status | **Hardened** (Mutation Testing >70-97%) |
 | Runtime | React Native `0.84.0`, React `19.2.3`, Hermes |
 | Minimum Node.js | `18+` |
@@ -71,7 +71,7 @@ Unlike cloud-first password managers, Aegis Vault is designed around the idea th
 
 ### Backup, recovery, and sync
 
-- Encrypted export and import flows
+- Encrypted export and import flows with Universal Import Engine (Desktop v4 compat)
 - Structured backup and restore support
 - Delta sync and relay-based synchronization (Hardened)
 - Emergency access and recovery approval workflows (Hardened)
