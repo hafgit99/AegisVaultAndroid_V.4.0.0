@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   Animated,
   StyleSheet,
@@ -202,7 +203,12 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
   return (
     <View style={[s.container, { backgroundColor: palette.bg }]}>
-      <Text style={s.shieldIcon}>{'\uD83D\uDEE1\uFE0F'}</Text>
+      <Image
+        source={require('../assets/ic_launcher.jpg')}
+        style={s.appIcon}
+        resizeMode="contain"
+        accessibilityLabel="Aegis Vault app icon"
+      />
       <Text style={[s.title, { color: palette.navy }]}>{t('lock_screen.title')}</Text>
       <Text style={[s.subtitle, { color: palette.muted }]}>{authStatus}</Text>
 
@@ -310,7 +316,12 @@ const s = StyleSheet.create({
   disabledButton: { opacity: 0.4 },
   title: { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, marginBottom: 6 },
   subtitle: { fontSize: 13, marginBottom: 18, textAlign: 'center' },
-  shieldIcon: { fontSize: 42, marginBottom: 10 },
+  appIcon: {
+    width: 76,
+    height: 76,
+    marginBottom: 12,
+    borderRadius: 20,
+  },
   warningBox: { borderRadius: 14, padding: 14, marginBottom: 16, width: '100%' },
   integrityWarningBox: { borderWidth: 1 },
   warningTitle: { fontWeight: '700', fontSize: 13, textAlign: 'center' },
