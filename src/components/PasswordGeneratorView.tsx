@@ -34,6 +34,22 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
     Boolean(settings.excludeAmbiguousCharacters),
   );
   const [copied, setCopied] = useState(false);
+  const themeTokens = theme as AegisTheme & {
+    bgAccent?: string;
+    cardElevated?: string;
+    shadow?: string;
+    textPrimary?: string;
+    textSecondary?: string;
+    textTertiary?: string;
+    amber?: string;
+    amberBg?: string;
+    cyan?: string;
+  };
+  const primaryText = themeTokens.textPrimary || theme.navy;
+  const secondaryText = themeTokens.textSecondary || theme.muted;
+  const tertiaryText = themeTokens.textTertiary || theme.muted;
+  const elevatedCard = themeTokens.cardElevated || theme.card;
+  const accentBg = themeTokens.bgAccent || theme.sageLight;
 
   const generate = useCallback(() => {
     setPassword(
@@ -53,6 +69,28 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
   }, [generate]);
 
   const strength = SecurityModule.getPasswordStrength(password);
+  const strengthKey = strength.score > 5 ? 'excellent' : strength.score > 3 ? 'strong' : 'weak';
+  const optionCount = [uppercase, lowercase, numbers, symbols].filter(Boolean).length;
+  const generatorStats = [
+    {
+      label: t('generator.stats.length'),
+      value: String(length),
+      color: theme.sage,
+    },
+    {
+      label: t('generator.stats.entropy'),
+      value: t(`generator.strength.${strengthKey}`),
+      color: strength.color,
+    },
+    {
+      label: t('generator.stats.clipboard'),
+      value:
+        settings.clipboardClearSeconds > 0
+          ? `${settings.clipboardClearSeconds}s`
+          : t('generator.stats.manual'),
+      color: themeTokens.cyan || theme.sage,
+    },
+  ];
 
   const copyPassword = () => {
     Clipboard.setString(password);
@@ -74,20 +112,64 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
         { paddingBottom: 100 + (insets?.bottom || 0) },
       ]}
     >
-      <Text style={[styles.headerTitle, { color: theme.navy }]}>
-        {t('generator.title')}
-      </Text>
-      <Text style={[styles.headerSubtitle, { color: theme.sage }]}>
-        {t('generator.subtitle')}
-      </Text>
+      <View
+        style={[
+          styles.heroCard,
+          {
+            backgroundColor: elevatedCard,
+            borderColor: theme.cardBorder,
+            shadowColor: themeTokens.shadow || '#000000',
+          },
+        ]}
+      >
+        <Text style={[styles.heroEyebrow, { color: tertiaryText }]}>
+          {t('generator.eyebrow')}
+        </Text>
+        <Text style={[styles.headerTitle, { color: primaryText }]}>
+          {t('generator.title')}
+        </Text>
+        <Text style={[styles.headerSubtitle, { color: secondaryText }]}>
+          {t('generator.subtitle')}
+        </Text>
+        <View style={styles.statRow}>
+          {generatorStats.map(stat => (
+            <View
+              key={stat.label}
+              style={[
+                styles.statCard,
+                { backgroundColor: accentBg, borderColor: theme.cardBorder },
+              ]}
+            >
+              <Text style={[styles.statValue, { color: stat.color }]}>
+                {stat.value}
+              </Text>
+              <Text style={[styles.statLabel, { color: secondaryText }]}>
+                {stat.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
 
       <View
         style={[
           styles.passwordBox,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+          {
+            backgroundColor: elevatedCard,
+            borderColor: theme.cardBorder,
+            shadowColor: themeTokens.shadow || '#000000',
+          },
         ]}
       >
-        <Text style={[styles.passwordText, { color: theme.navy }]} selectable>
+        <View style={styles.passwordHeader}>
+          <Text style={[styles.passwordLabel, { color: tertiaryText }]}>
+            {t('generator.output_label')}
+          </Text>
+          <Text style={[styles.optionBadge, { color: theme.sage }]}>
+            {t('generator.options_enabled', { count: optionCount })}
+          </Text>
+        </View>
+        <Text style={[styles.passwordText, { color: primaryText }]} selectable>
           {password}
         </Text>
         <View style={styles.strengthRow}>
@@ -103,7 +185,7 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
             />
           </View>
           <Text style={[styles.strengthLabel, { color: strength.color }]}>
-            {t(`generator.strength.${strength.score > 3 ? 'strong' : 'weak'}`)}
+            {t(`generator.strength.${strengthKey}`)}
           </Text>
         </View>
       </View>
@@ -124,7 +206,7 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
             copied
               ? styles.copiedActionButton
               : {
-                  backgroundColor: theme.card,
+                  backgroundColor: elevatedCard,
                   borderColor: theme.cardBorder,
                 },
             !copied && styles.outlineActionButton,
@@ -135,7 +217,7 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
           <Text
             style={[
               styles.secondaryActionText,
-              { color: copied ? theme.green : theme.navy },
+              { color: copied ? theme.green : primaryText },
             ]}
           >
             {copied ? t('fields.copied') : t('generator.copy')}
@@ -146,10 +228,16 @@ export const PasswordGeneratorView = ({ theme, settings, insets }: Props) => {
       <View
         style={[
           styles.optionsBox,
-          { backgroundColor: theme.card, borderColor: theme.cardBorder },
+          { backgroundColor: elevatedCard, borderColor: theme.cardBorder },
         ]}
       >
-        <Text style={[styles.optionLabel, { color: theme.navy }]}>
+        <Text style={[styles.optionTitle, { color: primaryText }]}>
+          {t('generator.options_title')}
+        </Text>
+        <Text style={[styles.optionHint, { color: secondaryText }]}>
+          {t('generator.options_hint')}
+        </Text>
+        <Text style={[styles.optionLabel, { color: primaryText }]}>
           {t('generator.length')}: {length}
         </Text>
         <View style={styles.sliderRow}>
@@ -236,21 +324,47 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    marginBottom: 20,
-    opacity: 0.8,
+    lineHeight: 20,
+    marginTop: 7,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 6,
+    fontSize: 27,
+    fontWeight: '900',
+    marginTop: 5,
+  },
+  heroCard: {
+    borderRadius: 28,
+    borderWidth: 1,
+    marginBottom: 16,
+    padding: 18,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   optionLabel: {
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 12,
   },
+  optionHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  optionTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: 5,
+  },
   optionsBox: {
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
     padding: 16,
   },
@@ -262,12 +376,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 16,
     padding: 20,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    elevation: 2,
+  },
+  passwordHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  passwordLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   passwordText: {
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.5,
     lineHeight: 30,
+  },
+  optionBadge: {
+    fontSize: 11,
+    fontWeight: '900',
   },
   primaryActionText: {
     color: '#fff',
@@ -278,6 +412,27 @@ const styles = StyleSheet.create({
   },
   secondaryActionText: {
     fontWeight: '700',
+  },
+  statCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    padding: 10,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 14,
+    marginTop: 4,
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 16,
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '900',
   },
   sliderButton: {
     alignItems: 'center',

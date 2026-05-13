@@ -1,7 +1,12 @@
 {
     "lock_screen": {
         "title": "Aegis Vault",
+        "eyebrow": "Özel offline kasa",
         "prompt": "Kasayı açmak için doğrulama yapın",
+        "unlock_hint": "Doğrulama başarılı olana kadar kasanız bu cihazda şifreli kalır.",
+        "trust_local": "Yerel öncelikli",
+        "trust_crypto": "Şifreleme",
+        "trust_device": "Cihaza bağlı",
         "locked_out": "⏳ {{seconds}} sn beklemelisiniz",
         "brute_force_active": "🔐 Brute-force koruması aktif",
         "brute_force_desc": "{{fails}} başarısız deneme • {{seconds}} sn bekleniyor",
@@ -43,6 +48,25 @@
         "attachments": "Ekler",
         "items_count": "adet",
         "add_file": "Dosya Ekle",
+        "hero_eyebrow": "Şifreli çalışma alanı",
+        "hero_subtitle": "{{count}} korumalı kayıt • yerel öncelikli AES-256 kasa",
+        "refresh": "Yenile",
+        "filtered_summary": "{{category}} içinde {{count}} sonuç",
+        "unfiltered_summary": "{{count}} korumalı kayıt hazır",
+        "empty_title": "Kasanız hazır",
+        "empty_desc": "Daha güvenli offline kasanızı oluşturmak için ilk şifreli kaydı ekleyin.",
+        "empty_filtered_title": "Eşleşen kayıt yok",
+        "empty_filtered_desc": "Farklı bir arama deneyin veya aktif kategori filtresini temizleyin.",
+        "clear_filters": "Filtreleri temizle",
+        "add_first": "İlk kaydı ekle",
+        "item": {
+            "secure_record": "Güvenli kayıt"
+        },
+        "metrics": {
+            "total": "Toplam",
+            "passkeys": "Passkey",
+            "shared": "Paylaşılan"
+        },
         "categories": {
             "all": "Tümü",
             "login": "Girişler",
@@ -244,14 +268,44 @@
             }
         }
     },
+    "entry_form": {
+        "eyebrow_new": "Yeni kasa kaydı",
+        "eyebrow_edit": "Kasa kaydını düzenle",
+        "title_new": "Korumalı kayıt oluştur",
+        "title_edit": "Korumalı kaydı güncelle",
+        "subtitle": "Önce kategoriyi seçin, ardından bu kayıt için gereken alanları doldurun.",
+        "category": "Kategori",
+        "required": "Zorunlu alan",
+        "ready": "Hazır",
+        "missing": "Başlık eksik"
+    },
+    "entry_detail": {
+        "eyebrow": "Kasa kaydı",
+        "subtitle": "Hassas alanlar siz özellikle gösterene veya kopyalayana kadar maskeli kalır.",
+        "category": "Kategori",
+        "attachments": "Dosya",
+        "history": "Geçmiş"
+    },
     "generator": {
-        "title": "Zor Parolalar Üretin",
-        "subtitle": "Kriptografik olarak güvenli & cihaz içi PRNG",
+        "title": "Güçlü Parola Üret",
+        "eyebrow": "Parola stüdyosu",
+        "subtitle": "Kriptografik olarak güvenli üretim bu cihazda kalır.",
         "generate": "Yenile",
         "strength": {
-            "strong": "Güçlü Seçim",
-            "weak": "Bu gizli bilgi kısa veya tahmin edilmesi kolay görünüyor. Daha uzun ve rastgele bir değer kullanın."
+            "excellent": "Çok güçlü",
+            "strong": "Güçlü",
+            "weak": "Zayıf"
         },
+        "stats": {
+            "length": "Uzunluk",
+            "entropy": "Güç",
+            "clipboard": "Pano temizleme",
+            "manual": "Manuel"
+        },
+        "output_label": "Üretilen sır",
+        "options_enabled": "{{count}} set açık",
+        "options_title": "Üretim politikası",
+        "options_hint": "Uyumluluk için karakter setlerini ayarlayın; gereksiz yere rastgeleliği azaltmayın.",
         "length": "Şifre Uzunluğu",
         "uppercase": "Büyük Harfler (A-Z)",
         "lowercase": "Küçük Harfler (a-z)",
@@ -262,6 +316,28 @@
     },
     "settings": {
         "title": "Ayarlar",
+        "overview": {
+            "eyebrow": "Kontrol merkezi",
+            "title": "Güvenlik ayarlarına hızlı bakış",
+            "desc": "En önemli kasa korumalarını gözden geçirin ve yüksek etkili işlemlere doğrudan ulaşın.",
+            "auto_lock": "Oto kilit",
+            "clipboard": "Pano",
+            "audit": "Audit"
+        },
+        "quick": {
+            "title": "Hızlı işlemler",
+            "security_report": "Güvenlik raporu",
+            "security_report_desc": "Zayıf, tekrar kullanılan ve eski sırları inceleyin.",
+            "backup": "Yedekleme",
+            "backup_desc": "Şifreli kasa dosyalarını dışa veya içe aktarın.",
+            "autofill": "Autofill",
+            "autofill_desc": "Android otomatik doldurma ayarlarını açın.",
+            "lock": "Şimdi kilitle",
+            "lock_desc": "Kasayı hemen kapatıp korumaya alın."
+        },
+        "sections": {
+            "appearance": "Görünüm ve dil"
+        },
         "subtitle": "Kasa güvenlik ayarları",
         "security": "🛡 Güvenlik",
         "bio_login": "Biyometrik Giriş",
@@ -408,6 +484,9 @@
             "subtitle": "Zayıf, tekrar kullanılan ve benzer sırları tek ekranda inceleyin.",
             "entrypoint_desc": "Tüm kasadaki parola risklerini puanlayın ve problemli kayıtları hızlıca açın.",
             "loading": "Parola geçmişi yükleniyor...",
+            "overview_label": "Güvenlik duruşu",
+            "risk_posture": "Yerel kasa sağlık özeti",
+            "evidence_label": "Analiz kapsamı",
             "score_label": "Genel Risk Skoru",
             "checked": "{{count}} giriş kaydı yerel sertleştirme sinyalleri için analiz edildi",
             "actions_title": "Sertleştirme öncelikleri",
@@ -427,10 +506,10 @@
                 "medium": "Orta"
             },
             "issue_type": {
-                "weak": "Bu gizli bilgi kısa veya tahmin edilmesi kolay görünüyor. Daha uzun ve rastgele bir değer kullanın.",
-                "reused": "Bu gizli bilgi birden fazla kayıtta tekrar kullanılıyor. Tüm kopyaları değiştirin.",
-                "similar": "Bu gizli bilgi başka bir kayıtla fazla benzer. Küçük değişiklikler yerine tamamen farklı bir değer kullanın.",
-                "empty": "Bu kayıt için parola geçmişi yok."
+                "weak": "Zayıf",
+                "reused": "Tekrar kullanılmış",
+                "similar": "Benzer",
+                "empty": "Boş veya eksik"
             },
             "field": {
                 "password": "Parola",
@@ -439,10 +518,10 @@
                 "cvv": "CVV"
             },
             "summary": {
-                "reused": "Bu gizli bilgi birden fazla kayıtta tekrar kullanılıyor. Tüm kopyaları değiştirin.",
-                "weak": "Bu gizli bilgi kısa veya tahmin edilmesi kolay görünüyor. Daha uzun ve rastgele bir değer kullanın.",
-                "similar": "Bu gizli bilgi başka bir kayıtla fazla benzer. Küçük değişiklikler yerine tamamen farklı bir değer kullanın.",
-                "incomplete": "Boş veya eksik kayıtları tamamlayın; erişim ve kurtarma sorunları azalır."
+                "reused": "Tekrar kullanılan sırlar",
+                "weak": "Zayıf sırlar",
+                "similar": "Benzer sırlar",
+                "incomplete": "Boş veya eksik"
             },
             "action": {
                 "reused": "Bu gizli bilgi birden fazla kayıtta tekrar kullanılıyor. Tüm kopyaları değiştirin.",
@@ -466,7 +545,7 @@
                 "summary": {
                     "totp": "TOTP korumalı",
                     "passkey": "Passkey destekli",
-                    "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
+                    "missing_2fa": "Eksik 2FA",
                     "stale": "Eski sırlar"
                 },
                 "action": {
@@ -476,9 +555,9 @@
                     "healthy": "Mevcut kasada 2FA kapsamı ve hesap metadatasi sağlıklı görünüyor."
                 },
                 "type": {
-                    "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
-                    "stale_secret": "Bu giriş sırları 180 günden eski görünüyor; rotasyon için gözden geçirin.",
-                    "missing_identity": "Bu kayıtta kullanıcı adı veya alan adı eksik."
+                    "missing_2fa": "Eksik 2FA",
+                    "stale_secret": "Eski sır",
+                    "missing_identity": "Eksik kimlik"
                 },
                 "message": {
                     "missing_2fa": "Bu girişin yerel bir TOTP sırrı veya ilişkili bir passkey kaydı yok.",
@@ -491,7 +570,16 @@
     "security_center": {
         "title": "🛡 Güvenlik Merkezi",
         "subtitle": "Kasa genelindeki risk sinyallerini izleyin ve kritik bulgular için eyleme geçin.",
+        "overview_label": "Güvenlik kokpiti",
+        "posture_title": "Kasa risk duruşu",
         "score_label": "Genel Risk Skoru",
+        "evidence_hint": "{{count}} aktif bulgu, {{reviewed}} incelenmiş kayıt.",
+        "queue_label": "Eylem kuyruğu",
+        "reviewed_label": "İncelenen",
+        "coverage_label": "Hazırlık",
+        "metrics_title": "Öne çıkan risk sinyalleri",
+        "metrics_hint": "Büyük kasalarda okunabilirlik için en yüksek yerel sinyaller önce gösterilir.",
+        "triage_hint": "Düzeltmek için kaydı açın veya riski kabul ettiyseniz incelendi olarak işaretleyin.",
         "risk_low": "Düşük Risk",
         "risk_medium": "Orta Risk",
         "risk_high": "Yüksek Risk",
@@ -616,6 +704,9 @@
     },
     "pairing_workspace": {
         "title": "Pairing Calisma Alani",
+        "design_eyebrow": "Masaüstü aktarımı",
+        "design_title": "Tarayıcı ve masaüstü güven köprüsü",
+        "design_desc": "v5 uyumlu eşleştirmeleri durum, süre ve yetenek bilgileri görünür olacak şekilde hazırlayın.",
         "subtitle": "Browser extension veya desktop pairing kayitlarini olusturun ve hangi koprulerin hala onay bekledigini izleyin.",
         "entrypoint_desc": "Bekleyen ve aktif browser veya desktop koprulerini tek yerden yonetin.",
         "create_title": "Pairing olustur",
@@ -729,6 +820,12 @@
     },
     "cloud": {
         "title": "☁ Bulut Senkronizasyon (WebDAV)",
+        "design_eyebrow": "Masaüstü v5 relay",
+        "design_title": "Pinli şifreli senkronizasyon",
+        "design_desc": "Kasa verisi taşınmadan önce HTTPS, sertifika pinleme ve yerel yedek parolası kullanılır.",
+        "design_https": "Taşıma",
+        "design_pin": "Sertifika pini",
+        "design_e2e": "Kasa yükü",
         "url_label": "WebDAV URL",
         "token_label": "Yetkilendirme Belgesi",
         "pw_label": "Senkronizasyon Şifresi",
@@ -836,7 +933,14 @@
         }
     },
     "backup": {
-        "title": "💾 Yedekleme",
+        "title": "Yedekleme",
+        "hero_eyebrow": "Şifreli taşınabilirlik",
+        "hero_title": "Kasanızı güvenle taşıyın",
+        "hero_desc": "Günlük kullanım için şifreli yedek oluşturun, düz metin dışa aktarımları açık uyarı arkasında tutun ve güvenilir yöneticilerden içe aktarın.",
+        "trust_encrypted": "Önerilen dışa aktarım",
+        "trust_location": "Kayıt konumu",
+        "trust_plain": "Düz metin export",
+        "trust_plain_value": "Gizli",
         "tab_export": "📤 Dışa Aktar",
         "tab_import": "📥 İçe Aktar",
         "loading": "İşlem devam ediyor...",
@@ -917,6 +1021,12 @@
         "overview_title": "Paylaşım özeti",
         "overview_summary": "{{spaces}} alan, {{items}} ortak kayıt, {{pending}} bekleyen üye",
         "modal_subtitle": "Kasayı buluta taşımadan yerel aile ve ekip alanlarını yönetin.",
+        "design_eyebrow": "Paylaşım kokpiti",
+        "design_title": "Yerel aile ve ekip alanları",
+        "design_desc": "Hassas kayıt atamadan önce rolleri, acil erişimi ve inceleme durumunu görünür tutun.",
+        "design_spaces": "Alan",
+        "design_members": "Üye",
+        "design_pending": "Bekleyen",
         "spaces_title": "Ortak alanlar",
         "new_space": "Yeni alan",
         "create_space": "Alan oluştur",
@@ -985,11 +1095,13 @@
     "legal": {
         "terms": "Kullanım Koşulları",
         "privacy": "Gizlilik Politikası",
+        "design_eyebrow": "Yasal belge",
         "legal_and_privacy": "Kullanım Koşulları \\u0026 Gizlilik",
         "disclaimer": "Bu uygulamayı kullanarak {{terms}} ve {{privacy}} şartlarını kabul etmiş sayılırsınız."
     },
     "donation": {
         "title": "❤ Aegis'e Destek Ol",
+        "design_eyebrow": "İsteğe bağlı destek",
         "subtitle": "Projenin ücretsiz ve açık kaynak kalmasına yardımcı olun",
         "description": "Aegis'i sevdiyseniz, kripto para bağışı yaparak bize destek olabilirsiniz. Bağışlar geliştirme ve sunucu maliyetleri için kullanılmaktadır.",
         "copy_addr": "Adresi Kopyala",
@@ -1011,6 +1123,10 @@
     "trash": {
         "title": "Çöp Kutusu",
         "subtitle": "Silinen kayıtlar burada saklanır",
+        "design_eyebrow": "Kurtarma tamponu",
+        "design_title": "Silinen kayıtlar incelemede kalır",
+        "design_desc": "Hatalı silmeleri güvenle geri yükleyin veya hazır olduğunuzda kalıcı olarak kaldırın.",
+        "design_deleted": "Silinen kayıt",
         "empty_msg": "Çöp kutusu boş",
         "restore": "Geri Yükle",
         "delete_perm": "Kalıcı Olarak Sil",

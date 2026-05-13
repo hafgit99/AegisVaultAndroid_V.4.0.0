@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   Animated,
   StyleSheet,
+  ScrollView,
 } from 'react-native';
 import ReactNativeBiometrics from 'react-native-biometrics';
 import { useTranslation } from 'react-i18next';
@@ -24,12 +25,23 @@ import { LegalModal } from './LegalModal';
 // ── Palette types (passed from parent, avoids re-importing theme logic) ──
 export interface ThemePalette {
   bg: string;
+  bgAccent?: string;
   navy: string;
+  textPrimary?: string;
+  textSecondary?: string;
+  textTertiary?: string;
   sage: string;
+  sageLight?: string;
+  sageMid?: string;
   card: string;
+  cardElevated?: string;
   cardBorder: string;
+  shadow?: string;
   muted: string;
   divider: string;
+  inputBg?: string;
+  cyan?: string;
+  green?: string;
 }
 
 interface LockScreenProps {
@@ -201,24 +213,94 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   const getLanguageTextStyle = (lang: 'tr' | 'en') => ({
     color: i18n.language === lang ? '#fff' : palette.navy,
   });
+  const trustChips = [
+    { label: t('lock_screen.trust_local'), value: 'Offline' },
+    { label: t('lock_screen.trust_crypto'), value: 'AES-256' },
+    { label: t('lock_screen.trust_device'), value: 'Keystore' },
+  ];
+  const backdropOrbStyle = {
+    backgroundColor: darkMode
+      ? 'rgba(34,211,238,0.10)'
+      : 'rgba(114,136,111,0.13)',
+  };
 
   return (
-    <View style={[s.container, { backgroundColor: palette.bg }]}>
-      {iconLoadFailed ? (
-        <View style={[s.appIcon, s.appIconFallback]}>
-          <Text style={s.appIconFallbackText}>AV</Text>
+    <ScrollView
+      style={[s.scrollRoot, { backgroundColor: palette.bg }]}
+      contentContainerStyle={s.container}
+      showsVerticalScrollIndicator={false}
+    >
+      <View
+        style={[
+          s.backdropOrb,
+          backdropOrbStyle,
+        ]}
+      />
+      <View
+        style={[
+          s.lockCard,
+          {
+            backgroundColor: palette.cardElevated || palette.card,
+            borderColor: palette.cardBorder,
+            shadowColor: palette.shadow || '#000',
+          },
+        ]}
+      >
+        <View
+          style={[
+            s.iconShell,
+            {
+              backgroundColor: palette.sageLight || palette.card,
+              borderColor: palette.sageMid || palette.cardBorder,
+            },
+          ]}
+        >
+          {iconLoadFailed ? (
+            <View style={[s.appIcon, s.appIconFallback]}>
+              <Text style={s.appIconFallbackText}>AV</Text>
+            </View>
+          ) : (
+            <Image
+              source={require('../assets/ic_launcher.jpg')}
+              style={s.appIcon}
+              resizeMode="contain"
+              accessibilityLabel="Aegis Vault app icon"
+              onError={() => setIconLoadFailed(true)}
+            />
+          )}
         </View>
-      ) : (
-        <Image
-          source={require('../assets/ic_launcher.jpg')}
-          style={s.appIcon}
-          resizeMode="contain"
-          accessibilityLabel="Aegis Vault app icon"
-          onError={() => setIconLoadFailed(true)}
-        />
-      )}
-      <Text style={[s.title, { color: palette.navy }]}>{t('lock_screen.title')}</Text>
-      <Text style={[s.subtitle, { color: palette.muted }]}>{authStatus}</Text>
+
+        <Text style={[s.eyebrow, { color: palette.sage }]}>
+          {t('lock_screen.eyebrow')}
+        </Text>
+        <Text style={[s.title, { color: palette.textPrimary || palette.navy }]}>
+          {t('lock_screen.title')}
+        </Text>
+        <Text style={[s.subtitle, { color: palette.textSecondary || palette.muted }]}>
+          {authStatus}
+        </Text>
+
+        <View style={s.trustRow}>
+          {trustChips.map(chip => (
+            <View
+              key={chip.label}
+              style={[
+                s.trustChip,
+                {
+                  backgroundColor: palette.inputBg || palette.card,
+                  borderColor: palette.cardBorder,
+                },
+              ]}
+            >
+              <Text style={[s.trustValue, { color: palette.sage }]}>
+                {chip.value}
+              </Text>
+              <Text style={[s.trustLabel, { color: palette.textTertiary || palette.muted }]}>
+                {chip.label}
+              </Text>
+            </View>
+          ))}
+        </View>
 
       {/* Brute force warning */}
       {isLockedOut && (
@@ -251,7 +333,11 @@ export const LockScreen: React.FC<LockScreenProps> = ({
       <TouchableOpacity
         style={[
           s.bioBtn,
-          { backgroundColor: palette.card, borderColor: palette.cardBorder },
+          {
+            backgroundColor: palette.sage,
+            borderColor: palette.sage,
+            shadowColor: palette.shadow || '#000',
+          },
           isLockedOut && s.disabledButton,
         ]}
         onPress={auth}
@@ -261,10 +347,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         accessibilityRole="button"
       >
         <Animated.View style={[s.glow, glowStyle]} />
-        <Text style={[s.bioBtnText, { color: palette.navy }]}>
+        <Text style={s.bioBtnText}>
           {t('lock_screen.bio_btn')}
         </Text>
       </TouchableOpacity>
+      <Text style={[s.unlockHint, { color: palette.textTertiary || palette.muted }]}>
+        {t('lock_screen.unlock_hint')}
+      </Text>
+      </View>
 
       {/* Language switcher - TR / EN */}
       <View style={s.langRow}>
@@ -313,22 +403,75 @@ export const LockScreen: React.FC<LockScreenProps> = ({
         type={legalType}
         onClose={() => setLegalType(null)}
       />
-    </View>
+    </ScrollView>
   );
 };
 
 const s = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  scrollRoot: { flex: 1 },
+  container: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    paddingVertical: 36,
+  },
+  backdropOrb: {
+    position: 'absolute',
+    top: 72,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+  },
+  lockCard: {
+    width: '100%',
+    maxWidth: 390,
+    borderRadius: 32,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 18,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    elevation: 5,
+  },
+  iconShell: {
+    width: 92,
+    height: 92,
+    borderRadius: 30,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
   bruteWarningBox: { backgroundColor: 'rgba(239,68,68,0.08)' },
   dangerText: { color: '#ef4444' },
   disabledButton: { opacity: 0.4 },
-  title: { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, marginBottom: 6 },
-  subtitle: { fontSize: 13, marginBottom: 18, textAlign: 'center' },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 27,
+    fontWeight: '900',
+    letterSpacing: -0.6,
+    marginBottom: 7,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 13,
+    marginBottom: 18,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
   appIcon: {
-    width: 76,
-    height: 76,
-    marginBottom: 12,
-    borderRadius: 20,
+    width: 70,
+    height: 70,
+    borderRadius: 22,
   },
   appIconFallback: {
     alignItems: 'center',
@@ -343,26 +486,57 @@ const s = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -0.6,
   },
+  trustRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+    marginBottom: 18,
+  },
+  trustChip: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  trustValue: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  trustLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 3,
+  },
   warningBox: { borderRadius: 14, padding: 14, marginBottom: 16, width: '100%' },
   integrityWarningBox: { borderWidth: 1 },
   warningTitle: { fontWeight: '700', fontSize: 13, textAlign: 'center' },
   warningDesc: { fontSize: 12, textAlign: 'center', marginTop: 4 },
   bioBtn: {
-    width: '82%',
-    maxWidth: 320,
-    minHeight: 58,
-    borderRadius: 20,
+    width: '100%',
+    minHeight: 52,
+    borderRadius: 18,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 10,
     overflow: 'hidden',
-    elevation: 3,
+    elevation: 4,
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
   },
   glow: { ...StyleSheet.absoluteFillObject, borderRadius: 20 },
-  bioBtnText: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  bioBtnText: { fontSize: 15, fontWeight: '900', textAlign: 'center', color: '#fff' },
+  unlockHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
   langRow: { flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 18 },
   langBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   langBtnText: { fontWeight: '600', fontSize: 14 },

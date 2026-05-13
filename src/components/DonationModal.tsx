@@ -51,6 +51,10 @@ export const DonationModal: React.FC<DonationModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const cc = { ...C, ...(theme || {}) };
+  const primaryText = cc.textPrimary || cc.navy;
+  const secondaryText = cc.textSecondary || cc.muted;
+  const tertiaryText = cc.textTertiary || cc.muted;
+  const elevatedCard = cc.cardElevated || cc.card;
   const [selected, setSelected] =
     useState<keyof typeof CRYPTO_ADDRESSES>('btc');
   const [copied, setCopied] = useState(false);
@@ -69,29 +73,43 @@ export const DonationModal: React.FC<DonationModalProps> = ({
       <View style={s.overlay}>
         <View style={[s.content, { backgroundColor: cc.bg }]}>
           <View style={s.header}>
-            <Text style={[s.headerTitle, { color: cc.navy }]}>
+            <Text style={[s.headerTitle, { color: primaryText }]}>
               {t('donation.title')}
             </Text>
             <TouchableOpacity
               onPress={onClose}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={[s.closeX, { color: cc.muted }]}>✕</Text>
+              <Text style={[s.closeX, { color: tertiaryText }]}>x</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={[s.subtitle, { color: cc.sage }]}>
-              {t('donation.subtitle')}
-            </Text>
-            <Text style={[s.description, { color: cc.navy }]}>
-              {t('donation.description')}
-            </Text>
+            <View
+              style={[
+                s.heroCard,
+                {
+                  backgroundColor: elevatedCard,
+                  borderColor: cc.cardBorder,
+                  shadowColor: cc.shadow || '#000000',
+                },
+              ]}
+            >
+              <Text style={[s.eyebrow, { color: tertiaryText }]}>
+                {t('donation.design_eyebrow')}
+              </Text>
+              <Text style={[s.subtitle, { color: cc.sage }]}>
+                {t('donation.subtitle')}
+              </Text>
+              <Text style={[s.description, { color: secondaryText }]}>
+                {t('donation.description')}
+              </Text>
+            </View>
 
             <View
               style={[
                 s.card,
-                { backgroundColor: cc.card, borderColor: cc.cardBorder },
+                { backgroundColor: elevatedCard, borderColor: cc.cardBorder },
               ]}
             >
               <Text style={[s.label, { color: cc.muted }]}>
@@ -138,7 +156,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({
             <View
               style={[
                 s.addressCard,
-                { backgroundColor: cc.card, borderColor: cc.cardBorder },
+                { backgroundColor: elevatedCard, borderColor: cc.cardBorder },
               ]}
             >
               <View style={s.addressRow}>
@@ -225,7 +243,23 @@ const s = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.navy },
   closeX: { fontSize: 24, color: C.muted, padding: 4 },
-  subtitle: { fontSize: 16, fontWeight: '700', color: C.sage, marginBottom: 8 },
+  heroCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    marginBottom: 16,
+    padding: 16,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  subtitle: { fontSize: 18, fontWeight: '900', color: C.sage, marginBottom: 8, marginTop: 5 },
   description: {
     fontSize: 13,
     color: C.navy,

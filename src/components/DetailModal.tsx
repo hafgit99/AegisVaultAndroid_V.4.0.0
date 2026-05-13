@@ -55,6 +55,11 @@ export const DetailModal = ({
   const { t } = useTranslation();
   const cc = { ...C, ...(theme || {}) };
   const isDark = String(cc.bg || '').toLowerCase() === '#0b1220';
+  const primaryText = cc.textPrimary || cc.navy;
+  const secondaryText = cc.textSecondary || cc.muted;
+  const tertiaryText = cc.textTertiary || cc.muted;
+  const elevatedCard = cc.cardElevated || cc.card;
+  const accentBg = cc.bgAccent || cc.sageLight;
   const [showPw, setShowPw] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -142,6 +147,23 @@ export const DetailModal = ({
   const sharedSpace = sharedSpaces?.find(
     (space: SharedVaultSpace) => space.id === sharedAssignment?.spaceId,
   );
+  const detailStats = [
+    {
+      label: t('entry_detail.category'),
+      value: t(`vault.categories.${item.category}`),
+      color: cc.sage,
+    },
+    {
+      label: t('entry_detail.attachments'),
+      value: String(attachments.length),
+      color: cc.cyan || cc.sage,
+    },
+    {
+      label: t('entry_detail.history'),
+      value: supportsHistory ? String(history.length) : '-',
+      color: cc.amber || cc.sage,
+    },
+  ];
 
   const copy = (txt: string, lbl: string) => {
     Clipboard.setString(txt);
@@ -657,7 +679,7 @@ export const DetailModal = ({
             >
               <Text style={{ fontSize: 22 }}>{getCatIcon(item.category)}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[s.mdT, { color: cc.navy }]} numberOfLines={1}>
+                <Text style={[s.mdT, { color: primaryText }]} numberOfLines={1}>
                   {item.title}
                 </Text>
                 {sharedAssignment ? (
@@ -677,10 +699,94 @@ export const DetailModal = ({
               </View>
             </View>
             <TouchableOpacity onPress={onClose}>
-              <Text style={[s.mdX, { color: cc.muted }]}>{'\u2715'}</Text>
+              <Text style={[s.mdX, { color: tertiaryText }]}>{'\u2715'}</Text>
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
+            <View
+              style={{
+                backgroundColor: elevatedCard,
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: cc.cardBorder,
+                padding: 16,
+                marginBottom: 16,
+                shadowColor: cc.shadow || '#000000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.08,
+                shadowRadius: 18,
+                elevation: 3,
+              }}
+            >
+              <Text
+                style={{
+                  color: tertiaryText,
+                  fontSize: 11,
+                  fontWeight: '900',
+                  letterSpacing: 0.8,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {t('entry_detail.eyebrow')}
+              </Text>
+              <Text
+                style={{
+                  color: primaryText,
+                  fontSize: 20,
+                  fontWeight: '900',
+                  marginTop: 5,
+                }}
+                numberOfLines={2}
+              >
+                {item.title}
+              </Text>
+              <Text
+                style={{
+                  color: secondaryText,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  marginTop: 6,
+                }}
+              >
+                {t('entry_detail.subtitle')}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                {detailStats.map(stat => (
+                  <View
+                    key={stat.label}
+                    style={{
+                      flex: 1,
+                      backgroundColor: accentBg,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: cc.cardBorder,
+                      padding: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: stat.color,
+                        fontSize: 13,
+                        fontWeight: '900',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {stat.value}
+                    </Text>
+                    <Text
+                      style={{
+                        color: secondaryText,
+                        fontSize: 10,
+                        fontWeight: '700',
+                        marginTop: 4,
+                      }}
+                    >
+                      {stat.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
             {renderCatFields()}
             {sharedAssignment ? (
               <View style={{ marginBottom: 14 }}>

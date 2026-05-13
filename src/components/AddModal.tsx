@@ -55,6 +55,15 @@ export const AddModal = ({
   const [showPw, setShowPw] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pending, setPending] = useState<any[]>([]);
+  const primaryText = theme.textPrimary || theme.navy;
+  const secondaryText = theme.textSecondary || theme.muted;
+  const tertiaryText = theme.textTertiary || theme.muted;
+  const elevatedCard = theme.cardElevated || theme.card;
+  const accentBg = theme.bgAccent || theme.sageLight;
+  const selectedCategory = getCats(t).find(
+    (cat: any) => cat.id === form.category,
+  );
+  const requiredReady = Boolean(form.title?.trim());
 
   useEffect(() => {
     if (visible) {
@@ -89,16 +98,110 @@ export const AddModal = ({
         style={s.mdOv}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={[s.mdC, { backgroundColor: theme.card }]}>
+        <View style={[s.mdC, { backgroundColor: theme.bg || theme.card }]}>
           <View style={s.mdH}>
-            <Text style={[s.mdT, { color: theme.navy }]}>
+            <Text style={[s.mdT, { color: primaryText }]}>
               {item ? t('vault.edit') : t('vault.new_record')}
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Text style={[s.mdX, { color: theme.muted }]}>{'\u2715'}</Text>
+              <Text style={[s.mdX, { color: tertiaryText }]}>{'\u2715'}</Text>
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
+            <View
+              style={{
+                backgroundColor: elevatedCard,
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: theme.cardBorder,
+                padding: 16,
+                marginBottom: 14,
+                shadowColor: theme.shadow || '#000000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.08,
+                shadowRadius: 18,
+                elevation: 3,
+              }}
+            >
+              <Text
+                style={{
+                  color: tertiaryText,
+                  fontSize: 11,
+                  fontWeight: '900',
+                  letterSpacing: 0.8,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {item ? t('entry_form.eyebrow_edit') : t('entry_form.eyebrow_new')}
+              </Text>
+              <Text
+                style={{
+                  color: primaryText,
+                  fontSize: 20,
+                  fontWeight: '900',
+                  marginTop: 5,
+                }}
+              >
+                {item ? t('entry_form.title_edit') : t('entry_form.title_new')}
+              </Text>
+              <Text
+                style={{
+                  color: secondaryText,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  marginTop: 6,
+                }}
+              >
+                {t('entry_form.subtitle')}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                {[
+                  {
+                    label: t('entry_form.category'),
+                    value: selectedCategory?.label || form.category || '-',
+                  },
+                  {
+                    label: t('entry_form.required'),
+                    value: requiredReady
+                      ? t('entry_form.ready')
+                      : t('entry_form.missing'),
+                  },
+                ].map(card => (
+                  <View
+                    key={card.label}
+                    style={{
+                      flex: 1,
+                      backgroundColor: accentBg,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: theme.cardBorder,
+                      padding: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.sage,
+                        fontSize: 12,
+                        fontWeight: '900',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {card.value}
+                    </Text>
+                    <Text
+                      style={{
+                        color: secondaryText,
+                        fontSize: 10,
+                        fontWeight: '700',
+                        marginTop: 4,
+                      }}
+                    >
+                      {card.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
             <SelectChips
               label={t('fields.category')}
               options={getCats(t).filter((c: any) => c.id !== 'all')}
@@ -117,7 +220,7 @@ export const AddModal = ({
                 style={{
                   fontSize: 11,
                   fontWeight: '700',
-                  color: theme.muted,
+                  color: tertiaryText,
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
                   marginBottom: 5,
@@ -132,7 +235,7 @@ export const AddModal = ({
                   paddingHorizontal: 16,
                   paddingVertical: 12,
                   fontSize: 14,
-                  color: theme.navy,
+                  color: primaryText,
                   borderWidth: 1,
                   borderColor: theme.cardBorder,
                   fontWeight: '500',
@@ -155,7 +258,7 @@ export const AddModal = ({
             />
             <View
               style={{
-                backgroundColor: theme.inputBg,
+                backgroundColor: elevatedCard,
                 borderRadius: 18,
                 borderWidth: 1,
                 borderColor: theme.cardBorder,
@@ -167,7 +270,7 @@ export const AddModal = ({
                 style={{
                   fontSize: 12,
                   fontWeight: '700',
-                  color: theme.navy,
+                  color: primaryText,
                   marginBottom: 8,
                 }}
               >
@@ -270,12 +373,12 @@ export const AddModal = ({
                         </Text>
                         <TextInput
                           style={{
-                            backgroundColor: theme.card,
+                            backgroundColor: theme.inputBg,
                             borderRadius: 14,
                             paddingHorizontal: 16,
                             paddingVertical: 12,
                             fontSize: 14,
-                            color: theme.navy,
+                            color: primaryText,
                             borderWidth: 1,
                             borderColor: theme.cardBorder,
                             fontWeight: '500',
@@ -304,7 +407,7 @@ export const AddModal = ({
                   ) : null}
                 </>
               ) : (
-                <Text style={{ color: theme.muted, fontSize: 12, lineHeight: 18 }}>
+                <Text style={{ color: secondaryText, fontSize: 12, lineHeight: 18 }}>
                   {t('shared.no_spaces_hint')}
                 </Text>
               )}
@@ -321,10 +424,10 @@ export const AddModal = ({
             style={[
               s.saveBtn,
               { backgroundColor: theme.sage },
-              !form.title?.trim() && { opacity: 0.4 },
+              !requiredReady && { opacity: 0.4 },
             ]}
             onPress={() => {
-              if (!form.title?.trim()) return;
+              if (!requiredReady) return;
               if (form.category === 'passkey') {
                 const validation = SecurityModule.validatePasskeyItem({
                   ...form,
@@ -351,7 +454,7 @@ export const AddModal = ({
                 pending,
               );
             }}
-            disabled={!form.title?.trim()}
+            disabled={!requiredReady}
             activeOpacity={0.7}
           >
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>

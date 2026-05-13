@@ -21,6 +21,11 @@ export const PairingWorkspaceModal = ({
   insets,
 }: any) => {
   const { t } = useTranslation();
+  const primaryText = theme.textPrimary || theme.navy;
+  const secondaryText = theme.textSecondary || theme.muted;
+  const tertiaryText = theme.textTertiary || theme.muted;
+  const elevatedCard = theme.cardElevated || theme.card;
+  const accentBg = theme.bgAccent || theme.sageLight;
   const [records, setRecords] = useState(() => BrowserPairingService.list());
   const [label, setLabel] = useState('');
   const [origin, setOrigin] = useState('');
@@ -83,13 +88,13 @@ export const PairingWorkspaceModal = ({
           }}
         >
           <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-            <Text style={{ fontSize: 24, color: theme.navy }}>‹</Text>
+            <Text style={{ fontSize: 24, color: primaryText }}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: theme.navy }}>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: primaryText }}>
               {t('pairing_workspace.title')}
             </Text>
-            <Text style={{ fontSize: 13, lineHeight: 18, marginTop: 2, color: theme.muted }}>
+            <Text style={{ fontSize: 13, lineHeight: 18, marginTop: 2, color: secondaryText }}>
               {t('pairing_workspace.subtitle')}
             </Text>
           </View>
@@ -101,6 +106,65 @@ export const PairingWorkspaceModal = ({
             paddingBottom: Math.max(32, (insets.bottom || 0) + 20),
           }}
         >
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: theme.cardBorder,
+              borderRadius: 24,
+              padding: 16,
+              backgroundColor: elevatedCard,
+              marginBottom: 12,
+              shadowColor: theme.shadow || '#000000',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.08,
+              shadowRadius: 18,
+              elevation: 3,
+            }}
+          >
+            <Text
+              style={{
+                color: tertiaryText,
+                fontSize: 11,
+                fontWeight: '900',
+                letterSpacing: 0.8,
+                textTransform: 'uppercase',
+              }}
+            >
+              {t('pairing_workspace.design_eyebrow')}
+            </Text>
+            <Text style={{ color: primaryText, fontSize: 20, fontWeight: '900', marginTop: 5 }}>
+              {t('pairing_workspace.design_title')}
+            </Text>
+            <Text style={{ color: secondaryText, fontSize: 12, lineHeight: 18, marginTop: 6 }}>
+              {t('pairing_workspace.design_desc')}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+              {[
+                { label: t('pairing_workspace.metrics.paired'), value: summary.paired },
+                { label: t('pairing_workspace.metrics.desktop'), value: summary.desktopApp },
+                { label: t('pairing_workspace.metrics.browser'), value: summary.browserExtension },
+              ].map(card => (
+                <View
+                  key={card.label}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                    borderRadius: 16,
+                    backgroundColor: accentBg,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: theme.sage, fontSize: 17, fontWeight: '900' }}>
+                    {card.value}
+                  </Text>
+                  <Text style={{ color: secondaryText, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
+                    {card.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             {[
               { key: 'paired', value: summary.paired },
@@ -265,7 +329,7 @@ export const PairingWorkspaceModal = ({
                           {record.label}
                         </Text>
                         <Text style={{ color: theme.muted, fontSize: 11, marginTop: 4 }}>
-                          {t(`pairing_workspace.platforms.${record.platform}`)} •{' '}
+                          {t(`pairing_workspace.platforms.${record.platform}`)} /{' '}
                           {t(`pairing_workspace.status.${stateKey}`)}
                         </Text>
                         {record.origin ? (

@@ -1,7 +1,12 @@
 {
     "lock_screen": {
         "title": "Aegis Vault",
+        "eyebrow": "Private offline vault",
         "prompt": "Authenticate to unlock",
+        "unlock_hint": "Your vault stays encrypted on this device until authentication succeeds.",
+        "trust_local": "Local-first",
+        "trust_crypto": "Encryption",
+        "trust_device": "Device-bound",
         "locked_out": "⏳ Wait {{seconds}} sec",
         "brute_force_active": "🔐 Brute-force protection active",
         "brute_force_desc": "{{fails}} failed attempts • {{seconds}}s wait",
@@ -43,6 +48,25 @@
         "attachments": "Attachments",
         "items_count": "items",
         "add_file": "Add File",
+        "hero_eyebrow": "Encrypted workspace",
+        "hero_subtitle": "{{count}} protected records • local-first AES-256 vault",
+        "refresh": "Refresh",
+        "filtered_summary": "{{count}} result(s) in {{category}}",
+        "unfiltered_summary": "{{count}} protected item(s) ready",
+        "empty_title": "Your vault is ready",
+        "empty_desc": "Add your first encrypted record to start building a safer offline vault.",
+        "empty_filtered_title": "No matching records",
+        "empty_filtered_desc": "Try a different search term or clear the active category filter.",
+        "clear_filters": "Clear filters",
+        "add_first": "Add first record",
+        "item": {
+            "secure_record": "Secure record"
+        },
+        "metrics": {
+            "total": "Total",
+            "passkeys": "Passkeys",
+            "shared": "Shared"
+        },
         "categories": {
             "all": "All",
             "login": "Logins",
@@ -244,14 +268,44 @@
             }
         }
     },
+    "entry_form": {
+        "eyebrow_new": "New vault item",
+        "eyebrow_edit": "Edit vault item",
+        "title_new": "Create a protected record",
+        "title_edit": "Update protected record",
+        "subtitle": "Choose the category first, then fill only the fields this record needs.",
+        "category": "Category",
+        "required": "Required field",
+        "ready": "Ready",
+        "missing": "Title missing"
+    },
+    "entry_detail": {
+        "eyebrow": "Vault record",
+        "subtitle": "Sensitive fields remain masked until you explicitly reveal or copy them.",
+        "category": "Category",
+        "attachments": "Files",
+        "history": "History"
+    },
     "generator": {
         "title": "Generate Strong Passwords",
-        "subtitle": "Cryptographically secure & on-device PRNG",
+        "eyebrow": "Password studio",
+        "subtitle": "Cryptographically secure generation stays on this device.",
         "generate": "Regenerate",
         "strength": {
+            "excellent": "Excellent",
             "strong": "Strong",
             "weak": "Weak"
         },
+        "stats": {
+            "length": "Length",
+            "entropy": "Strength",
+            "clipboard": "Clipboard clear",
+            "manual": "Manual"
+        },
+        "output_label": "Generated secret",
+        "options_enabled": "{{count}} sets on",
+        "options_title": "Generation policy",
+        "options_hint": "Tune character sets for compatibility without reducing randomness unnecessarily.",
         "length": "Password Length",
         "uppercase": "Uppercase (A-Z)",
         "lowercase": "Lowercase (a-z)",
@@ -262,6 +316,28 @@
     },
     "settings": {
         "title": "Settings",
+        "overview": {
+            "eyebrow": "Control center",
+            "title": "Security settings at a glance",
+            "desc": "Review the most important vault protections and jump directly to high-impact actions.",
+            "auto_lock": "Auto-lock",
+            "clipboard": "Clipboard",
+            "audit": "Audit"
+        },
+        "quick": {
+            "title": "Quick actions",
+            "security_report": "Security report",
+            "security_report_desc": "Review weak, reused and aging secrets.",
+            "backup": "Backup",
+            "backup_desc": "Export or import encrypted vault files.",
+            "autofill": "Autofill",
+            "autofill_desc": "Open Android autofill provider settings.",
+            "lock": "Lock now",
+            "lock_desc": "Immediately close and protect the vault."
+        },
+        "sections": {
+            "appearance": "Appearance and language"
+        },
         "subtitle": "Vault security configurations",
         "security": "🛡 Security",
         "bio_login": "Biometric Login",
@@ -408,6 +484,9 @@
             "subtitle": "Review weak, reused, and similar secrets in one place.",
             "entrypoint_desc": "Score password risk across the vault and jump into problematic entries quickly.",
             "loading": "Building report...",
+            "overview_label": "Security posture",
+            "risk_posture": "Local vault health overview",
+            "evidence_label": "Evidence scope",
             "score_label": "Overall security score",
             "checked": "Analyzed {{checked}} secret fields across {{total}} entries",
             "actions_title": "Priority actions",
@@ -491,7 +570,16 @@
     "security_center": {
         "title": "\uD83D\uDEE1\uFE0F Security Center",
         "subtitle": "Monitor vault-wide risk signals and take action on critical findings.",
+        "overview_label": "Security cockpit",
+        "posture_title": "Vault risk posture",
         "score_label": "Overall Risk Score",
+        "evidence_hint": "{{count}} active findings, {{reviewed}} reviewed items.",
+        "queue_label": "Action queue",
+        "reviewed_label": "Reviewed",
+        "coverage_label": "Readiness",
+        "metrics_title": "Top risk signals",
+        "metrics_hint": "The highest local signals are surfaced first so large vaults stay scannable.",
+        "triage_hint": "Open the entry to fix it, or mark it reviewed when the risk is accepted.",
         "risk_low": "Low Risk",
         "risk_medium": "Medium Risk",
         "risk_high": "High Risk",
@@ -616,6 +704,9 @@
     },
     "pairing_workspace": {
         "title": "Pairing Workspace",
+        "design_eyebrow": "Desktop handoff",
+        "design_title": "Browser and desktop trust bridge",
+        "design_desc": "Prepare v5-compatible pairings with visible status, expiry and advertised capabilities.",
         "subtitle": "Create browser-extension or desktop pairings and track which bridges are still waiting for approval.",
         "entrypoint_desc": "Manage pending and active browser or desktop bridges from one place.",
         "create_title": "Create pairing",
@@ -729,6 +820,12 @@
     },
     "cloud": {
         "title": "\u2601\uFE0F Cloud Synchronization (Optional)",
+        "design_eyebrow": "Desktop v5 relay",
+        "design_title": "Pinned encrypted sync",
+        "design_desc": "Use HTTPS, certificate pinning and your local backup password before any vault payload moves.",
+        "design_https": "Transport",
+        "design_pin": "Certificate pin",
+        "design_e2e": "Vault payload",
         "url_label": "WebDAV / API URL",
         "token_label": "Auth Token",
         "pw_label": "Vault Encryption/Decryption Password",
@@ -836,7 +933,14 @@
         }
     },
     "backup": {
-        "title": "💾 Backup",
+        "title": "Backup",
+        "hero_eyebrow": "Encrypted portability",
+        "hero_title": "Move your vault safely",
+        "hero_desc": "Create encrypted backups for daily use, keep plaintext exports behind an explicit warning, and import from trusted managers.",
+        "trust_encrypted": "Recommended export",
+        "trust_location": "Saved location",
+        "trust_plain": "Plain exports",
+        "trust_plain_value": "Hidden",
         "tab_export": "📤 Export",
         "tab_import": "📥 Import",
         "loading": "Processing...",
@@ -917,6 +1021,12 @@
         "overview_title": "Sharing overview",
         "overview_summary": "{{spaces}} spaces, {{items}} shared items, {{pending}} pending members",
         "modal_subtitle": "Manage local family and team spaces without moving your vault online.",
+        "design_eyebrow": "Sharing cockpit",
+        "design_title": "Local family and team spaces",
+        "design_desc": "Keep roles, emergency access and review status visible before assigning sensitive records.",
+        "design_spaces": "Spaces",
+        "design_members": "Members",
+        "design_pending": "Pending",
         "spaces_title": "Shared spaces",
         "new_space": "New space",
         "create_space": "Create space",
@@ -985,11 +1095,13 @@
     "legal": {
         "terms": "Terms of Use",
         "privacy": "Privacy Policy",
+        "design_eyebrow": "Legal document",
         "legal_and_privacy": "Terms & Privacy",
         "disclaimer": "By using this application, you agree to the {{terms}} and {{privacy}}."
     },
     "donation": {
         "title": "❤ Support Aegis",
+        "design_eyebrow": "Optional support",
         "subtitle": "Help us keep the project free and open-source",
         "description": "If you like Aegis, you can support us by donating cryptocurrency. All donations help with development and server costs.",
         "copy_addr": "Copy Address",
@@ -1011,6 +1123,10 @@
     "trash": {
         "title": "Recycle Bin",
         "subtitle": "Deleted items are stored here",
+        "design_eyebrow": "Recovery buffer",
+        "design_title": "Deleted items stay reviewable",
+        "design_desc": "Restore mistakes safely or permanently remove records when you are ready.",
+        "design_deleted": "Deleted items",
         "empty_msg": "Your bin is empty",
         "restore": "Restore",
         "delete_perm": "Delete Permanently",

@@ -24,6 +24,12 @@ type ThemeShape = {
   cardBorder: string;
   muted: string;
   inputBg: string;
+  bgAccent?: string;
+  cardElevated?: string;
+  shadow?: string;
+  textPrimary?: string;
+  textSecondary?: string;
+  textTertiary?: string;
   red?: string;
 };
 
@@ -64,6 +70,11 @@ export const SharedVaultsModal = ({
   theme,
 }: SharedVaultsModalProps) => {
   const { t } = useTranslation();
+  const primaryText = theme.textPrimary || theme.navy;
+  const secondaryText = theme.textSecondary || theme.muted;
+  const tertiaryText = theme.textTertiary || theme.muted;
+  const elevatedCard = theme.cardElevated || theme.card;
+  const accentBg = theme.bgAccent || theme.sageLight;
   const [spaces, setSpaces] = useState<SharedVaultSpace[]>([]);
   const [report, setReport] = useState<SharingOverviewReport | null>(null);
   const [editingSpace, setEditingSpace] = useState<SharedVaultSpace | null>(
@@ -262,13 +273,13 @@ export const SharedVaultsModal = ({
             }}
           >
             <View style={{ flex: 1, paddingRight: 16 }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: theme.navy }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: primaryText }}>
                 {t('settings.shared_vaults.title')}
               </Text>
               <Text
                 style={{
                   fontSize: 13,
-                  color: theme.muted,
+                  color: secondaryText,
                   marginTop: 6,
                   lineHeight: 18,
                 }}
@@ -277,13 +288,86 @@ export const SharedVaultsModal = ({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} activeOpacity={0.7}>
-              <Text style={{ fontSize: 22, color: theme.muted, padding: 4 }}>
+              <Text style={{ fontSize: 22, color: tertiaryText, padding: 4 }}>
                 x
               </Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
+            <View
+              style={{
+                backgroundColor: elevatedCard,
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: theme.cardBorder,
+                padding: 16,
+                marginBottom: 12,
+                shadowColor: theme.shadow || '#000000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.08,
+                shadowRadius: 18,
+                elevation: 3,
+              }}
+            >
+              <Text
+                style={{
+                  color: tertiaryText,
+                  fontSize: 11,
+                  fontWeight: '900',
+                  letterSpacing: 0.8,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {t('shared.design_eyebrow')}
+              </Text>
+              <Text
+                style={{
+                  color: primaryText,
+                  fontSize: 20,
+                  fontWeight: '900',
+                  marginTop: 5,
+                }}
+              >
+                {t('shared.design_title')}
+              </Text>
+              <Text
+                style={{
+                  color: secondaryText,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  marginTop: 6,
+                }}
+              >
+                {t('shared.design_desc')}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                {[
+                  { label: t('shared.design_spaces'), value: spaces.length },
+                  { label: t('shared.design_members'), value: membershipSummary.total },
+                  { label: t('shared.design_pending'), value: membershipSummary.pending },
+                ].map(card => (
+                  <View
+                    key={card.label}
+                    style={{
+                      flex: 1,
+                      backgroundColor: accentBg,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: theme.cardBorder,
+                      padding: 10,
+                    }}
+                  >
+                    <Text style={{ color: theme.sage, fontSize: 17, fontWeight: '900' }}>
+                      {card.value}
+                    </Text>
+                    <Text style={{ color: secondaryText, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
+                      {card.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
             {report ? (
               <View
                 style={{

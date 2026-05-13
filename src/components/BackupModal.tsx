@@ -65,7 +65,12 @@ export const BackupModal = ({
 }: Props) => {
   const { t } = useTranslation();
   const cc = { ...C, ...(theme || {}) };
-  const isDark = String(cc.bg || '').toLowerCase() === '#0b1220';
+  const isDark = String(cc.bg || '').toLowerCase() === '#0b1220';
+  const primaryText = cc.textPrimary || cc.navy;
+  const secondaryText = cc.textSecondary || cc.muted;
+  const tertiaryText = cc.textTertiary || cc.muted;
+  const elevatedCard = cc.cardElevated || cc.card;
+  const accentBg = cc.bgAccent || cc.sageLight;
   const [tab, setTab] = useState<'export' | 'import'>('export');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -129,6 +134,24 @@ export const BackupModal = ({
       ? t('backup.err_match')
       : '',
   ].filter(Boolean) as string[];
+
+  const trustCards = [
+    {
+      label: t('backup.trust_encrypted'),
+      value: 'AES-256',
+      color: cc.sage,
+    },
+    {
+      label: t('backup.trust_location'),
+      value: 'Downloads',
+      color: cc.cyan,
+    },
+    {
+      label: t('backup.trust_plain'),
+      value: t('backup.trust_plain_value'),
+      color: cc.amber,
+    },
+  ];
 
   useEffect(() => {
     if (visible) {
@@ -314,19 +337,66 @@ export const BackupModal = ({
         <View style={[st.container, { backgroundColor: cc.bg }]}>
           {/* Header */}
           <View style={st.header}>
-            <Text style={[st.headerTitle, { color: cc.navy }]}>
+            <Text style={[st.headerTitle, { color: primaryText }]}>
               {t('backup.title')}
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Text style={[st.closeBtn, { color: cc.muted }]}>x</Text>
+              <Text style={[st.closeBtn, { color: tertiaryText }]}>x</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Tabs */}
+          <View
+            style={[
+              st.heroCard,
+              {
+                backgroundColor: elevatedCard,
+                borderColor: cc.cardBorder,
+                shadowColor: cc.shadow || '#000000',
+              },
+            ]}
+          >
+            <View style={st.heroTop}>
+              <View style={[st.heroIcon, { backgroundColor: cc.sageLight }]}>
+                <Text style={[st.heroIconText, { color: cc.sage }]}>A</Text>
+              </View>
+              <View style={st.flexOne}>
+                <Text style={[st.heroEyebrow, { color: tertiaryText }]}>
+                  {t('backup.hero_eyebrow')}
+                </Text>
+                <Text style={[st.heroTitle, { color: primaryText }]}>
+                  {t('backup.hero_title')}
+                </Text>
+                <Text style={[st.heroDesc, { color: secondaryText }]}>
+                  {t('backup.hero_desc')}
+                </Text>
+              </View>
+            </View>
+
+            <View style={st.trustRow}>
+              {trustCards.map(card => (
+                <View
+                  key={card.label}
+                  style={[
+                    st.trustCard,
+                    { backgroundColor: accentBg, borderColor: cc.cardBorder },
+                  ]}
+                >
+                  <Text style={[st.trustValue, { color: card.color }]}>
+                    {card.value}
+                  </Text>
+                  <Text style={[st.trustLabel, { color: secondaryText }]}>
+                    {card.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Tabs */}
           <View
             style={[
               st.tabRow,
-              { backgroundColor: cc.card, borderColor: cc.cardBorder },
+              { backgroundColor: accentBg, borderColor: cc.cardBorder },
             ]}
           >
             <TouchableOpacity
@@ -339,7 +409,7 @@ export const BackupModal = ({
               <Text
                 style={[
                   st.tabText,
-                  { color: cc.navy },
+                  { color: primaryText },
                   tab === 'export' && st.tabTextActive,
                 ]}
               >
@@ -356,7 +426,7 @@ export const BackupModal = ({
               <Text
                 style={[
                   st.tabText,
-                  { color: cc.navy },
+                  { color: primaryText },
                   tab === 'import' && st.tabTextActive,
                 ]}
               >
@@ -389,19 +459,19 @@ export const BackupModal = ({
 
             {!loading && !result && tab === 'export' && (
               <>
-                <Text style={[st.sectionNote, { color: cc.muted }]}>
+                <Text style={[st.sectionNote, { color: secondaryText }]}>
                   {t('backup.exp_note')}
                 </Text>
 
                 <TouchableOpacity
                   style={[
                     st.plainToggle,
-                    { backgroundColor: cc.inputBg, borderColor: cc.cardBorder },
+                    { backgroundColor: accentBg, borderColor: cc.cardBorder },
                   ]}
                   onPress={() => setShowPlainExportOptions(value => !value)}
                   activeOpacity={0.7}
                 >
-                  <Text style={[st.plainToggleText, { color: cc.navy }]}>
+                  <Text style={[st.plainToggleText, { color: primaryText }]}>
                     {showPlainExportOptions
                       ? t('backup.hide_plain_exports')
                       : t('backup.show_plain_exports')}
@@ -458,10 +528,10 @@ export const BackupModal = ({
                   <View
                     style={[
                       st.pathBox,
-                      { backgroundColor: cc.card, borderColor: cc.cardBorder },
+                      { backgroundColor: elevatedCard, borderColor: cc.cardBorder },
                     ]}
                   >
-                    <Text style={[st.pathLabel, { color: cc.muted }]}>
+                    <Text style={[st.pathLabel, { color: tertiaryText }]}>
                       {t('backup.last_export')}
                     </Text>
                     <Text
@@ -477,12 +547,12 @@ export const BackupModal = ({
 
             {!loading && !result && tab === 'import' && (
               <>
-                <Text style={[st.sectionNote, { color: cc.muted }]}>
+                <Text style={[st.sectionNote, { color: secondaryText }]}>
                   {t('backup.imp_note')}
                 </Text>
 
                 {/* Recommended Sources */}
-                <Text style={[st.groupTitle, { color: cc.navy }]}>
+                <Text style={[st.groupTitle, { color: primaryText }]}>
                   {t('backup.grp_pop')}
                 </Text>
                 {getImportSources(t)
@@ -505,7 +575,7 @@ export const BackupModal = ({
                     />
                   ))}
 
-                <Text style={[st.groupTitle, { color: cc.navy }]}>
+                <Text style={[st.groupTitle, { color: primaryText }]}>
                   {t('backup.grp_oth')}
                 </Text>
                 {getImportSources(t)
@@ -528,7 +598,7 @@ export const BackupModal = ({
                     />
                   ))}
 
-                <Text style={[st.groupTitle, { color: cc.navy }]}>
+                <Text style={[st.groupTitle, { color: primaryText }]}>
                   {t('backup.grp_gen')}
                 </Text>
                 {getImportSources(t)
@@ -700,6 +770,68 @@ const st = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.navy },
   closeBtn: { fontSize: 22, color: C.muted, padding: 4 },
+  heroCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 14,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+  },
+  heroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroIconText: {
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  heroDesc: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  trustRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  trustCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 10,
+  },
+  trustValue: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  trustLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 14,
+    marginTop: 4,
+  },
   scrollContent: {
     paddingBottom: 24,
   },

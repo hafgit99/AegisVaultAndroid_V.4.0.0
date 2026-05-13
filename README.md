@@ -2,7 +2,7 @@
   <img src="docs/screenshots/aegis_android_banner.png" width="880" alt="Aegis Vault Android banner">
 </p>
 
-<h1 align="center">Aegis Vault Android 5.0</h1>
+<h1 align="center">Aegis Vault Android 5.1</h1>
 
 <p align="center">
   Local-first Android password manager with encrypted vault storage, biometric access,
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-5.0.0-2563eb?style=for-the-badge" alt="Version 5.0.0">
+  <img src="https://img.shields.io/badge/version-5.1.0-2563eb?style=for-the-badge" alt="Version 5.1.0">
   <img src="https://img.shields.io/badge/platform-Android-34a853?style=for-the-badge&logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/React%20Native-0.84.0-0ea5e9?style=for-the-badge&logo=react&logoColor=white" alt="React Native 0.84.0">
   <img src="https://img.shields.io/badge/security-AES--256--GCM%20%2B%20Argon2-15803d?style=for-the-badge" alt="AES-256-GCM and Argon2">
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="#what-is-new-in-50">What is New in 5.0</a> |
+  <a href="#what-is-new-in-51">What is New in 5.1</a> |
   <a href="#core-capabilities">Capabilities</a> |
   <a href="#security-model">Security</a> |
   <a href="#desktop-v5-compatibility">Desktop v5</a> |
@@ -32,8 +32,14 @@
 
 The app combines SQLCipher-backed local storage, Android biometric access, encrypted backup/restore, local security scoring, passkey-oriented workflows, and optional encrypted relay sync. Version 5.0 focuses on aligning the Android app with the Aegis desktop v5 data model while improving release trust, auditability, and security-center visibility.
 
-## What is New in 5.0
+## What is New in 5.1
 
+- **Security Hardening (v5.1-v5.3)**:
+    - **HKDF-Expand**: Implemented master key domain separation to prevent key reuse across different security contexts.
+    - **Constant-time verification**: Switched to constant-time equality checks for sensitive cryptographic operations to eliminate timing side-channel attacks.
+    - **Argon2id Upgrade**: Upgraded device secret verification to Argon2id for superior resistance against GPU/ASIC brute-force attacks.
+    - **WebAuthn Attestation**: Added attestation verification for passkey workflows to ensure hardware-backed security.
+- **Cryptographic Bridge Fix**: Refined the `Argon2Fn` native bridge to preserve `this` context for Hermes/New Architecture, resolving "undefined is not a function" errors during backup exports.
 - **Desktop v5 canonical vault format**: Android exports and imports a canonical v5 JSON representation for migration, sync validation, and cross-platform compatibility.
 - **Encrypted v5 backup envelope**: Encrypted exports can include the desktop-compatible canonical payload while preserving Android legacy item compatibility.
 - **Crypto wallet and document records**: New category mapping keeps wallet and document entries portable across Android and desktop.
@@ -43,8 +49,7 @@ The app combines SQLCipher-backed local storage, Android biometric access, encry
 - **Release provenance and SBOM**: Release metadata can be generated as CycloneDX SBOM plus a provenance manifest for audit-friendly distribution.
 - **Bilingual and dark-mode polish**: Product surfaces continue to support Turkish/English text and dark-mode-safe UI choices.
 
-## Latest Update
-
+- **Security hardening and bridge stability**: v5.1 brings HKDF-Expand, constant-time checks, and Argon2id upgrades alongside a robust fix for the native cryptographic bridge.
 - **Encrypted backup export/import hardening**: Encrypted `.aegis` backups now save to the user-visible `Downloads/AegisVault` location on Android and use a byte-safe AES-256-GCM import path.
 - **Release APK readiness**: The current signed release build is produced through `assembleRelease` with the Android release signing flow.
 - **Coverage and quality gate cleanup**: The Jest coverage suite, TypeScript check, and ESLint pass cleanly after the latest security and compatibility fixes.
@@ -54,7 +59,7 @@ The app combines SQLCipher-backed local storage, Android biometric access, encry
 
 | Area | Details |
 | --- | --- |
-| Current version | `5.0.0` |
+| Current version | `5.1.0` |
 | Android package | `com.aegisandroid` |
 | Runtime | React Native `0.84.0`, React `19.2.3`, Hermes |
 | Language | TypeScript |

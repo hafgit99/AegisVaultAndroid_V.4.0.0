@@ -29,6 +29,11 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
   const { t } = useTranslation();
   const cc = { ...C, ...(theme || {}) };
   const isDark = String(cc.bg || '').toLowerCase() === '#0b1220';
+  const primaryText = cc.textPrimary || cc.navy;
+  const secondaryText = cc.textSecondary || cc.muted;
+  const tertiaryText = cc.textTertiary || cc.muted;
+  const elevatedCard = cc.cardElevated || cc.card;
+  const accentBg = cc.bgAccent || cc.sageLight;
   const [url, setUrl] = useState('');
   const [token, setToken] = useState('');
   const [authType, setAuthType] = useState<'Bearer' | 'Basic'>('Bearer');
@@ -106,15 +111,57 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
       <View style={st.overlay}>
         <View style={[st.container, { backgroundColor: cc.bg || '#0b1220' }]}>
           <View style={st.header}>
-            <Text style={[st.title, { color: cc.navy }]}>
+            <Text style={[st.title, { color: primaryText }]}>
               {t('cloud.title')}
             </Text>
             <TouchableOpacity onPress={onClose} disabled={loading}>
-              <Text style={[st.closeBtn, { color: cc.muted }]}>✕</Text>
+              <Text style={[st.closeBtn, { color: tertiaryText }]}>x</Text>
             </TouchableOpacity>
           </View>
 
           <View style={st.content}>
+            <View
+              style={[
+                st.heroCard,
+                {
+                  backgroundColor: elevatedCard,
+                  borderColor: cc.cardBorder,
+                  shadowColor: cc.shadow || '#000000',
+                },
+              ]}
+            >
+              <Text style={[st.eyebrow, { color: tertiaryText }]}>
+                {t('cloud.design_eyebrow')}
+              </Text>
+              <Text style={[st.heroTitle, { color: primaryText }]}>
+                {t('cloud.design_title')}
+              </Text>
+              <Text style={[st.heroDesc, { color: secondaryText }]}>
+                {t('cloud.design_desc')}
+              </Text>
+              <View style={st.trustRow}>
+                {[
+                  { label: t('cloud.design_https'), value: 'HTTPS' },
+                  { label: t('cloud.design_pin'), value: 'SHA-256' },
+                  { label: t('cloud.design_e2e'), value: 'E2E' },
+                ].map(card => (
+                  <View
+                    key={card.label}
+                    style={[
+                      st.trustCard,
+                      { backgroundColor: accentBg, borderColor: cc.cardBorder },
+                    ]}
+                  >
+                    <Text style={[st.trustValue, { color: cc.sage }]}>
+                      {card.value}
+                    </Text>
+                    <Text style={[st.trustLabel, { color: secondaryText }]}>
+                      {card.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
             <Text style={[st.label, { color: cc.muted }]}>
               {t('cloud.url_label')}
             </Text>
@@ -144,7 +191,7 @@ export const CloudSyncModal = ({ visible, onClose, onRefresh, theme }: any) => {
                 }
               >
                 <Text style={[st.toggleText, { color: cc.sage }]}>
-                  {authType} 🔄
+                  {authType} / switch
                 </Text>
               </TouchableOpacity>
             </View>
@@ -267,6 +314,33 @@ const st = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800', color: C.navy },
   closeBtn: { fontSize: 24, color: C.muted, padding: 4 },
   content: { padding: 20, paddingTop: 10 },
+  heroCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  heroTitle: { fontSize: 19, fontWeight: '900', marginTop: 5 },
+  heroDesc: { fontSize: 12, lineHeight: 18, marginTop: 6 },
+  trustRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  trustCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 9,
+  },
+  trustValue: { fontSize: 12, fontWeight: '900' },
+  trustLabel: { fontSize: 10, fontWeight: '700', lineHeight: 14, marginTop: 3 },
   label: {
     fontSize: 13,
     fontWeight: '700',

@@ -42,6 +42,11 @@ export const TrashModal: React.FC<TrashModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const cc = theme || C;
+  const primaryText = cc.textPrimary || cc.navy;
+  const secondaryText = cc.textSecondary || cc.muted;
+  const tertiaryText = cc.textTertiary || cc.muted;
+  const elevatedCard = cc.cardElevated || cc.card;
+  const accentBg = cc.bgAccent || cc.sageLight;
   const [items, setItems] = useState<VaultItem[]>([]);
 
   const load = async () => {
@@ -95,10 +100,10 @@ export const TrashModal: React.FC<TrashModalProps> = ({
         <View style={[s.content, { backgroundColor: cc.bg }]}>
           <View style={s.header}>
             <View>
-              <Text style={[s.headerTitle, { color: cc.navy }]}>
+              <Text style={[s.headerTitle, { color: primaryText }]}>
                 {t('trash.title')}
               </Text>
-              <Text style={[s.headerSubtitle, { color: cc.muted }]}>
+              <Text style={[s.headerSubtitle, { color: secondaryText }]}>
                 {t('trash.subtitle')}
               </Text>
             </View>
@@ -106,7 +111,7 @@ export const TrashModal: React.FC<TrashModalProps> = ({
               onPress={onClose}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={[s.closeX, { color: cc.muted }]}>✕</Text>
+              <Text style={[s.closeX, { color: tertiaryText }]}>x</Text>
             </TouchableOpacity>
           </View>
 
@@ -114,6 +119,34 @@ export const TrashModal: React.FC<TrashModalProps> = ({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 40 }}
           >
+            <View
+              style={[
+                s.heroCard,
+                {
+                  backgroundColor: elevatedCard,
+                  borderColor: cc.cardBorder,
+                  shadowColor: cc.shadow || '#000000',
+                },
+              ]}
+            >
+              <Text style={[s.eyebrow, { color: tertiaryText }]}>
+                {t('trash.design_eyebrow')}
+              </Text>
+              <Text style={[s.heroTitle, { color: primaryText }]}>
+                {t('trash.design_title')}
+              </Text>
+              <Text style={[s.heroDesc, { color: secondaryText }]}>
+                {t('trash.design_desc')}
+              </Text>
+              <View style={[s.countPill, { backgroundColor: accentBg, borderColor: cc.cardBorder }]}>
+                <Text style={[s.countValue, { color: items.length ? cc.red : cc.green }]}>
+                  {items.length}
+                </Text>
+                <Text style={[s.countLabel, { color: secondaryText }]}>
+                  {t('trash.design_deleted')}
+                </Text>
+              </View>
+            </View>
             {items.length === 0 ? (
               <View style={s.emptyContainer}>
                 <Text style={s.emptyIcon}>🗑️</Text>
@@ -210,6 +243,37 @@ const s = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '800', color: C.navy },
   headerSubtitle: { fontSize: 13, color: C.muted, marginTop: 2 },
   closeX: { fontSize: 24, color: C.muted, padding: 4 },
+  heroCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 14,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  heroTitle: { fontSize: 20, fontWeight: '900', marginTop: 5 },
+  heroDesc: { fontSize: 12, lineHeight: 18, marginTop: 6 },
+  countPill: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  countValue: { fontSize: 18, fontWeight: '900' },
+  countLabel: { fontSize: 11, fontWeight: '700' },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',

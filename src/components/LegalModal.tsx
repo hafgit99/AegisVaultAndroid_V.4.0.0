@@ -30,6 +30,9 @@ interface Props {
 export const LegalModal = ({ visible, type, onClose, theme }: Props) => {
   const { i18n, t } = useTranslation();
   const cc = theme || C;
+  const primaryText = cc.textPrimary || cc.navy;
+  const secondaryText = cc.textSecondary || cc.muted;
+  const elevatedCard = cc.cardElevated || cc.card;
 
   if (!visible || !type) return null;
 
@@ -51,13 +54,28 @@ export const LegalModal = ({ visible, type, onClose, theme }: Props) => {
             { borderBottomColor: cc.border || cc.cardBorder || C.border },
           ]}
         >
-          <Text style={[st.title, { color: cc.navy }]}>{title}</Text>
+          <View style={st.titleBlock}>
+            <Text style={[st.eyebrow, { color: secondaryText }]}>
+              {t('legal.design_eyebrow')}
+            </Text>
+            <Text style={[st.title, { color: primaryText }]}>{title}</Text>
+          </View>
           <TouchableOpacity onPress={onClose} style={st.closeBtn}>
-            <Text style={[st.closeIcon, { color: cc.muted }]}>✕</Text>
+            <Text style={[st.closeIcon, { color: secondaryText }]}>x</Text>
           </TouchableOpacity>
         </View>
         <ScrollView style={st.scroll} contentContainerStyle={st.scrollContent}>
-          <Text style={[st.bodyText, { color: cc.navy }]}>{textContent}</Text>
+          <View
+            style={[
+              st.documentCard,
+              {
+                backgroundColor: elevatedCard,
+                borderColor: cc.cardBorder || cc.border || C.border,
+              },
+            ]}
+          >
+            <Text style={[st.bodyText, { color: primaryText }]}>{textContent}</Text>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -74,10 +92,26 @@ const st = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  title: { fontSize: 20, fontWeight: '700', color: C.navy },
+  titleBlock: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  title: { fontSize: 20, fontWeight: '800', color: C.navy },
   closeBtn: { padding: 4 },
   closeIcon: { fontSize: 24, color: C.muted },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 60 },
+  documentCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
+  },
   bodyText: { fontSize: 14, lineHeight: 22, color: C.navy },
 });

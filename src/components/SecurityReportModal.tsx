@@ -25,6 +25,12 @@ type ThemeShape = {
   cardBorder: string;
   muted: string;
   inputBg: string;
+  cardElevated?: string;
+  shadow?: string;
+  textPrimary?: string;
+  textSecondary?: string;
+  textTertiary?: string;
+  bgAccent?: string;
   red?: string;
   white?: string;
 };
@@ -57,6 +63,16 @@ const hardeningSeverityColor = (severity: AccountHardeningCheck['severity']) =>
     high: '#f97316',
     medium: '#d97706',
   })[severity];
+
+const riskTone = (level: PasswordHealthReport['riskLevel']) =>
+  ({
+    critical: { bg: 'rgba(220,38,38,0.12)', border: 'rgba(220,38,38,0.26)' },
+    high: { bg: 'rgba(245,158,11,0.13)', border: 'rgba(245,158,11,0.28)' },
+    medium: { bg: 'rgba(217,119,6,0.12)', border: 'rgba(217,119,6,0.25)' },
+    low: { bg: 'rgba(22,163,74,0.12)', border: 'rgba(22,163,74,0.24)' },
+  })[level];
+
+const clampScore = (score: number) => Math.max(0, Math.min(100, score));
 
 export const SecurityReportModal = ({
   visible,
@@ -98,6 +114,12 @@ export const SecurityReportModal = ({
     await onOpenItem(itemId);
     onClose();
   };
+
+  const primaryText = theme.textPrimary || theme.navy;
+  const secondaryText = theme.textSecondary || theme.muted;
+  const tertiaryText = theme.textTertiary || theme.muted;
+  const elevatedCard = theme.cardElevated || theme.card;
+  const shadowColor = theme.shadow || '#000000';
 
   const summaryCards = report
     ? [
@@ -254,147 +276,211 @@ export const SecurityReportModal = ({
               <>
                 <View
                   style={{
-                    backgroundColor: theme.card,
-                    borderRadius: 22,
+                    backgroundColor: elevatedCard,
+                    borderRadius: 28,
                     borderWidth: 1,
-                    borderColor: theme.cardBorder,
+                    borderColor: riskTone(report.riskLevel).border,
                     padding: 20,
-                    marginBottom: 12,
+                    marginBottom: 14,
+                    shadowColor,
+                    shadowOffset: { width: 0, height: 14 },
+                    shadowOpacity: 0.12,
+                    shadowRadius: 24,
+                    elevation: 4,
                   }}
                 >
-                  <Text
-                    style={{
-                      color: theme.muted,
-                      fontSize: 12,
-                      fontWeight: '700',
-                      marginBottom: 8,
-                    }}
-                  >
-                    {t('settings.security_report.score_label')}
-                  </Text>
                   <View
                     style={{
                       flexDirection: 'row',
-                      alignItems: 'flex-end',
-                      gap: 10,
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 16,
                     }}
                   >
-                    <Text
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text
+                        style={{
+                          color: tertiaryText,
+                          fontSize: 11,
+                          fontWeight: '800',
+                          letterSpacing: 0.8,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {t('settings.security_report.overview_label')}
+                      </Text>
+                      <Text
+                        style={{
+                          color: primaryText,
+                          fontSize: 18,
+                          fontWeight: '800',
+                          marginTop: 6,
+                          lineHeight: 23,
+                        }}
+                      >
+                        {t('settings.security_report.risk_posture')}
+                      </Text>
+                    </View>
+                    <View
                       style={{
-                        fontSize: 40,
-                        fontWeight: '800',
-                        color: riskColor(report.riskLevel),
-                        lineHeight: 44,
+                        backgroundColor: riskTone(report.riskLevel).bg,
+                        borderColor: riskTone(report.riskLevel).border,
+                        borderWidth: 1,
+                        borderRadius: 999,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
                       }}
                     >
-                      {report.score}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.muted,
-                        fontSize: 15,
-                        marginBottom: 6,
-                      }}
-                    >
-                      /100
-                    </Text>
+                      <Text
+                        style={{
+                          color: riskColor(report.riskLevel),
+                          fontSize: 12,
+                          fontWeight: '800',
+                        }}
+                      >
+                        {t(`settings.security_report.risk.${report.riskLevel}`)}
+                      </Text>
+                    </View>
                   </View>
-                  <Text
-                    style={{
-                      marginTop: 8,
-                      fontSize: 14,
-                      fontWeight: '700',
-                      color: riskColor(report.riskLevel),
-                    }}
-                  >
-                    {t(`settings.security_report.risk.${report.riskLevel}`)}
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.muted,
-                      fontSize: 12,
-                      marginTop: 6,
-                      lineHeight: 18,
-                    }}
-                  >
-                    {t('settings.security_report.checked', {
-                      checked: report.summary.checkedSecrets,
-                      total: report.summary.totalItems,
-                    })}
-                  </Text>
-                </View>
 
-                <View
-                  style={{
-                    backgroundColor: theme.card,
-                    borderRadius: 22,
-                    borderWidth: 1,
-                    borderColor: theme.cardBorder,
-                    padding: 20,
-                    marginBottom: 12,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: theme.muted,
-                      fontSize: 12,
-                      fontWeight: '700',
-                      marginBottom: 8,
-                    }}
-                  >
-                    {t('settings.security_report.hardening.title')}
-                  </Text>
                   <View
                     style={{
                       flexDirection: 'row',
-                      alignItems: 'flex-end',
                       gap: 10,
+                      marginBottom: 14,
+                    }}
+                  >
+                    {[
+                      {
+                        label: t('settings.security_report.score_label'),
+                        value: report.score,
+                        color: riskColor(report.riskLevel),
+                        level: report.riskLevel,
+                      },
+                      {
+                        label: t('settings.security_report.hardening.title'),
+                        value: report.hardening.score,
+                        color: riskColor(report.hardening.riskLevel),
+                        level: report.hardening.riskLevel,
+                      },
+                    ].map(card => (
+                      <View
+                        key={card.label}
+                        style={{
+                          flex: 1,
+                          backgroundColor: theme.bgAccent || theme.card,
+                          borderRadius: 20,
+                          borderWidth: 1,
+                          borderColor: theme.cardBorder,
+                          padding: 14,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: tertiaryText,
+                            fontSize: 11,
+                            fontWeight: '700',
+                            lineHeight: 15,
+                          }}
+                        >
+                          {card.label}
+                        </Text>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'flex-end',
+                            marginTop: 8,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: card.color,
+                              fontSize: 34,
+                              fontWeight: '900',
+                              lineHeight: 37,
+                            }}
+                          >
+                            {card.value}
+                          </Text>
+                          <Text
+                            style={{
+                              color: secondaryText,
+                              fontSize: 13,
+                              fontWeight: '700',
+                              marginBottom: 5,
+                              marginLeft: 4,
+                            }}
+                          >
+                            /100
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            height: 7,
+                            borderRadius: 999,
+                            backgroundColor: theme.inputBg,
+                            marginTop: 11,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <View
+                            style={{
+                              height: '100%',
+                              width: `${clampScore(card.value)}%`,
+                              backgroundColor: card.color,
+                              borderRadius: 999,
+                            }}
+                          />
+                        </View>
+                        <Text
+                          style={{
+                            color: card.color,
+                            fontSize: 11,
+                            fontWeight: '800',
+                            marginTop: 8,
+                          }}
+                        >
+                          {t(`settings.security_report.risk.${card.level}`)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View
+                    style={{
+                      backgroundColor: riskTone(report.riskLevel).bg,
+                      borderColor: riskTone(report.riskLevel).border,
+                      borderWidth: 1,
+                      borderRadius: 18,
+                      padding: 14,
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 34,
+                        color: primaryText,
+                        fontSize: 13,
                         fontWeight: '800',
-                        color: riskColor(report.hardening.riskLevel),
-                        lineHeight: 38,
+                        marginBottom: 5,
                       }}
                     >
-                      {report.hardening.score}
+                      {t('settings.security_report.evidence_label')}
                     </Text>
                     <Text
                       style={{
-                        color: theme.muted,
-                        fontSize: 15,
-                        marginBottom: 6,
+                        color: secondaryText,
+                        fontSize: 12,
+                        lineHeight: 18,
                       }}
                     >
-                      /100
+                      {t('settings.security_report.checked', {
+                        checked: report.summary.checkedSecrets,
+                        total: report.summary.totalItems,
+                      })}{' '}
+                      {t('settings.security_report.hardening.checked', {
+                        count: report.hardening.summary.loginItems,
+                      })}
                     </Text>
                   </View>
-                  <Text
-                    style={{
-                      marginTop: 8,
-                      fontSize: 14,
-                      fontWeight: '700',
-                      color: riskColor(report.hardening.riskLevel),
-                    }}
-                  >
-                    {t(
-                      `settings.security_report.risk.${report.hardening.riskLevel}`,
-                    )}
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.muted,
-                      fontSize: 12,
-                      marginTop: 6,
-                      lineHeight: 18,
-                    }}
-                  >
-                    {t('settings.security_report.hardening.checked', {
-                      count: report.hardening.summary.loginItems,
-                    })}
-                  </Text>
                 </View>
 
                 <View
@@ -516,7 +602,7 @@ export const SecurityReportModal = ({
                         marginBottom: 8,
                       }}
                     >
-                      • {action}
+                      - {action}
                     </Text>
                     ),
                   )}
@@ -623,9 +709,9 @@ export const SecurityReportModal = ({
                             marginTop: 4,
                           }}
                         >
-                          {t(`vault.categories.${issue.category}`)} •{' '}
+                          {t(`vault.categories.${issue.category}`)} /{' '}
                           {t(`settings.security_report.field.${issue.field}`)}{' '}
-                          •{' '}
+                          /{' '}
                           {t(`settings.security_report.issue_type.${issue.type}`)}
                         </Text>
                         <Text
@@ -688,7 +774,7 @@ export const SecurityReportModal = ({
                           marginBottom: 8,
                         }}
                       >
-                        • {action}
+                        - {action}
                       </Text>
                     ),
                   )}
@@ -776,7 +862,7 @@ export const SecurityReportModal = ({
                             marginTop: 4,
                           }}
                         >
-                          {t(`vault.categories.${check.category}`)} •{' '}
+                          {t(`vault.categories.${check.category}`)} /{' '}
                           {t(
                             `settings.security_report.hardening.type.${check.type}`,
                           )}

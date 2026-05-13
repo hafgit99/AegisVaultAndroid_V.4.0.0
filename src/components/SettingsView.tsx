@@ -71,6 +71,55 @@ export const SettingsView = ({
   const [crashReports, setCrashReports] = useState<CrashReport[]>([]);
   const [crashLoading, setCrashLoading] = useState(false);
   const [bindings, setBindings] = useState<any[]>([]);
+  const heroMetricCards = [
+    {
+      label: t('settings.overview.auto_lock'),
+      value:
+        st2.autoLockSeconds > 0
+          ? `${st2.autoLockSeconds}${t('settings.sec')}`
+          : t('settings.off'),
+      tone: theme.sage,
+    },
+    {
+      label: t('settings.overview.clipboard'),
+      value:
+        st2.clipboardClearSeconds > 0
+          ? `${st2.clipboardClearSeconds}${t('settings.sec')}`
+          : t('settings.off'),
+      tone: theme.cyan || theme.sage,
+    },
+    {
+      label: t('settings.overview.audit'),
+      value: String(auditEvents.length),
+      tone: theme.amber || theme.sage,
+    },
+  ];
+  const quickActions = [
+    {
+      icon: '\uD83D\uDEE1\uFE0F',
+      title: t('settings.quick.security_report'),
+      desc: t('settings.quick.security_report_desc'),
+      onPress: onSecurityReport,
+    },
+    {
+      icon: '\uD83D\uDCBE',
+      title: t('settings.quick.backup'),
+      desc: t('settings.quick.backup_desc'),
+      onPress: onBackup,
+    },
+    {
+      icon: '\uD83D\uDD11',
+      title: t('settings.quick.autofill'),
+      desc: t('settings.quick.autofill_desc'),
+      onPress: () => AutofillService.openSettings(),
+    },
+    {
+      icon: '\uD83D\uDD12',
+      title: t('settings.quick.lock'),
+      desc: t('settings.quick.lock_desc'),
+      onPress: onLock,
+    },
+  ];
 
   const boolLabel = (value: boolean) =>
     value ? t('settings.integrity.yes') : t('settings.integrity.no');
@@ -191,6 +240,129 @@ export const SettingsView = ({
         {t('settings.subtitle')}
       </Text>
 
+      <View
+        style={[
+          s.sCard,
+          {
+            backgroundColor: theme.cardElevated || theme.card,
+            borderColor: theme.cardBorder,
+            shadowColor: theme.shadow,
+          },
+          {
+            borderRadius: 26,
+            padding: 20,
+            marginTop: 16,
+            shadowOffset: { width: 0, height: 12 },
+            shadowOpacity: 0.14,
+            shadowRadius: 22,
+            elevation: 3,
+          },
+        ]}
+      >
+        <Text
+          style={{
+            color: theme.sage,
+            fontSize: 11,
+            fontWeight: '900',
+            letterSpacing: 1.1,
+            textTransform: 'uppercase',
+            marginBottom: 8,
+          }}
+        >
+          {t('settings.overview.eyebrow')}
+        </Text>
+        <Text style={{ color: theme.navy, fontSize: 21, fontWeight: '900' }}>
+          {t('settings.overview.title')}
+        </Text>
+        <Text
+          style={{
+            color: theme.muted,
+            fontSize: 12,
+            lineHeight: 18,
+            marginTop: 6,
+          }}
+        >
+          {t('settings.overview.desc')}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+          {heroMetricCards.map(card => (
+            <View
+              key={card.label}
+              style={{
+                flex: 1,
+                backgroundColor: theme.inputBg,
+                borderColor: theme.cardBorder,
+                borderWidth: 1,
+                borderRadius: 16,
+                padding: 11,
+              }}
+            >
+              <Text style={{ color: card.tone, fontSize: 16, fontWeight: '900' }}>
+                {card.value}
+              </Text>
+              <Text
+                style={{
+                  color: theme.muted,
+                  fontSize: 10,
+                  fontWeight: '700',
+                  marginTop: 4,
+                }}
+              >
+                {card.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <Text style={[s.sec, { color: theme.navy }]}>
+        {t('settings.quick.title')}
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {quickActions.map(action => (
+          <TouchableOpacity
+            key={action.title}
+            onPress={action.onPress}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={action.title}
+            style={{
+              width: '48%',
+              backgroundColor: theme.card,
+              borderColor: theme.cardBorder,
+              borderWidth: 1,
+              borderRadius: 20,
+              padding: 15,
+            }}
+          >
+            <Text style={{ fontSize: 22, marginBottom: 10 }}>{action.icon}</Text>
+            <Text
+              style={{
+                color: theme.navy,
+                fontSize: 13,
+                fontWeight: '800',
+                lineHeight: 17,
+              }}
+            >
+              {action.title}
+            </Text>
+            <Text
+              style={{
+                color: theme.muted,
+                fontSize: 11,
+                lineHeight: 16,
+                marginTop: 4,
+              }}
+            >
+              {action.desc}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={[s.sec, { color: theme.navy }]}>
+        {t('settings.sections.appearance')}
+      </Text>
       <View
         style={[
           s.sCard,
