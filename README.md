@@ -28,9 +28,9 @@
 
 ## Overview
 
-**Aegis Vault Android 5.0** is an offline-first password manager for Android. It is designed around a simple principle: secrets should remain encrypted, portable, and under the user's control by default.
+**Aegis Vault Android 5.1** is an offline-first password manager for Android. It is designed around a simple principle: secrets should remain encrypted, portable, and under the user's control by default.
 
-The app combines SQLCipher-backed local storage, Android biometric access, encrypted backup/restore, local security scoring, passkey-oriented workflows, and optional encrypted relay sync. Version 5.0 focuses on aligning the Android app with the Aegis desktop v5 data model while improving release trust, auditability, and security-center visibility.
+The app combines SQLCipher-backed local storage, Android biometric access, encrypted backup/restore, local security scoring, passkey-oriented workflows, and optional encrypted relay sync. Version 5.1 keeps the Android app aligned with the Aegis desktop v5 data model while adding a broader bilingual, dark-mode-ready design refresh across the daily-use product surfaces.
 
 ## What is New in 5.1
 
@@ -51,6 +51,9 @@ The app combines SQLCipher-backed local storage, Android biometric access, encry
 
 - **Security hardening and bridge stability**: v5.1 brings HKDF-Expand, constant-time checks, and Argon2id upgrades alongside a robust fix for the native cryptographic bridge.
 - **Encrypted backup export/import hardening**: Encrypted `.aegis` backups now save to the user-visible `Downloads/AegisVault` location on Android and use a byte-safe AES-256-GCM import path.
+- **Modern product design refresh**: Dashboard, lock screen, Settings, Security Center, password health report, backup/import, password generator, entry add/detail, sync, sharing, pairing, trash, donation, and legal screens now share a more consistent card-based visual language.
+- **Large-vault usability**: The vault header remains fixed while scrolling large collections, and list rendering is tuned for high item counts such as 600+ records.
+- **Release QA checklist**: A focused 5.1 design/device checklist is included for Turkish/English, light/dark mode, large-vault performance, and critical release flows.
 - **Release APK readiness**: The current signed release build is produced through `assembleRelease` with the Android release signing flow.
 - **Coverage and quality gate cleanup**: The Jest coverage suite, TypeScript check, and ESLint pass cleanly after the latest security and compatibility fixes.
 - **Relay compatibility restored**: The self-hosted relay entry point is available again for sync protocol and Play Integrity validation tests.
@@ -146,7 +149,7 @@ The project uses layered quality checks:
 
 ## Desktop v5 Compatibility
 
-Version 5.0 introduces a shared interoperability layer for Android and desktop:
+Android 5.1 keeps the shared interoperability layer for Android and desktop:
 
 - Canonical schema version: `5.0.0`.
 - Export kind: `aegis-vault-canonical`.
@@ -160,6 +163,17 @@ Useful tests:
 npx jest --no-coverage --runInBand --testTimeout=30000 --runTestsByPath __tests__/CanonicalVaultSchema.test.ts __tests__/BackupModule.test.ts
 npx jest --no-coverage --runInBand --testTimeout=30000 --runTestsByPath __tests__/SyncEnvelope.test.ts __tests__/RelayProtocol.test.ts __tests__/BrowserPairingService.test.ts
 ```
+
+## Design and Device QA
+
+The 5.1 UI refresh is designed around four release checks:
+
+- Turkish and English text must remain readable without clipping in light and dark mode.
+- The 600+ record vault scenario must keep search, category filtering, scroll, and detail open/close interactions responsive.
+- Security-critical flows must show clear context before action: unlock, backup/import, sync, sharing, pairing, trash, and delete/restore.
+- README/GitHub screenshots should represent the current visual language: Dashboard, Security Center, Backup, Lock Screen, and Settings.
+
+Detailed checklist: [Design QA 5.1.0 TR](docs/DESIGN_QA_5.1.0_TR.md)
 
 ## Screens
 
@@ -246,6 +260,7 @@ The provenance file records package version, source metadata, build commands, ma
 - [Security Architecture](docs/SECURITY_ARCHITECTURE.md)
 - [Threat Model](docs/THREAT_MODEL.md)
 - [Release Readiness](docs/RELEASE_READINESS.md)
+- [Design QA 5.1.0 TR](docs/DESIGN_QA_5.1.0_TR.md)
 - [Release Notes 5.0.0](docs/RELEASE_NOTES_5.0.0.md)
 - [Passkey WebAuthn ADR](docs/PASSKEY_WEBAUTHN_ADR_TR.md)
 - [Passkey Backend Checklist](docs/PASSKEY_BACKEND_IMPLEMENTATION_CHECKLIST_TR.md)

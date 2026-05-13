@@ -7,6 +7,8 @@ This folder contains product, security, release, and validation documentation fo
 - [User Guide EN](./USER_GUIDE_EN.md)
 - [Kullanici Kilavuzu TR](./KULLANICI_KILAVUZU_TR.md)
 - [API Reference](./API_REFERENCE.md)
+- [Release Notes 5.1.0](./RELEASE_NOTES_5.1.0.md)
+- [Design QA 5.1.0 TR](./DESIGN_QA_5.1.0_TR.md)
 - [Release Notes 5.0.0](./RELEASE_NOTES_5.0.0.md)
 - [Release Readiness](./RELEASE_READINESS.md)
 
@@ -27,12 +29,14 @@ This folder contains product, security, release, and validation documentation fo
 
 ## Release History
 
+- [Release Notes 5.1.0](./RELEASE_NOTES_5.1.0.md)
 - [Release Notes 5.0.0](./RELEASE_NOTES_5.0.0.md)
 - [Release Notes 4.2.0](./RELEASE_NOTES_4.2.0.md)
 - [Release Notes 4.0.2](./RELEASE_NOTES_4.0.2.md)
 
 ## Field Validation
 
+- [Design QA 5.1.0 TR](./DESIGN_QA_5.1.0_TR.md)
 - [Device Matrix and Field Validation TR](./CIHAZ_MATRISI_VE_SAHA_DOGRULAMA_TR.md)
 - [Daily Field Test Operations Plan TR](./GUNLUK_SAHA_TEST_OPERASYON_PLANI_TR.md)
 - [First Field Run Task List TR](./ILK_SAHA_TEST_KOSUSU_GOREV_LISTESI_TR.md)

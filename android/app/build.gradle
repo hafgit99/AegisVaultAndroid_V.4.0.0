@@ -114,8 +114,8 @@ android {
         applicationId "com.aegisandroid"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 500
-        versionName "5.0.0"
+        versionCode 510
+        versionName "5.1.0"
         manifestPlaceholders = [usesCleartextTraffic: "false"]
         def playIntegrityProjectNumber = (project.findProperty('PLAY_INTEGRITY_PROJECT_NUMBER')
             ?: System.getenv('PLAY_INTEGRITY_PROJECT_NUMBER')
