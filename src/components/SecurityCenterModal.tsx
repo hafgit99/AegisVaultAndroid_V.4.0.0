@@ -4,8 +4,10 @@
  * Professional vault-wide risk cockpit with bilingual and dark-mode support.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  InteractionManager,
   Modal,
   ScrollView,
   StyleSheet,
@@ -62,6 +64,8 @@ const severityTone = (severity: SecurityCenterTriageItem['severity']) =>
   })[severity] || '#64748b';
 
 const clampScore = (score: number) => Math.max(0, Math.min(100, score));
+const INITIAL_TRIAGE_LIMIT = 60;
+const TRIAGE_LIMIT_STEP = 60;
 
 const Card = ({ children, style, theme }: any) => (
   <View
@@ -91,18 +95,45 @@ export const SecurityCenterModal = ({
   const { t } = useTranslation();
   const [summary, setSummary] = useState<SecurityCenterSummary | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [visibleTriageLimit, setVisibleTriageLimit] =
+    useState(INITIAL_TRIAGE_LIMIT);
+  const summaryCacheRef = useRef<{
+    key: string;
+    value: SecurityCenterSummary;
+  } | null>(null);
+
+  const getSummaryCacheKey = useCallback(() => {
+    const reviews = SecureAppSettings.get().securityCenterReviews || {};
+    const newestItemStamp = items.reduce((latest, item) => {
+      const stamp = item.updated_at || item.created_at || String(item.id || '');
+      return stamp > latest ? stamp : latest;
+    }, '');
+    return `${items.length}:${newestItemStamp}:${JSON.stringify(reviews)}`;
+  }, [items]);
+
+  const buildAndSetSummary = useCallback(() => {
+    const settings = SecureAppSettings.get();
+    const cacheKey = getSummaryCacheKey();
+    if (summaryCacheRef.current?.key === cacheKey) {
+      setSummary(summaryCacheRef.current.value);
+      return;
+    }
+    const nextSummary = SecurityCenterService.buildSummary(
+      items,
+      settings.securityCenterReviews || {},
+    );
+    summaryCacheRef.current = { key: cacheKey, value: nextSummary };
+    setSummary(nextSummary);
+  }, [getSummaryCacheKey, items]);
 
   useEffect(() => {
     if (visible) {
-      const settings = SecureAppSettings.get();
-      setSummary(
-        SecurityCenterService.buildSummary(
-          items,
-          settings.securityCenterReviews || {},
-        ),
-      );
+      setVisibleTriageLimit(INITIAL_TRIAGE_LIMIT);
+      setSummary(summaryCacheRef.current?.value || null);
+      const task = InteractionManager.runAfterInteractions(buildAndSetSummary);
+      return () => task.cancel();
     }
-  }, [visible, items]);
+  }, [visible, items, buildAndSetSummary]);
 
   const handleReview = async (item: SecurityCenterTriageItem) => {
     await SecureAppSettings.markReviewed(
@@ -112,12 +143,12 @@ export const SecurityCenterModal = ({
       db,
     );
     const settings = SecureAppSettings.get();
-    setSummary(
-      SecurityCenterService.buildSummary(
-        items,
-        settings.securityCenterReviews,
-      ),
+    const nextSummary = SecurityCenterService.buildSummary(
+      items,
+      settings.securityCenterReviews,
     );
+    summaryCacheRef.current = { key: getSummaryCacheKey(), value: nextSummary };
+    setSummary(nextSummary);
   };
 
   const handleReopen = async (item: SecurityCenterTriageItem) => {
@@ -128,23 +159,27 @@ export const SecurityCenterModal = ({
       db,
     );
     const settings = SecureAppSettings.get();
-    setSummary(
-      SecurityCenterService.buildSummary(
-        items,
-        settings.securityCenterReviews,
-      ),
+    const nextSummary = SecurityCenterService.buildSummary(
+      items,
+      settings.securityCenterReviews,
     );
+    summaryCacheRef.current = { key: getSummaryCacheKey(), value: nextSummary };
+    setSummary(nextSummary);
   };
-
-  if (!summary) return null;
 
   const primaryText = theme.textPrimary || theme.navy;
   const secondaryText = theme.textSecondary || theme.muted;
   const tertiaryText = theme.textTertiary || theme.muted;
-  const scoreTone = riskTone(summary.score);
-  const topMetrics = Object.entries(summary.metrics)
+  const scoreTone = riskTone(summary?.score || 100);
+  const topMetrics = Object.entries(summary?.metrics || {})
     .sort(([, a], [, b]) => Number(b) - Number(a))
     .slice(0, 4);
+  const visibleTriageItems =
+    summary?.triageItems.slice(0, visibleTriageLimit) || [];
+  const hiddenTriageCount = Math.max(
+    0,
+    (summary?.triageItems.length || 0) - visibleTriageItems.length,
+  );
 
   return (
     <Modal
@@ -175,6 +210,15 @@ export const SecurityCenterModal = ({
             { paddingBottom: 40 + insets.bottom },
           ]}
         >
+          {!summary ? (
+            <Card style={s.loadingCard} theme={theme}>
+              <ActivityIndicator color={theme.sage} />
+              <Text style={[s.loadingText, { color: secondaryText }]}>
+                {t('security_center.loading')}
+              </Text>
+            </Card>
+          ) : (
+            <>
           <Card style={[s.scoreCard, { borderColor: scoreTone.border }]} theme={theme}>
             <View style={s.heroTop}>
               <View style={{ flex: 1, paddingRight: 12 }}>
@@ -342,8 +386,11 @@ export const SecurityCenterModal = ({
               </Text>
             </Card>
           ) : (
-            summary.triageItems.map((item, idx) => {
+            visibleTriageItems.map((item, idx) => {
               const issueColor = severityTone(item.severity);
+              const detailText = t(item.detailKey);
+              const actionText = t(item.actionKey);
+              const shouldShowDetail = detailText !== actionText;
               return (
                 <Card
                   key={`${item.reviewKey}_${idx}`}
@@ -377,11 +424,13 @@ export const SecurityCenterModal = ({
                         </Text>
                       </View>
                     </View>
-                    <Text style={[s.issueDetail, { color: secondaryText }]}>
-                      {t(item.detailKey)}
-                    </Text>
+                    {shouldShowDetail ? (
+                      <Text style={[s.issueDetail, { color: secondaryText }]}>
+                        {detailText}
+                      </Text>
+                    ) : null}
                     <Text style={[s.issueAction, { color: theme.sage }]}>
-                      {t(item.actionKey)}
+                      {actionText}
                     </Text>
 
                     <View style={s.issueActions}>
@@ -416,6 +465,29 @@ export const SecurityCenterModal = ({
               );
             })
           )}
+
+          {hiddenTriageCount > 0 ? (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() =>
+                setVisibleTriageLimit(current => current + TRIAGE_LIMIT_STEP)
+              }
+              style={[
+                s.showMoreButton,
+                {
+                  backgroundColor: theme.bgAccent || theme.card,
+                  borderColor: theme.cardBorder,
+                },
+              ]}
+            >
+              <Text style={[s.showMoreText, { color: theme.sage }]}>
+                {t('security_center.show_more', {
+                  count: Math.min(TRIAGE_LIMIT_STEP, hiddenTriageCount),
+                  remaining: hiddenTriageCount,
+                })}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {summary.reviewedTriageItems.length > 0 && (
             <>
@@ -478,6 +550,8 @@ export const SecurityCenterModal = ({
                 ))}
             </>
           )}
+            </>
+          )}
         </ScrollView>
       </View>
     </Modal>
@@ -512,6 +586,16 @@ const s = StyleSheet.create({
     elevation: 3,
   },
   scoreCard: { padding: 18, borderRadius: 28 },
+  loadingCard: {
+    alignItems: 'center',
+    borderRadius: 24,
+    gap: 12,
+    paddingVertical: 34,
+  },
+  loadingText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   heroTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -627,5 +711,16 @@ const s = StyleSheet.create({
     borderWidth: 1,
   },
   actionBtnSecondaryT: { fontSize: 12, fontWeight: '800' },
+  showMoreButton: {
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 14,
+    paddingVertical: 12,
+  },
+  showMoreText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
   historyToggle: { paddingVertical: 4 },
 });

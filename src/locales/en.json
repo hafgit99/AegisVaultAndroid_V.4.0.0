@@ -573,6 +573,7 @@
         "overview_label": "Security cockpit",
         "posture_title": "Vault risk posture",
         "score_label": "Overall Risk Score",
+        "loading": "Preparing local security analysis...",
         "evidence_hint": "{{count}} active findings, {{reviewed}} reviewed items.",
         "queue_label": "Action queue",
         "reviewed_label": "Reviewed",
@@ -627,6 +628,7 @@
             "reused_password": "This password is reused by another vault entry."
         },
         "triage_title": "Action Queue ({{count}})",
+        "show_more": "Show {{count}} more findings ({{remaining}} remaining)",
         "reviewed_title": "Reviewed ({{count}})",
         "review_btn": "Mark Reviewed",
         "reopen_btn": "Reopen",

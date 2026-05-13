@@ -573,6 +573,7 @@
         "overview_label": "Güvenlik kokpiti",
         "posture_title": "Kasa risk duruşu",
         "score_label": "Genel Risk Skoru",
+        "loading": "Yerel güvenlik analizi hazırlanıyor...",
         "evidence_hint": "{{count}} aktif bulgu, {{reviewed}} incelenmiş kayıt.",
         "queue_label": "Eylem kuyruğu",
         "reviewed_label": "İncelenen",
@@ -627,6 +628,7 @@
             "reused_password": "Bu parola baska bir kasa kaydinda da kullaniliyor."
         },
         "triage_title": "Eylem Kuyruğu ({{count}})",
+        "show_more": "{{count}} bulgu daha göster ({{remaining}} kaldı)",
         "reviewed_title": "İncelenenler ({{count}})",
         "review_btn": "İncelendi Olarak İşaretle",
         "reopen_btn": "Yeniden Aç",
