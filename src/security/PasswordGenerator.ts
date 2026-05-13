@@ -70,21 +70,33 @@ import { calculateEntropy } from './EntropyService';
 import i18n from '../i18n';
 
 export const getPasswordStrength = (password: string): PasswordStrength => {
-  if (!password) return { score: 0, label: i18n.t('security.entropy_critical'), color: '#94a3b8' };
+  const translate = (key: string, fallback: string) =>
+    {
+      const translated = i18n.t(key, { defaultValue: fallback });
+      return !translated || translated === key ? fallback : translated;
+    };
+
+  if (!password) {
+    return {
+      score: 0,
+      label: translate('security.entropy_critical', 'Zayıf'),
+      color: '#94a3b8',
+    };
+  }
   
   const result = calculateEntropy(password);
   
   const labelMap: Record<string, string> = {
-    critical: i18n.t('security.entropy_critical'),
-    weak:     i18n.t('security.entropy_weak'),
-    fair:     i18n.t('security.entropy_fair'),
-    strong:   i18n.t('security.entropy_strong'),
-    excellent:i18n.t('security.entropy_excellent'),
+    critical: translate('security.entropy_critical', 'Zayıf'),
+    weak: translate('security.entropy_weak', 'Zayıf'),
+    fair: translate('security.entropy_fair', 'Orta'),
+    strong: translate('security.entropy_strong', 'Güçlü'),
+    excellent: translate('security.entropy_excellent', 'Çok Güçlü'),
   };
 
   return {
     score: result.score,
-    label: labelMap[result.level],
+    label: labelMap[result.level] || labelMap.critical,
     color: result.color,
   };
 };

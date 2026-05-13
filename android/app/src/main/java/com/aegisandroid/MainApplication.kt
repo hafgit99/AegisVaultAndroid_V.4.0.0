@@ -22,6 +22,7 @@ class MainApplication : Application(), ReactApplication {
           add(SecureStoragePackage())
           add(ScreenSecurityPackage())
           add(TamperDetectionPackage())
+          add(DownloadExportPackage())
         },
     )
   }

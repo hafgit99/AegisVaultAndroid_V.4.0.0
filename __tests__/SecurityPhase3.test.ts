@@ -186,6 +186,29 @@ describe('SecurityModule Phase3 - Mutation Hardening', () => {
       await SecurityModule.logSecurityEvent('buffered', 'info');
       expect(RNFS.writeFile).toHaveBeenCalled();
     });
+    test('deduplicates wear_os_sync_complete success events by updating existing record', async () => {
+      // First sync should INSERT
+      mockDb.executeSync.mockReturnValueOnce({ rows: [] }); // No existing record
+      await SecurityModule.logSecurityEvent('wear_os_sync_complete', 'success', { count: 3 });
+      expect(mockDb.executeSync).toHaveBeenCalledWith(
+        'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
+        ['wear_os_sync_complete', 'success', '{"count":3}'],
+      );
+
+      // Subsequent sync should UPDATE the existing record instead of INSERT
+      jest.clearAllMocks();
+      mockDb.executeSync.mockReturnValueOnce({
+        rows: [{ id: 99, details: '{"count":3}' }],
+      }); // Existing record found
+      await SecurityModule.logSecurityEvent('wear_os_sync_complete', 'success', { count: 2 });
+      expect(mockDb.executeSync).toHaveBeenCalledWith(
+        "SELECT id, details FROM vault_audit_log WHERE event_type='wear_os_sync_complete' AND event_status='success' ORDER BY created_at DESC LIMIT 1",
+      );
+      expect(mockDb.executeSync).toHaveBeenCalledWith(
+        'UPDATE vault_audit_log SET details=?, created_at=CURRENT_TIMESTAMP WHERE id=?',
+        ['{"count":2}', 99],
+      );
+    });
   });
 
   // ═══ clearAuditEvents ═══

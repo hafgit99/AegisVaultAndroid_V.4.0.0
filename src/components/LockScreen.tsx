@@ -83,6 +83,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   const [failCount, setFailCount] = useState(0);
   const [legalType, setLegalType] = useState<'terms' | 'privacy' | null>(null);
   const [integrity, setIntegrity] = useState<IntegritySignals | null>(null);
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
   // ── Glow animation ──
   useEffect(() => {
@@ -203,12 +204,19 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
   return (
     <View style={[s.container, { backgroundColor: palette.bg }]}>
-      <Image
-        source={require('../assets/ic_launcher.jpg')}
-        style={s.appIcon}
-        resizeMode="contain"
-        accessibilityLabel="Aegis Vault app icon"
-      />
+      {iconLoadFailed ? (
+        <View style={[s.appIcon, s.appIconFallback]}>
+          <Text style={s.appIconFallbackText}>AV</Text>
+        </View>
+      ) : (
+        <Image
+          source={require('../assets/ic_launcher.jpg')}
+          style={s.appIcon}
+          resizeMode="contain"
+          accessibilityLabel="Aegis Vault app icon"
+          onError={() => setIconLoadFailed(true)}
+        />
+      )}
       <Text style={[s.title, { color: palette.navy }]}>{t('lock_screen.title')}</Text>
       <Text style={[s.subtitle, { color: palette.muted }]}>{authStatus}</Text>
 
@@ -321,6 +329,19 @@ const s = StyleSheet.create({
     height: 76,
     marginBottom: 12,
     borderRadius: 20,
+  },
+  appIconFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#d8e2cf',
+    borderWidth: 1,
+    borderColor: 'rgba(45, 64, 51, 0.18)',
+  },
+  appIconFallbackText: {
+    color: '#24352b',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.6,
   },
   warningBox: { borderRadius: 14, padding: 14, marginBottom: 16, width: '100%' },
   integrityWarningBox: { borderWidth: 1 },

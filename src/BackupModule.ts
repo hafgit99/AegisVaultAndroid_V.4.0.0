@@ -1,12 +1,17 @@
 import RNFS from 'react-native-fs';
-import { SecurityModule, VaultItem, __base64ToBuf, __bufToHex } from './SecurityModule';
+import { NativeModules } from 'react-native';
+import { SecurityModule, VaultItem } from './SecurityModule';
 import { toCanonicalVaultRecords } from './compat/CanonicalVaultSchema';
-import QuickCrypto from 'react-native-quick-crypto';
-import { Buffer } from '@craftzdog/react-native-buffer';
-import Argon2 from 'react-native-argon2';
 
-const Argon2Fn: any = (Argon2 as any)?.default ?? (Argon2 as any);
-const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
+const { DownloadExport } = NativeModules as {
+  DownloadExport?: {
+    saveTextToDownloads?: (
+      fileName: string,
+      content: string,
+      mimeType: string,
+    ) => Promise<string>;
+  };
+};
 
 /**
  * Detect if a parsed JSON object is a Desktop Aegis Vault encrypted backup.
@@ -204,6 +209,25 @@ const writeExportFile = async (
   const path = joinPath(dir, safeName);
   await RNFS.writeFile(path, content, 'utf8');
   return path;
+};
+
+const writeEncryptedBackupToDownloads = async (
+  fileName: string,
+  content: string,
+): Promise<string> => {
+  const safeName = sanitizeExportFileName(fileName);
+  if (typeof DownloadExport?.saveTextToDownloads === 'function') {
+    try {
+      return await DownloadExport.saveTextToDownloads(
+        safeName,
+        content,
+        'application/octet-stream',
+      );
+    } catch (e) {
+      debugLog('[AEGIS-EXPORT] MediaStore Downloads save failed, falling back to RNFS', e);
+    }
+  }
+  return writeExportFile(safeName, content, { preferPrivate: false });
 };
 
 // ─── CSV Parser (handles quoted fields, commas in values, newlines) ──────────
@@ -1108,54 +1132,19 @@ export class BackupModule {
       debugLog('[AEGIS-IMPORT] Envelope version:', json.envelope_version || 1);
       debugLog('[AEGIS-IMPORT] Payload kind:', json.payload_kind || 'legacy-array');
 
-      // Step 1: Decode base64 salt & iv
-      const saltBytes = __base64ToBuf(json.salt);
-      const ivBytes = __base64ToBuf(json.iv);
-      const cipherBytes = __base64ToBuf(json.payload);
-
-      // Step 2: Derive key using Desktop's Argon2id parameters
-      // Desktop uses: 64MB memory, 3 iterations, parallelism=1, 64-byte output
-      // The first 32 bytes = encryption key, last 32 bytes = integrity key
-      const argon2Result = await Argon2Fn(password, __bufToHex(saltBytes), {
-        mode: 'argon2id',
-        iterations: 3,
-        memory: 65536,     // 64 MB
-        parallelism: 1,
-        hashLength: 64,    // 64 bytes (32 enc + 32 integrity)
-        saltEncoding: 'hex',
-      });
-
-      const rawHash = typeof argon2Result.rawHash === 'string'
-        ? argon2Result.rawHash
-        : Buffer.from(argon2Result.rawHash).toString('hex');
-      const derivedAll = Buffer.from(rawHash, 'hex');
-      const encryptionKey = derivedAll.slice(0, 32);
-
-      // Step 3: Decrypt using AES-256-GCM
-      // Desktop's Web Crypto AES-GCM embeds the auth tag at the end of ciphertext.
-      // Standard GCM tag is last 16 bytes of the ciphertext.
-      if (cipherBytes.length < 16) {
-        result.errors.push('Şifreli veri çok kısa, bozuk dosya.');
-        return result;
-      }
-
-      const actualCipher = Buffer.from(cipherBytes.slice(0, cipherBytes.length - 16));
-      const authTag = Buffer.from(cipherBytes.slice(cipherBytes.length - 16));
-
-      const crypto = QC;
-      const decipher = crypto.createDecipheriv(
-        'aes-256-gcm',
-        encryptionKey,
-        Buffer.from(ivBytes),
+      // Şifre çözme işlemi merkezi SecurityModule'e delege ediliyor
+      const plaintext = await SecurityModule.decryptDesktopBackup(
+        json.payload,
+        json.salt,
+        json.iv,
+        password,
+        {
+          iterations: 3,
+          memory: 65536,     // 64 MB
+          parallelism: 1,
+          hashLength: 64,    // 64 bytes (32 enc + 32 integrity)
+        },
       );
-      decipher.setAuthTag(authTag);
-
-      const decryptedBuf = Buffer.concat([
-        decipher.update(actualCipher),
-        decipher.final(),
-      ]);
-
-      const plaintext = decryptedBuf.toString('utf8');
       debugLog('[AEGIS-IMPORT] Desktop backup decrypted successfully');
 
       // Step 4: Parse decrypted data
@@ -1380,75 +1369,83 @@ export class BackupModule {
       );
     }
 
-    const items = await SecurityModule.getItems();
-    const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
-    const plainItems = items.map(({ id: _id, ...rest }) => rest);
-    const canonicalItems = toCanonicalVaultRecords(items);
-    const plaintext = JSON.stringify({
-      kind: 'aegis-vault-encrypted-bundle',
-      schemaVersion: '5.0.0',
-      items: plainItems,
-      sharedSpaces,
-      canonical: {
-        kind: 'aegis-vault-canonical',
+    let items: VaultItem[] = [];
+    try {
+      items = await SecurityModule.getItems();
+      const sharedSpaces = await SecurityModule.getSharedVaultSpaces();
+      const plainItems = items.map(({ id: _id, ...rest }) => rest);
+      const canonicalItems = toCanonicalVaultRecords(items);
+      const plaintext = JSON.stringify({
+        kind: 'aegis-vault-encrypted-bundle',
         schemaVersion: '5.0.0',
-        items: canonicalItems,
-      },
-    });
+        items: plainItems,
+        sharedSpaces,
+        canonical: {
+          kind: 'aegis-vault-canonical',
+          schemaVersion: '5.0.0',
+          items: canonicalItems,
+        },
+      });
 
-    // AES-256-GCM encryption (authenticated encryption + Argon2id KDF)
-    const {
-      salt,
-      iv,
-      authTag,
-      ciphertext,
-      kdf,
-      memory,
-      iterations,
-      parallelism,
-      hashLength,
-    } = await SecurityModule.encryptAES256GCM(plaintext, password);
-    debugLog('[AEGIS-EXPORT] Encrypted export prepared with Argon2id');
-
-    const exportData = {
-      version: '2.0.0',
-      app: 'Aegis Vault Android',
-      compatibility: ['android-legacy-items', 'desktop-v5-canonical'],
-      encrypted: true,
-      algorithm: 'AES-256-GCM',
-      kdf,
-      memory,
-      iterations,
-      parallelism,
-      hashLength,
-      salt,
-      iv,
-      authTag,
-      exported_at: new Date().toISOString(),
-      count: items.length,
-      data: ciphertext,
-    };
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const jsonStr = JSON.stringify(exportData, null, 2);
-    const path = await writeExportFile(
-      `aegis_vault_encrypted_${ts}.aegis`,
-      jsonStr,
-      {
-        preferPrivate: true,
-      },
-    );
-
-    await SecurityModule.logSecurityEvent(
-      'backup_export_encrypted',
-      'success',
-      {
-        itemCount: items.length,
+      // AES-256-GCM encryption (authenticated encryption + Argon2id KDF)
+      const {
+        salt,
+        iv,
+        authTag,
+        ciphertext,
         kdf,
-        output: path ? path.split('/').pop() : 'unknown',
-      },
-    );
+        memory,
+        iterations,
+        parallelism,
+        hashLength,
+      } = await SecurityModule.encryptAES256GCM(plaintext, password);
+      debugLog('[AEGIS-EXPORT] Encrypted export prepared with Argon2id');
 
-    return path;
+      const exportData = {
+        version: '2.0.0',
+        app: 'Aegis Vault Android',
+        compatibility: ['android-legacy-items', 'desktop-v5-canonical'],
+        encrypted: true,
+        algorithm: 'AES-256-GCM',
+        kdf,
+        memory,
+        iterations,
+        parallelism,
+        hashLength,
+        salt,
+        iv,
+        authTag,
+        exported_at: new Date().toISOString(),
+        count: items.length,
+        data: ciphertext,
+      };
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const path = await writeEncryptedBackupToDownloads(
+        `aegis_vault_encrypted_${ts}.aegis`,
+        jsonStr,
+      );
+
+      await SecurityModule.logSecurityEvent(
+        'backup_export_encrypted',
+        'success',
+        {
+          itemCount: items.length,
+          kdf,
+          output: path ? path.split('/').pop() : 'unknown',
+        },
+      );
+
+      return path;
+    } catch (e: any) {
+      await SecurityModule.logSecurityEvent('backup_export_encrypted', 'failed', {
+        itemCount: items.length,
+        reason: e?.message || String(e),
+      });
+      throw new Error(
+        `Şifreli yedek oluşturulamadı: ${e?.message || 'Bilinmeyen yedekleme hatası.'}`,
+      );
+    }
   }
 
   // ── Auto-detect source from file ───────────────────────────

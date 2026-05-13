@@ -122,8 +122,62 @@ export function __bufToHex(buf: any): string {
   return str;
 }
 
-const QC: any = (QuickCrypto as any)?.default ?? (QuickCrypto as any);
-const Argon2Fn: any = (Argon2 as any)?.default ?? (Argon2 as any);
+function __toUint8Array(value: any): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (value && value.buffer instanceof ArrayBuffer) {
+    return new Uint8Array(value.buffer, value.byteOffset || 0, value.byteLength);
+  }
+  if (typeof value === 'string') {
+    return Uint8Array.from(value, c => c.charCodeAt(0));
+  }
+  return new Uint8Array(value || []);
+}
+
+function __concatToBuffer(parts: any[]): Buffer {
+  const arrays = parts.map(__toUint8Array);
+  const total = arrays.reduce((sum, item) => sum + item.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const item of arrays) {
+    merged.set(item, offset);
+    offset += item.byteLength;
+  }
+  return Buffer.from(merged);
+}
+
+const QC: any = typeof QuickCrypto === 'function' ? QuickCrypto : (QuickCrypto as any)?.default ?? QuickCrypto;
+
+/**
+ * Robust Argon2 wrapper — react-native-argon2'nin index.js'i
+ * NativeModules.RNArgon2.argon2 metodunu doğrudan extract ediyor
+ * (export default RNArgon2Module.argon2). Bu, native modül metodunun
+ * this-context'ini kaybetmesine neden olur (Hermes + New Arch).
+ *
+ * Çözüm: NativeModules üzerinden doğrudan çağrı yapmak.
+ */
+const Argon2Fn: any = (() => {
+  // 1. Önce NativeModules.RNArgon2'yi dene (en güvenilir yol)
+  const RNArgon2 = (NativeModules as any).RNArgon2;
+  if (RNArgon2 && typeof RNArgon2.argon2 === 'function') {
+    return (password: string, salt: string, options: any) =>
+      RNArgon2.argon2(password, salt, options);
+  }
+  // 2. Import edilen Argon2 default export bir fonksiyon mu?
+  if (typeof Argon2 === 'function') {
+    return Argon2;
+  }
+  // 3. .default property kontrol et
+  if (typeof (Argon2 as any)?.default === 'function') {
+    return (Argon2 as any).default;
+  }
+  // 4. Hiçbiri bulunamazsa null döndür (hata çağrı anında fırlatılır)
+  return null;
+})();
 const { SecureStorage } = NativeModules as {
   SecureStorage?: {
     getItem?: (key: string) => Promise<string | null>;
@@ -146,15 +200,14 @@ const debugWarn = (...args: any[]) => {
 const getCryptoImpl = (): any => {
   const g: any = global as any;
   const candidates = [QC, QuickCrypto as any, g?.crypto];
-  return (
-    candidates.find(
-      c =>
-        c &&
-        typeof c.randomBytes === 'function' &&
-        typeof c.createCipheriv === 'function' &&
-        typeof c.createDecipheriv === 'function',
-    ) || null
+  const found = candidates.find(
+    c =>
+      c &&
+      (typeof c.randomBytes === 'function' || typeof c.getRandomValues === 'function') &&
+      typeof c.createCipheriv === 'function' &&
+      typeof c.createDecipheriv === 'function',
   );
+  return found || null;
 };
 
 const randomBytesSafe = (size: number): Buffer => {
@@ -479,6 +532,7 @@ const APP_CONFIG_FILE = `${RNFS.DocumentDirectoryPath}/aegis_app_config.json`;
 const APP_CONFIG_SECURE_KEY = 'aegis_app_config_secure_v2';
 const VAULT_KDF_MIGRATION_FILE = `${RNFS.DocumentDirectoryPath}/aegis_kdf_migration_state.json`;
 const VAULT_KDF_MIGRATION_SECURE_KEY = 'aegis_vault_kdf_migration_state_v1';
+const MAX_ATTACHMENT_SIZE_BYTES = 50 * 1024 * 1024;
 
 
 const VAULT_KDF_STRONG = {
@@ -961,15 +1015,31 @@ export class SecurityModule {
     return 'unknown';
   }
 
-  private static parseSettingBoolean(v: any): boolean {
+  private static parseSettingBoolean(v: any, fallback: boolean = false): boolean {
+    if (v === null || v === undefined) return fallback;
     if (typeof v === 'boolean') return v;
-    if (v === 'true' || v === '1' || v === 1) return true;
-    return false;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') {
+      const normalized = v.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+    }
+    return fallback;
   }
 
   private static parseSettingNumber(v: any, fallback: number): number {
+    if (v === null || v === undefined) return fallback;
     const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.trunc(n));
+  }
+
+  private static parseSettingForAppConfig(v: string): boolean | number | string {
+    const normalized = v.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : v;
   }
 
   private static async setVaultKdfMigrationState(
@@ -1336,6 +1406,7 @@ export class SecurityModule {
       return;
     }
     try {
+      // Deduplication for vault_unlock success events
       if (eventType === 'vault_unlock' && eventStatus === 'success') {
         const existingRows = this.db.executeSync(
           "SELECT id, details FROM vault_audit_log WHERE event_type='vault_unlock' AND event_status='success' ORDER BY created_at DESC LIMIT 1",
@@ -1357,6 +1428,23 @@ export class SecurityModule {
           return;
         }
       }
+
+      // Deduplication for wear_os_sync_complete success events - prevents repetitive log spam
+      if (eventType === 'wear_os_sync_complete' && eventStatus === 'success') {
+        const existingRows = this.db.executeSync(
+          "SELECT id, details FROM vault_audit_log WHERE event_type='wear_os_sync_complete' AND event_status='success' ORDER BY created_at DESC LIMIT 1",
+        ).rows || [];
+        const latest = existingRows[0];
+        if (latest?.id !== undefined && latest?.id !== null) {
+          // Update the existing record with new sync count and timestamp
+          this.db.executeSync(
+            'UPDATE vault_audit_log SET details=?, created_at=CURRENT_TIMESTAMP WHERE id=?',
+            [JSON.stringify(this.sanitizeAuditDetails(details)), latest.id],
+          );
+          return;
+        }
+      }
+
       this.db.executeSync(
         'INSERT INTO vault_audit_log (event_type, event_status, details) VALUES (?,?,?)',
         [eventType, eventStatus, JSON.stringify(this.sanitizeAuditDetails(details))],
@@ -1378,7 +1466,19 @@ export class SecurityModule {
         fromDb.push(...rows);
       } catch {}
     }
-    return fromDb as AuditEvent[];
+    const buffered = (await this.readBufferedAuditEvents()).map((event, index) => ({
+      id: -(index + 1),
+      event_type: String(event.event_type || 'unknown'),
+      event_status: String(event.event_status || 'info'),
+      details: String(event.details || '{}'),
+      created_at: String(event.created_at || new Date(0).toISOString()),
+    })) as AuditEvent[];
+    return [...fromDb, ...buffered]
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+      .slice(0, safeLimit);
   }
 
   static async clearAuditEvents(): Promise<boolean> {
@@ -1402,6 +1502,9 @@ export class SecurityModule {
     if (category === 'card') {
       if (data?.pin) out.push({ field: 'pin', value: data.pin });
       if (data?.cvv) out.push({ field: 'cvv', value: data.cvv });
+    }
+    if (category === 'passkey' && data?.credential_id) {
+      out.push({ field: 'credential_id', value: data.credential_id });
     }
     return out;
   }
@@ -1464,9 +1567,15 @@ export class SecurityModule {
   static async addItem(item: Partial<VaultItem>): Promise<number | null> {
     if (!this.db) return null;
     try {
+      const insertItem = { ...item };
+      if ((insertItem.category || '').toLowerCase() === 'passkey') {
+        const validation = this.validatePasskeyItem(insertItem);
+        if (!validation.valid) return null;
+        insertItem.data = JSON.stringify(validation.normalized);
+      }
       this.db.executeSync(
         `INSERT INTO vault_items (title,username,password,url,notes,category,favorite,data) VALUES (?,?,?,?,?,?,?,?)`,
-        [item.title || '', item.username || '', item.password || '', item.url || '', item.notes || '', item.category || 'login', item.favorite || 0, item.data || '{}'],
+        [insertItem.title || '', insertItem.username || '', insertItem.password || '', insertItem.url || '', insertItem.notes || '', insertItem.category || 'login', insertItem.favorite || 0, insertItem.data || '{}'],
       );
       const res = this.db.executeSync('SELECT last_insert_rowid() as id');
       const newId = res.rows?.[0]?.id || null;
@@ -1486,8 +1595,20 @@ export class SecurityModule {
     try {
       const existing = await this.getItemById(id);
       if (!existing) return false;
+      const updatePayload = { ...item };
+      const targetCategory = (updatePayload.category || existing.category || '').toLowerCase();
+      if (targetCategory === 'passkey' && updatePayload.data !== undefined) {
+        const validation = this.validatePasskeyItem({
+          ...existing,
+          ...updatePayload,
+          category: 'passkey',
+        });
+        if (!validation.valid) return false;
+        updatePayload.data = JSON.stringify(validation.normalized);
+      }
+      const oldSecrets = this.extractHistorySecretsFromItem(existing);
       const fields: string[] = [], params: any[] = [];
-      for (const [k, v] of Object.entries(item)) {
+      for (const [k, v] of Object.entries(updatePayload)) {
         if (!isAllowedVaultItemUpdateColumn(k)) continue;
         fields.push(`${k}=?`);
         params.push(v);
@@ -1495,6 +1616,7 @@ export class SecurityModule {
       fields.push('updated_at=CURRENT_TIMESTAMP');
       params.push(id);
       this.db.executeSync(`UPDATE vault_items SET ${fields.join(',')} WHERE id=?`, params);
+      await this.appendPasswordHistoryEntries(id, oldSecrets);
       await this.syncAutofill();
       await this.triggerWearSync();
       await this.logSecurityEvent('item_updated', 'success', { id });
@@ -1542,7 +1664,11 @@ export class SecurityModule {
       const data = this.parseDataJson(item.data);
       const updates: any = {};
       if (row.field === 'password') updates.password = row.value;
-      else updates.data = JSON.stringify({ ...data, [row.field]: row.value });
+      else if (['wifi_password', 'pin', 'cvv', 'credential_id'].includes(row.field)) {
+        updates.data = JSON.stringify({ ...data, [row.field]: row.value });
+      } else {
+        return false;
+      }
       return this.updateItem(itemId, updates);
     } catch {
       return false;
@@ -1587,6 +1713,10 @@ export class SecurityModule {
   static async cleanupOldTrash(): Promise<void> {
     if (!this.db) return;
     try {
+      const oldTrashWhere =
+        "item_id IN (SELECT id FROM vault_items WHERE is_deleted = 1 AND deleted_at < datetime('now', '-30 days'))";
+      this.db.executeSync(`DELETE FROM vault_attachments WHERE ${oldTrashWhere}`);
+      this.db.executeSync(`DELETE FROM vault_password_history WHERE ${oldTrashWhere}`);
       this.db.executeSync(`DELETE FROM vault_items WHERE is_deleted = 1 AND deleted_at < datetime('now', '-30 days')`);
     } catch {}
   }
@@ -1721,35 +1851,94 @@ export class SecurityModule {
     plaintext: string,
     password: string,
   ): Promise<any> {
-    const salt = randomBytesSafe(32);
-    const iv = randomBytesSafe(12);
-    const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
-      mode: 'argon2id',
-      iterations: 4,
-      memory: 32768,
-      parallelism: 2,
-      hashLength: 32,
-      saltEncoding: 'hex',
-    });
-    const keyBuf = Buffer.from(
-      this.normalizeArgon2RawHash(argon2Result?.rawHash),
-    );
-    const crypto = getCryptoImpl()!;
-    const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
-    const ciphertext = Buffer.concat([
-      cipher.update(plaintext, 'utf8'),
-      cipher.final(),
-    ]);
-    const authTag = cipher.getAuthTag();
-    
-    // Cleanup key from memory
-    wipeBytes(keyBuf);
-    
+    // Step 1: Random bytes üretimi
+    let salt: Buffer;
+    let iv: Buffer;
+    try {
+      salt = randomBytesSafe(32);
+      iv = randomBytesSafe(12);
+    } catch (e: any) {
+      throw new Error(`[STEP-1 randomBytes] ${e?.message || e}`);
+    }
+
+    // Step 2: Argon2 kontrolü
+    if (!Argon2Fn || typeof Argon2Fn !== 'function') {
+      const RNArgon2 = (NativeModules as any).RNArgon2;
+      const diag = JSON.stringify({
+        Argon2Fn_type: typeof Argon2Fn,
+        RNArgon2_exists: !!RNArgon2,
+        RNArgon2_type: typeof RNArgon2,
+        RNArgon2_argon2_type: typeof RNArgon2?.argon2,
+        Argon2_import_type: typeof Argon2,
+      });
+      throw new Error(`[STEP-2 Argon2] Kütüphane bulunamadı. Diag: ${diag}`);
+    }
+
+    // Step 3: Salt hex dönüşümü
+    let saltHex: string;
+    try {
+      saltHex = salt!.toString('hex');
+    } catch (e: any) {
+      throw new Error(`[STEP-3 salt.toString] ${e?.message || e}`);
+    }
+
+    // Step 4: Argon2id KDF
+    let argon2Result: any;
+    try {
+      argon2Result = await Argon2Fn(password, saltHex, {
+        mode: 'argon2id',
+        iterations: 4,
+        memory: 32768,
+        parallelism: 2,
+        hashLength: 32,
+        saltEncoding: 'hex',
+      });
+    } catch (e: any) {
+      throw new Error(`[STEP-4 Argon2id KDF] ${e?.message || e}`);
+    }
+
+    // Step 5: Anahtar oluşturma
+    let keyBuf: Buffer;
+    try {
+      keyBuf = Buffer.from(this.normalizeArgon2RawHash(argon2Result?.rawHash));
+    } catch (e: any) {
+      throw new Error(`[STEP-5 keyBuf] ${e?.message || e}`);
+    }
+
+    // Step 6: Crypto impl
+    const crypto = getCryptoImpl();
+    if (!crypto) {
+      throw new Error('[STEP-6] getCryptoImpl() returned null — QuickCrypto mevcut değil.');
+    }
+    if (typeof crypto.createCipheriv !== 'function') {
+      throw new Error(`[STEP-6] createCipheriv mevcut değil. Keys: ${Object.keys(crypto).join(',')}`);
+    }
+
+    // Step 7: AES-256-GCM şifreleme
+    let ciphertext: Buffer;
+    let authTag: Buffer;
+    try {
+      const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+      const updated = cipher.update(plaintext, 'utf8');
+      const final = cipher.final();
+      ciphertext = __concatToBuffer([updated, final]);
+      authTag = cipher.getAuthTag();
+    } catch (e: any) {
+      throw new Error(`[STEP-7 AES-GCM cipher] ${e?.message || e}`);
+    }
+
+    // Step 8: Temizlik & sonuç
+    try {
+      wipeBytes(keyBuf);
+    } catch {
+      // wipeBytes hatası kritik değil
+    }
+
     return {
-      salt: salt.toString('base64'),
-      iv: iv.toString('base64'),
-      authTag: authTag.toString('base64'),
-      ciphertext: ciphertext.toString('base64'),
+      salt: __bufToBase64(salt!),
+      iv: __bufToBase64(iv!),
+      authTag: __bufToBase64(authTag!),
+      ciphertext: __bufToBase64(ciphertext!),
       kdf: 'Argon2id',
       memory: 32768,
       iterations: 4,
@@ -1766,20 +1955,28 @@ export class SecurityModule {
     authTagB64: string,
     kdfMeta?: any,
   ): Promise<string> {
-    const salt = Buffer.from(saltB64, 'base64');
-    const iv = Buffer.from(ivB64, 'base64');
-    const authTag = Buffer.from(authTagB64, 'base64');
+    const salt = Buffer.from(__base64ToBuf(saltB64));
+    const iv = Buffer.from(__base64ToBuf(ivB64));
+    const authTag = Buffer.from(__base64ToBuf(authTagB64));
+    const cipherBytes = Buffer.from(__base64ToBuf(ciphertext));
     
     let keyBuf: Buffer;
     if (kdfMeta?.kdf === 'PBKDF2-SHA256') {
+       const cryptoImpl = getCryptoImpl();
+       if (!cryptoImpl || typeof cryptoImpl.pbkdf2 !== 'function') {
+         throw new Error('Crypto PBKDF2 is not available on this build.');
+       }
        const raw = await new Promise<Buffer>((resolve, reject) => {
-         getCryptoImpl()!.pbkdf2(password, salt, kdfMeta.iterations || 310000, kdfMeta.hashLength || 32, 'sha256', (err: Error | null, derived: Buffer) => {
+         cryptoImpl.pbkdf2(password, salt, kdfMeta.iterations || 310000, kdfMeta.hashLength || 32, 'sha256', (err: Error | null, derived: Buffer) => {
            if (err) reject(err); else resolve(derived);
          });
        });
        keyBuf = raw;
     } else {
-      const argon2Result = await Argon2Fn(password, salt.toString('hex'), {
+      if (typeof Argon2Fn !== 'function') {
+        throw new Error('Argon2 kütüphanesi başlatılamadı veya bağlanamadı.');
+      }
+      const argon2Result = await Argon2Fn(password, __bufToHex(salt), {
         mode: 'argon2id',
         iterations: kdfMeta?.iterations || 4,
         memory: kdfMeta?.memory || 32768,
@@ -1790,15 +1987,90 @@ export class SecurityModule {
       keyBuf = Buffer.from(this.normalizeArgon2RawHash(argon2Result?.rawHash));
     }
 
-    const crypto = getCryptoImpl()!;
+    const crypto = getCryptoImpl();
+    if (!crypto || typeof crypto.createDecipheriv !== 'function') {
+      throw new Error('Crypto AES-256-GCM decipher is not available on this build.');
+    }
     const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, iv);
     decipher.setAuthTag(authTag);
-    const plaintext = decipher.update(ciphertext, 'base64', 'utf8') + decipher.final('utf8');
-    
-    // Cleanup key
-    wipeBytes(keyBuf);
-    
-    return plaintext;
+    try {
+      const decrypted = __concatToBuffer([
+        decipher.update(cipherBytes),
+        decipher.final(),
+      ]);
+      return __bufToUtf8(decrypted);
+    } finally {
+      wipeBytes(keyBuf);
+    }
+  }
+
+  /**
+   * Desktop Aegis Vault şifreli yedek formatını çözer.
+   * Desktop format: Argon2id (64MB/3iter/1par/64byte), AES-256-GCM,
+   * auth tag ciphertext'in son 16 byte'ında gömülüdür.
+   */
+  static async decryptDesktopBackup(
+    payloadB64: string,
+    saltB64: string,
+    ivB64: string,
+    password: string,
+    kdfOptions?: {
+      iterations?: number;
+      memory?: number;
+      parallelism?: number;
+      hashLength?: number;
+    },
+  ): Promise<string> {
+    if (typeof Argon2Fn !== 'function') {
+      throw new Error('Argon2 kütüphanesi başlatılamadı veya bağlanamadı.');
+    }
+
+    const saltBytes = __base64ToBuf(saltB64);
+    const ivBytes = __base64ToBuf(ivB64);
+    const cipherBytes = __base64ToBuf(payloadB64);
+
+    // Argon2id ile anahtar türetme (Desktop varsayılanları)
+    const argon2Result = await Argon2Fn(password, __bufToHex(new Uint8Array(saltBytes)), {
+      mode: 'argon2id',
+      iterations: kdfOptions?.iterations ?? 3,
+      memory: kdfOptions?.memory ?? 65536,
+      parallelism: kdfOptions?.parallelism ?? 1,
+      hashLength: kdfOptions?.hashLength ?? 64,
+      saltEncoding: 'hex',
+    });
+
+    const rawHash = this.normalizeArgon2RawHash(argon2Result?.rawHash);
+    const derivedAll = Buffer.from(rawHash);
+    const encryptionKey = derivedAll.slice(0, 32);
+
+    // Desktop Web Crypto AES-GCM: auth tag son 16 byte
+    if (cipherBytes.byteLength < 16) {
+      throw new Error('Şifreli veri çok kısa, bozuk dosya.');
+    }
+    const actualCipher = Buffer.from(new Uint8Array(cipherBytes).slice(0, cipherBytes.byteLength - 16));
+    const authTag = Buffer.from(new Uint8Array(cipherBytes).slice(cipherBytes.byteLength - 16));
+
+    const crypto = getCryptoImpl();
+    if (!crypto || typeof crypto.createDecipheriv !== 'function') {
+      throw new Error('Crypto AES-256-GCM çözücü bu build\'de mevcut değil.');
+    }
+
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      encryptionKey,
+      Buffer.from(new Uint8Array(ivBytes)),
+    );
+    decipher.setAuthTag(authTag);
+
+    const decryptedBuf = __concatToBuffer([
+      decipher.update(actualCipher),
+      decipher.final(),
+    ]);
+
+    // Anahtarı bellekten temizle
+    wipeBytes(encryptionKey);
+
+    return decryptedBuf.toString('utf8');
   }
 
   public static async clearAutoLockTimer() {
@@ -1830,7 +2102,7 @@ export class SecurityModule {
   }
 
   static async startAutoLockTimer(secondsOverride?: number, onLock?: () => void) {
-    await this.clearAutoLockTimer();
+    this.clearAutoLockTimer();
     const seconds = secondsOverride !== undefined ? secondsOverride : Number(await this.getAppConfigSetting('autoLockSeconds'));
     if (seconds > 0) {
       this.autoLockTimer = setTimeout(() => {
@@ -1913,6 +2185,7 @@ export class SecurityModule {
       await this.resetBiometricKeys();
       await RNFS.unlink(SALT_FILE).catch(() => {});
       await RNFS.unlink(BRUTE_FORCE_FILE).catch(() => {});
+      await this.logSecurityEvent('factory_reset', 'success', {});
       return true;
     } catch {
       return false;
@@ -1920,7 +2193,12 @@ export class SecurityModule {
   }
 
   static async panicWipe(): Promise<boolean> {
-    return this.factoryReset();
+    this.lockVault();
+    const ok = await this.factoryReset();
+    if (ok) {
+      await this.logSecurityEvent('panic_wipe', 'success', {});
+    }
+    return ok;
   }
 
   static async toggleFavorite(id: number, cur: number): Promise<boolean> {
@@ -1929,14 +2207,19 @@ export class SecurityModule {
 
   static async getItemCount(): Promise<number> {
     if (!this.db) return 0;
-    return this.db.executeSync('SELECT COUNT(*) as c FROM vault_items').rows?.[0]?.c || 0;
+    try {
+      return this.db.executeSync('SELECT COUNT(*) as c FROM vault_items').rows?.[0]?.c || 0;
+    } catch {
+      return 0;
+    }
   }
 
   static async addAttachment(itemId: number, filename: string, mimeType: string, filePath: string): Promise<boolean> {
     if (!this.db) return false;
     try {
-      const base64 = await RNFS.readFile(filePath, 'base64');
-      this.db.executeSync('INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)', [itemId, filename, mimeType, base64.length, base64]);
+      const result = await this.readFileToBase64(filePath, filename, 'aegis_temp');
+      if (!result || result.size > MAX_ATTACHMENT_SIZE_BYTES) return false;
+      this.db.executeSync('INSERT INTO vault_attachments (item_id,filename,mime_type,size,file_data) VALUES (?,?,?,?,?)', [itemId, filename, mimeType, result.size, result.base64]);
       return true;
     } catch {
       return false;
@@ -1952,7 +2235,17 @@ export class SecurityModule {
     if (!this.db) return null;
     const r = this.db.executeSync('SELECT filename,file_data FROM vault_attachments WHERE id=?', [attachmentId]).rows?.[0];
     if (!r) return null;
-    const path = `${RNFS.DownloadDirectoryPath}/${r.filename}`;
+    // eslint-disable-next-line no-control-regex
+    const safeName = String(r.filename || 'attachment').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+    const candidates = [RNFS.DownloadDirectoryPath, RNFS.ExternalDirectoryPath, RNFS.DocumentDirectoryPath].filter(Boolean);
+    let targetDir = candidates[0];
+    for (const dir of candidates) {
+      if (await RNFS.exists(dir)) {
+        targetDir = dir;
+        break;
+      }
+    }
+    const path = `${targetDir}/${safeName}`;
     await RNFS.writeFile(path, r.file_data, 'base64');
     return path;
   }
@@ -1966,16 +2259,53 @@ export class SecurityModule {
   static async getSetting(key: string): Promise<string | null> {
     if (!this.db) return null;
     const row = this.db.executeSync('SELECT value FROM vault_settings WHERE key=?', [key]).rows?.[0];
-    return row ? String(row.value) : null;
+    if (!row || row.value === null || row.value === undefined) return null;
+    return String(row.value);
   }
 
   static async setSetting(key: string, value: string) {
     if (!this.db) return;
+    const previous = await this.getSetting(key);
+    const parsed = this.parseSettingForAppConfig(value);
+    await this.setAppConfigSetting(key, parsed);
     this.db.executeSync('INSERT OR REPLACE INTO vault_settings (key,value) VALUES (?,?)', [key, value]);
+    if (previous !== value) {
+      await this.logSecurityEvent('critical_setting_changed', 'info', {
+        key,
+        previous,
+        next: value,
+      });
+    }
   }
 
   static async getAllSettings(): Promise<VaultSettings> {
-    return { ...DEFAULT_SETTINGS };
+    const settings: VaultSettings = { ...DEFAULT_SETTINGS };
+    const numberKeys: Array<keyof VaultSettings> = [
+      'autoLockSeconds',
+      'clipboardClearSeconds',
+      'passwordLength',
+    ];
+    const booleanKeys: Array<keyof VaultSettings> = [
+      'biometricEnabled',
+      'darkMode',
+      'breachCheckEnabled',
+      'excludeAmbiguousCharacters',
+    ];
+    for (const key of [...numberKeys, ...booleanKeys]) {
+      const appValue = await this.getAppConfigSetting(String(key));
+      if (appValue !== undefined) {
+        (settings as any)[key] = numberKeys.includes(key)
+          ? this.parseSettingNumber(appValue, (settings as any)[key])
+          : this.parseSettingBoolean(appValue, (settings as any)[key]);
+      }
+      const dbValue = await this.getSetting(String(key));
+      if (dbValue !== null) {
+        (settings as any)[key] = numberKeys.includes(key)
+          ? this.parseSettingNumber(dbValue, (settings as any)[key])
+          : this.parseSettingBoolean(dbValue, (settings as any)[key]);
+      }
+    }
+    return settings;
   }
 
   static generatePassword(
@@ -1986,6 +2316,7 @@ export class SecurityModule {
   }
 
   static getPasswordStrength(pw: string): any {
+    if (!pw) return { score: 0, label: 'Yok', color: '#94a3b8' };
     return getGeneratedPasswordStrength(pw);
   }
 
@@ -2685,31 +3016,69 @@ export class SecurityModule {
   static async readFileToBase64(
     path: string,
     filename: string,
+    tempPrefix: string = 'aegis_read',
   ): Promise<{ base64: string; size: number } | null> {
+    let targetPath = path;
+    let copiedTempPath: string | null = null;
     try {
-      let targetPath = path;
       const isContentUri = path.startsWith('content://');
       if (isContentUri) {
-        targetPath = `${RNFS.CachesDirectoryPath}/aegis_read_${Date.now()}_${filename}`;
+        targetPath = `${RNFS.CachesDirectoryPath}/${tempPrefix}_${Date.now()}_${filename}`;
+        copiedTempPath = targetPath;
         await RNFS.copyFile(path, targetPath);
       }
       const stat = await RNFS.stat(targetPath);
       const base64 = await RNFS.readFile(targetPath, 'base64');
-      if (isContentUri) {
-        await RNFS.unlink(targetPath).catch(() => {});
-      }
       return { base64, size: stat.size };
     } catch {
-      return null;
+      try {
+        const base64 = await RNFS.readFile(targetPath, 'base64');
+        return { base64, size: Math.ceil((base64.length * 3) / 4) };
+      } catch {
+        return null;
+      }
+    } finally {
+      if (copiedTempPath) {
+        await RNFS.unlink(copiedTempPath).catch(() => {});
+      }
     }
   }
 
   static async applyMergedSyncItems(items: VaultItem[]): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) throw new Error('Database not open');
     this.db.executeSync('BEGIN TRANSACTION');
     try {
       for (const item of items) {
-        this.db.executeSync('INSERT OR REPLACE INTO vault_items (id, title, username, password, url, notes, category, favorite, data, is_deleted, deleted_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [item.id, item.title, item.username, item.password, item.url, item.notes, item.category, item.favorite, item.data, item.is_deleted, item.deleted_at, item.created_at, item.updated_at]);
+        if (typeof item.id !== 'number' || !Number.isFinite(item.id)) continue;
+        const exists = this.db.executeSync(
+          'SELECT id FROM vault_items WHERE id = ?',
+          [item.id],
+        ).rows?.[0];
+        const values = [
+          item.title || '',
+          item.username || '',
+          item.password || '',
+          item.url || '',
+          item.notes || '',
+          item.category || 'login',
+          item.favorite || 0,
+          item.data || '{}',
+          item.is_deleted || 0,
+          item.deleted_at || null,
+          item.created_at || null,
+          item.updated_at || null,
+        ];
+        if (exists) {
+          this.db.executeSync(
+            'UPDATE vault_items SET title=?, username=?, password=?, url=?, notes=?, category=?, favorite=?, data=?, is_deleted=?, deleted_at=?, created_at=?, updated_at=? WHERE id=?',
+            [...values, item.id],
+          );
+        } else {
+          this.db.executeSync(
+            'INSERT INTO vault_items (title, username, password, url, notes, category, favorite, data, is_deleted, deleted_at, created_at, updated_at, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            [...values, item.id],
+          );
+        }
       }
       this.db.executeSync('COMMIT');
     } catch (e) {

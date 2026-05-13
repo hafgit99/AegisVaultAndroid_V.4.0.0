@@ -22,9 +22,12 @@ const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 function sanitizeVaultFileName(name: string): string {
   if (!name) return 'decrypted_file';
+  const baseName = name.split(/[\\/]+/).filter(Boolean).pop() || '';
   // eslint-disable-next-line no-control-regex
-  let sanitized = name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
-  sanitized = sanitized.trim();
+  let sanitized = baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+  if (/^\.+$/.test(sanitized)) {
+    sanitized = '';
+  }
   if (RESERVED_WINDOWS_NAMES.test(sanitized)) {
     sanitized = `_${sanitized}`;
   }
@@ -130,7 +133,16 @@ export class FileEncryptionModule {
           decipher.final()
         ]);
 
-        const parsed = JSON.parse(decrypted.toString('utf8'));
+        let parsed: any;
+        try {
+          parsed = JSON.parse(decrypted.toString('utf8'));
+        } catch {
+          parsed = {
+            data: obj.data,
+            meta: obj.meta,
+            originalName: obj.originalName,
+          };
+        }
         const originalName = sanitizeVaultFileName(parsed.meta?.originalName || parsed.originalName);
         const decryptedPath = `${targetDir}/${originalName}`;
         await RNFS.writeFile(decryptedPath, parsed.data, 'base64');

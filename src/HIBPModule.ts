@@ -119,7 +119,15 @@ export class HIBPModule {
     if (!password) return null;
     const keyedHash = await getCacheKey(password);
     const cache = await readCache();
-    const cached = cache[keyedHash];
+    let cached = cache[keyedHash];
+    const legacyHash = getSha1(password);
+    const legacyCached = cache[legacyHash];
+    if (!cached && legacyCached) {
+      cached = legacyCached;
+      cache[keyedHash] = legacyCached;
+      delete cache[legacyHash];
+      await writeCache(cache);
+    }
     if (!cached) return null;
 
     const age = Date.now() - new Date(cached.checkedAt).getTime();

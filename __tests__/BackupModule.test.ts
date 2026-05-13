@@ -160,7 +160,7 @@ describe('BackupModule current API', () => {
   test('exportEncrypted persists Argon2id metadata', async () => {
     const path = await BackupModule.exportEncrypted('backup-password');
 
-    expect(path.startsWith('/mock/documents/')).toBe(true);
+    expect(path.startsWith('/mock/downloads/')).toBe(true);
     expect(SecurityModule.encryptAES256GCM).toHaveBeenCalledWith(
       expect.any(String),
       'backup-password',

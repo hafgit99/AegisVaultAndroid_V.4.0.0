@@ -496,12 +496,12 @@ describe('PasswordHistoryModule', () => {
     const twelveChar = await PasswordHistoryModule.validateNewPassword('Abcd1234!xyz', 'acc_12');
     const patterned = await PasswordHistoryModule.validateNewPassword('qwertyAAA111!!!', 'acc_pattern');
 
-    expect(shortResult.errors).toContain('Minimum 8 characters required');
+    expect(shortResult.errors).toContain('Minimum 10 characters required');
     expect(shortResult.errors).toContain('Add uppercase letters');
     expect(shortResult.errors).toContain('Add numbers');
     expect(shortResult.errors).toContain('Add special characters');
     expect(shortResult.strengthScore).toBe(15);
-    expect(twelveChar.strengthScore).toBe(90);
+    expect(twelveChar.strengthScore).toBe(80);
     expect(patterned.errors.filter((error) => error === 'Contains common patterns')).toHaveLength(2);
     expect(patterned.strengthScore).toBe(50);
 

@@ -43,6 +43,13 @@ The app combines SQLCipher-backed local storage, Android biometric access, encry
 - **Release provenance and SBOM**: Release metadata can be generated as CycloneDX SBOM plus a provenance manifest for audit-friendly distribution.
 - **Bilingual and dark-mode polish**: Product surfaces continue to support Turkish/English text and dark-mode-safe UI choices.
 
+## Latest Update
+
+- **Encrypted backup export/import hardening**: Encrypted `.aegis` backups now save to the user-visible `Downloads/AegisVault` location on Android and use a byte-safe AES-256-GCM import path.
+- **Release APK readiness**: The current signed release build is produced through `assembleRelease` with the Android release signing flow.
+- **Coverage and quality gate cleanup**: The Jest coverage suite, TypeScript check, and ESLint pass cleanly after the latest security and compatibility fixes.
+- **Relay compatibility restored**: The self-hosted relay entry point is available again for sync protocol and Play Integrity validation tests.
+
 ## Quick Facts
 
 | Area | Details |
