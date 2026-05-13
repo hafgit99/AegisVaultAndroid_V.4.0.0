@@ -17,7 +17,7 @@ The release also includes a broad product design refresh for the most visible An
 - **Cryptographic Bridge Stability**: Fixed a "this-context" loss issue in the `Argon2Fn` wrapper that caused failures in the native bridge on Hermes/New Architecture.
 - **Improved Security Center Diagnostics**: Expanded the Security Center to include audit logging for hardening status and breach intelligence signals.
 - **Design Refresh**: Updated Dashboard, lock screen, Settings, Security Center, password health, backup/import, password generator, entry add/detail, sync, sharing, pairing, trash, donation, and legal screens with a unified card-based visual language.
-- **Large Vault UX**: Improved scrolling behavior for high item counts by keeping the Dashboard header area fixed while the vault list scrolls.
+- **Large Vault UX**: Improved scrolling behavior for high item counts by keeping the Dashboard header area fixed while the vault list scrolls. Added triage item pagination (60 items per step) and result caching to the Security Center to maintain performance even with hundreds of security findings.
 
 ## Security and Privacy
 

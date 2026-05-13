@@ -52,7 +52,7 @@ The app combines SQLCipher-backed local storage, Android biometric access, encry
 - **Security hardening and bridge stability**: v5.1 brings HKDF-Expand, constant-time checks, and Argon2id upgrades alongside a robust fix for the native cryptographic bridge.
 - **Encrypted backup export/import hardening**: Encrypted `.aegis` backups now save to the user-visible `Downloads/AegisVault` location on Android and use a byte-safe AES-256-GCM import path.
 - **Modern product design refresh**: Dashboard, lock screen, Settings, Security Center, password health report, backup/import, password generator, entry add/detail, sync, sharing, pairing, trash, donation, and legal screens now share a more consistent card-based visual language.
-- **Large-vault usability**: The vault header remains fixed while scrolling large collections, and list rendering is tuned for high item counts such as 600+ records.
+- **Large-vault usability**: The vault header remains fixed while scrolling large collections, and list rendering is tuned for high item counts such as 600+ records. Added triage item pagination and result caching to the Security Center for improved responsiveness.
 - **Release QA checklist**: A focused 5.1 design/device checklist is included for Turkish/English, light/dark mode, large-vault performance, and critical release flows.
 - **Release APK readiness**: The current signed release build is produced through `assembleRelease` with the Android release signing flow.
 - **Coverage and quality gate cleanup**: The Jest coverage suite, TypeScript check, and ESLint pass cleanly after the latest security and compatibility fixes.
@@ -261,6 +261,7 @@ The provenance file records package version, source metadata, build commands, ma
 - [Threat Model](docs/THREAT_MODEL.md)
 - [Release Readiness](docs/RELEASE_READINESS.md)
 - [Design QA 5.1.0 TR](docs/DESIGN_QA_5.1.0_TR.md)
+- [Release Notes 5.1.0](docs/RELEASE_NOTES_5.1.0.md)
 - [Release Notes 5.0.0](docs/RELEASE_NOTES_5.0.0.md)
 - [Passkey WebAuthn ADR](docs/PASSKEY_WEBAUTHN_ADR_TR.md)
 - [Passkey Backend Checklist](docs/PASSKEY_BACKEND_IMPLEMENTATION_CHECKLIST_TR.md)
