@@ -375,9 +375,11 @@ describe('SecurityModule', () => {
     });
 
     it('uses correct KDF parameters', async () => {
+      // VAULT_KDF_STRONG profile: 64MB RAM, 6 iterations
+      // Güçlü KDF profili: 64MB RAM, 6 iterasyon
       const result = await SecurityModule.encryptAES256GCM('test', 'pw');
-      expect(result.memory).toBe(32768);
-      expect(result.iterations).toBe(4);
+      expect(result.memory).toBe(65536);
+      expect(result.iterations).toBe(6);
       expect(result.parallelism).toBe(2);
       expect(result.hashLength).toBe(32);
     });
@@ -1537,7 +1539,8 @@ describe('SecurityModule', () => {
 
       expect(lockSpy).toHaveBeenCalled();
       expect(factorySpy).toHaveBeenCalled();
-      expect(logSpy).toHaveBeenCalledWith('panic_wipe', 'success', {});
+      expect(logSpy).toHaveBeenCalledWith('panic_wipe_initiated', 'info', expect.any(Object));
+      expect(logSpy).toHaveBeenCalledWith('panic_wipe_completed', 'success', {});
     });
   });
 });

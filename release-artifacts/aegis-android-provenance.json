@@ -1,14 +1,14 @@
 {
   "schemaVersion": "https://aegis-vault.dev/provenance/android-release/v1",
-  "generatedAt": "2026-05-09T09:01:32.951Z",
+  "generatedAt": "2026-05-15T11:52:31.979Z",
   "subject": {
     "name": "AegisAndroid",
-    "version": "5.0.0",
+    "version": "5.1.0",
     "packageName": "com.aegisandroid"
   },
   "source": {
     "repository": "https://github.com/hafgit99/AegisVaultAndroid_V.4.0.0",
-    "commit": "370db7e6f544200801360d23b4d5fe3c8ec5ac70",
+    "commit": "d3807c06b08010d544df1b650b70e2ca7c873aa0",
     "branch": "main",
     "dirty": true
   },
@@ -30,15 +30,15 @@
     },
     {
       "path": "android/app/build.gradle",
-      "sha256": "dba95290444f4ee88291fadbe9c9802407946cad30b416e9eae6b6e2328ccffe"
+      "sha256": "9c4340d707be9e4a25d117c10576cbd47827e25420bda35894dda4c9264e44f7"
     }
   ],
   "artifacts": [
     {
-      "name": "AegisVault_V.5.0.apk",
-      "path": "android/app/build/outputs/apk/release/AegisVault_V.5.0.apk",
-      "sha256": "fd0f0ee60fced39be5470bf0f25d84af4f9cd7417d39e4922ca9a8056fa4816a",
-      "bytes": 20419589
+      "name": "app-release.apk",
+      "path": "android/app/build/outputs/apk/release/app-release.apk",
+      "sha256": "2024466955c7bce77f1ed730241b41ad4b193f05c194a768b7fbb3178ec6df7e",
+      "bytes": 20503013
     }
   ],
   "sbom": {

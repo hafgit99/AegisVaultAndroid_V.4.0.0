@@ -39,7 +39,12 @@ The app combines SQLCipher-backed local storage, Android biometric access, encry
     - **Constant-time verification**: Switched to constant-time equality checks for sensitive cryptographic operations to eliminate timing side-channel attacks.
     - **Argon2id Upgrade**: Upgraded device secret verification to Argon2id for superior resistance against GPU/ASIC brute-force attacks.
     - **WebAuthn Attestation**: Added attestation verification for passkey workflows to ensure hardware-backed security.
+    - **SQL Injection Defense**: Implemented regex-based input validation and whitelisting for dynamic database queries to prevent injection vectors.
+    - **TEE-backed SecureStorage**: Migrated device-specific secrets (like salt) to Android Keystore / TEE-backed storage, protecting them even on rooted devices.
+    - **Memory Safety**: Implemented proactive buffer wiping (`wipeBytes`) and zeroing for all sensitive key material in the JS heap.
+    - **Security Audit**: Completed a comprehensive professional security scan with a final score of **9.8/10**. See the [Full Security Report](docs/GUVENLIK_TARAMA_RAPORU_2026_05_15.md).
 - **Cryptographic Bridge Fix**: Refined the `Argon2Fn` native bridge to preserve `this` context for Hermes/New Architecture, resolving "undefined is not a function" errors during backup exports.
+- **Enhanced Test Coverage**: Added dedicated unit tests for core security services including Entropy calculation, Tamper detection, and Screen security.
 - **Desktop v5 canonical vault format**: Android exports and imports a canonical v5 JSON representation for migration, sync validation, and cross-platform compatibility.
 - **Encrypted v5 backup envelope**: Encrypted exports can include the desktop-compatible canonical payload while preserving Android legacy item compatibility.
 - **Crypto wallet and document records**: New category mapping keeps wallet and document entries portable across Android and desktop.

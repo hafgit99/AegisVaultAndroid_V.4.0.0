@@ -22,7 +22,14 @@
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const HIBP_API_BASE = 'https://api.pwnedpasswords.com/range/';
-const HIBP_USER_AGENT = 'AegisVaultAndroid/4.2.0';
+/**
+ * User-Agent header sent with HIBP API requests.
+ * IMPORTANT: Keep in sync with package.json version on each release.
+ *
+ * HIBP API istekleriyle gönderilen User-Agent başlığı.
+ * ÖNEMLİ: Her sürümde package.json versiyonuyla senkronize tutulmalıdır.
+ */
+const HIBP_USER_AGENT = 'AegisVaultAndroid/5.1.0';
 
 /**
  * SHA-256 SPKI pins for api.pwnedpasswords.com (Cloudflare)

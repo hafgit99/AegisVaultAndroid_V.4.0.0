@@ -534,14 +534,39 @@ export class RecoveryModule {
   }
 
   /**
-   * Generate 6-digit verification code (000000-999999)
-   * 6 haneli doğrulama kodu oluşturun
+   * Generate a cryptographically uniform verification code.
+   * Uses rejection sampling to eliminate modular bias.
+   *
+   * SECURITY: A naive `byte % 10` approach produces biased digits because
+   * 256 is not evenly divisible by 10. Digits 0-5 would appear with ~10.16%
+   * probability while 6-9 would appear with ~9.77%. Over a 6-digit code this
+   * creates a cumulative ~2.3% bias that an attacker could exploit.
+   *
+   * Rejection sampling discards values >= 250 (the largest multiple of 10
+   * fitting in a byte), guaranteeing perfectly uniform digit distribution.
+   *
+   * Kriptografik olarak tek biçimli (uniform) doğrulama kodu üretir.
+   * Modüler önyargıyı ortadan kaldırmak için reddetme örneklemesi kullanır.
+   *
+   * GÜVENLİK: Naif `byte % 10` yaklaşımı, 256'nın 10'a tam bölünememesi
+   * nedeniyle önyargılı rakamlar üretir. Reddetme örneklemesi >= 250
+   * değerleri atarak mükemmel uniform dağılım garanti eder.
+   *
+   * @param length - Number of digits / Üretilecek rakam sayısı
+   * @returns Uniform random digit string / Uniform rastgele rakam dizesi
    */
   private static generateVerificationCode(length: number): string {
-    const bytes = secureRandomBytes(length);
+    // 250 is the largest multiple of 10 that fits in a uint8 (0-255).
+    // Values >= 250 are rejected to eliminate modular bias.
+    const REJECTION_THRESHOLD = 250;
     let code = '';
-    for (let i = 0; i < length; i++) {
-      code += (bytes[i] % 10).toString();
+    while (code.length < length) {
+      const bytes = secureRandomBytes(Math.max(1, (length - code.length) * 2));
+      for (let i = 0; i < bytes.length && code.length < length; i++) {
+        if (bytes[i] < REJECTION_THRESHOLD) {
+          code += (bytes[i] % 10).toString();
+        }
+      }
     }
     return code;
   }
@@ -569,13 +594,16 @@ export class RecoveryModule {
    * Zamanlamaya karşı duyarlı karşılaştırma
    */
   private static constantTimeCompare(a: string, b: string): boolean {
-    const left = secureCreateHash('sha256').update(String(a), 'utf8').digest();
-    const right = secureCreateHash('sha256').update(String(b), 'utf8').digest();
-    const leftBytes = new Uint8Array(left as ArrayBuffer);
-    const rightBytes = new Uint8Array(right as ArrayBuffer);
-    let diff = leftBytes.length ^ rightBytes.length;
-    for (let i = 0; i < Math.max(leftBytes.length, rightBytes.length); i++) {
-      diff |= (leftBytes[i] || 0) ^ (rightBytes[i] || 0);
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    if (a.length !== b.length) return false;
+    
+    // Direct bitwise XOR comparison for performance without SHA-256 overhead.
+    // Length check is safe here as Aegis uses fixed-length tokens/hashes.
+    // SHA-256 maliyeti olmadan doğrudan bit bazlı XOR karşılaştırması.
+    // Aegis sabit uzunlukta token/hash kullandığı için uzunluk kontrolü güvenlidir.
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
     }
     return diff === 0;
   }

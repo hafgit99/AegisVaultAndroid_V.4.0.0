@@ -67,6 +67,17 @@ export function __bufToUtf8(buf: any): string {
   const bytes = new Uint8Array(
     buf instanceof ArrayBuffer ? buf : (buf as any).buffer || buf,
   );
+  
+  // Use modern TextDecoder for correct multi-byte UTF-8 handling.
+  // Çok baytlı UTF-8 karakterlerin doğru işlenmesi için modern TextDecoder kullanılır.
+  try {
+    if (typeof TextDecoder === 'function') {
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+  } catch {}
+
+  // Fallback for environments where TextDecoder might be unavailable.
+  // TextDecoder'ın mevcut olmadığı ortamlar için fallback.
   let str = '';
   for (let i = 0; i < bytes.length; i++) {
     str += String.fromCharCode(bytes[i]);
@@ -74,7 +85,7 @@ export function __bufToUtf8(buf: any): string {
   try {
     return decodeURIComponent(escape(str));
   } catch {
-    return str; // fallback if decodeURIComponent fails
+    return str;
   }
 }
 
@@ -661,27 +672,93 @@ export class SecurityModule {
     await this.saveAppConfig();
   }
 
-  // ══════════════════════════════════════════════════
-  // 1. DYNAMIC DEVICE SALT (per-device unique)
-  // ══════════════════════════════════════════════════
+  /**
+   * Retrieve the per-installation device salt.
+   * Uses SecureStorage (TEE-backed) as the primary source, with
+   * legacy file-system fallback for backward compatibility.
+   *
+   * Cihaz başına benzersiz tuz değerini döndürür.
+   * Birincil kaynak olarak SecureStorage (TEE destekli) kullanılır,
+   * geriye dönük uyumluluk için legacy dosya sistemi fallback korunur.
+   *
+   * SECURITY: SecureStorage is backed by Android Keystore / TEE,
+   * protecting the salt from extraction even on rooted devices.
+   * On first access after migration, the salt is moved from the
+   * plain-text file into SecureStorage and the file is removed.
+   *
+   * GÜVENLİK: SecureStorage, Android Keystore / TEE tarafından
+   * desteklenir ve root erişimli cihazlarda bile salt'ın okunmasını
+   * engeller. İlk erişimde salt dosyadan SecureStorage'a taşınır.
+   */
+  private static readonly DEVICE_SALT_SECURE_KEY = 'aegis_device_salt_v2';
 
   private static async getDeviceSalt(): Promise<Buffer> {
     if (this.deviceSalt) return this.deviceSalt;
 
+    // 1. Try SecureStorage first (TEE-backed, preferred)
+    // Önce SecureStorage'dan oku (TEE destekli, tercih edilen)
+    if (typeof SecureStorage?.getItem === 'function') {
+      try {
+        const secureHex = await SecureStorage.getItem(this.DEVICE_SALT_SECURE_KEY);
+        if (secureHex && secureHex.length === 64) {
+          this.deviceSalt = Buffer.from(secureHex, 'hex');
+          if (this.deviceSalt.length === 32) return this.deviceSalt;
+        }
+      } catch {}
+    }
+
+    // 2. Legacy file fallback — read from plain-text file
+    // Eski dosya fallback'i — düz metin dosyasından oku
     try {
       const exists = await RNFS.exists(SALT_FILE);
       if (exists) {
         const hex = await RNFS.readFile(SALT_FILE, 'utf8');
         this.deviceSalt = Buffer.from(hex, 'hex');
-        if (this.deviceSalt.length === 32) return this.deviceSalt;
+        if (this.deviceSalt.length === 32) {
+          // Migrate to SecureStorage and remove legacy file
+          // SecureStorage'a taşı ve eski dosyayı sil
+          await this.migrateDeviceSaltToSecureStorage(hex);
+          return this.deviceSalt;
+        }
       }
     } catch {}
 
+    // 3. Generate new salt and persist to SecureStorage
+    // Yeni salt üret ve SecureStorage'a kaydet
     const salt = randomBytesSafe(32);
-    await RNFS.writeFile(SALT_FILE, salt.toString('hex'), 'utf8');
+    const saltHex = salt.toString('hex');
+
+    // Persist to SecureStorage (preferred) with file fallback
+    // SecureStorage'a kaydet (tercih), dosya fallback ile
+    if (typeof SecureStorage?.setItem === 'function') {
+      try {
+        await SecureStorage.setItem(this.DEVICE_SALT_SECURE_KEY, saltHex);
+      } catch {
+        await RNFS.writeFile(SALT_FILE, saltHex, 'utf8');
+      }
+    } else {
+      await RNFS.writeFile(SALT_FILE, saltHex, 'utf8');
+    }
+
     this.deviceSalt = salt;
-    debugLog('[Security] Generated new device salt');
+    debugLog('[Security] Generated new device salt (SecureStorage)');
     return salt;
+  }
+
+  /**
+   * Migrate device salt from legacy file to SecureStorage.
+   * Removes the plain-text file after successful migration.
+   *
+   * Device salt'ı legacy dosyadan SecureStorage'a taşır.
+   * Başarılı taşıma sonrası düz metin dosyasını siler.
+   */
+  private static async migrateDeviceSaltToSecureStorage(hex: string): Promise<void> {
+    if (typeof SecureStorage?.setItem !== 'function') return;
+    try {
+      await SecureStorage.setItem(this.DEVICE_SALT_SECURE_KEY, hex);
+      await RNFS.unlink(SALT_FILE).catch(() => {});
+      debugLog('[Security] Device salt migrated to SecureStorage');
+    } catch {}
   }
 
   // ══════════════════════════════════════════════════
@@ -1882,15 +1959,20 @@ export class SecurityModule {
       throw new Error(`[STEP-3 salt.toString] ${e?.message || e}`);
     }
 
-    // Step 4: Argon2id KDF
+    // Step 4: Argon2id KDF — VAULT_KDF_STRONG profile
+    // SECURITY: Backup encryption uses the same strong KDF parameters
+    // as vault database encryption (64MB RAM, 6 iterations) to ensure
+    // exported backups are equally resistant to offline brute-force.
+    // Yedekleme şifrelemesi, vault veritabanıyla aynı güçlü KDF
+    // parametrelerini kullanır (64MB RAM, 6 iterasyon).
     let argon2Result: any;
     try {
       argon2Result = await Argon2Fn(password, saltHex, {
         mode: 'argon2id',
-        iterations: 4,
-        memory: 32768,
-        parallelism: 2,
-        hashLength: 32,
+        iterations: VAULT_KDF_STRONG.iterations,
+        memory: VAULT_KDF_STRONG.memory,
+        parallelism: VAULT_KDF_STRONG.parallelism,
+        hashLength: VAULT_KDF_STRONG.hashLength,
         saltEncoding: 'hex',
       });
     } catch (e: any) {
@@ -1940,10 +2022,10 @@ export class SecurityModule {
       authTag: __bufToBase64(authTag!),
       ciphertext: __bufToBase64(ciphertext!),
       kdf: 'Argon2id',
-      memory: 32768,
-      iterations: 4,
-      parallelism: 2,
-      hashLength: 32,
+      memory: VAULT_KDF_STRONG.memory,
+      iterations: VAULT_KDF_STRONG.iterations,
+      parallelism: VAULT_KDF_STRONG.parallelism,
+      hashLength: VAULT_KDF_STRONG.hashLength,
     };
   }
 
@@ -2041,10 +2123,15 @@ export class SecurityModule {
 
     const rawHash = this.normalizeArgon2RawHash(argon2Result?.rawHash);
     const derivedAll = Buffer.from(rawHash);
-    const encryptionKey = derivedAll.slice(0, 32);
+    // SECURITY: Use subarray() instead of slice() to avoid creating
+    // an additional copy of key material in memory.
+    // GÜVENLİK: Bellekte ek anahtar kopyası oluşturmamak için
+    // slice() yerine subarray() kullanılır.
+    const encryptionKey = derivedAll.subarray(0, 32);
 
     // Desktop Web Crypto AES-GCM: auth tag son 16 byte
     if (cipherBytes.byteLength < 16) {
+      wipeBytes(derivedAll);
       throw new Error('Şifreli veri çok kısa, bozuk dosya.');
     }
     const actualCipher = Buffer.from(new Uint8Array(cipherBytes).slice(0, cipherBytes.byteLength - 16));
@@ -2052,6 +2139,7 @@ export class SecurityModule {
 
     const crypto = getCryptoImpl();
     if (!crypto || typeof crypto.createDecipheriv !== 'function') {
+      wipeBytes(derivedAll);
       throw new Error('Crypto AES-256-GCM çözücü bu build\'de mevcut değil.');
     }
 
@@ -2062,15 +2150,19 @@ export class SecurityModule {
     );
     decipher.setAuthTag(authTag);
 
-    const decryptedBuf = __concatToBuffer([
-      decipher.update(actualCipher),
-      decipher.final(),
-    ]);
-
-    // Anahtarı bellekten temizle
-    wipeBytes(encryptionKey);
-
-    return decryptedBuf.toString('utf8');
+    try {
+      const decryptedBuf = __concatToBuffer([
+        decipher.update(actualCipher),
+        decipher.final(),
+      ]);
+      return decryptedBuf.toString('utf8');
+    } finally {
+      // SECURITY: Wipe ALL derived key material from memory,
+      // including the full 64-byte derivedAll and its subarray view.
+      // GÜVENLİK: Türetilen TÜM anahtar materyalini bellekten sil,
+      // 64-byte derivedAll ve subarray görünümü dahil.
+      wipeBytes(derivedAll);
+    }
   }
 
   public static async clearAutoLockTimer() {
@@ -2161,11 +2253,41 @@ export class SecurityModule {
     return this.getSyncRootSecret(this.currentUnlockSecret);
   }
 
+  /**
+   * Derive or retrieve a unique secret for recovery session encryption.
+   * Now uses a persistent random secret stored in SecureStorage for 
+   * higher entropy compared to just deviceSalt.
+   *
+   * Kurtarma oturumu şifrelemesi için benzersiz bir sır döndürür.
+   * Sadece deviceSalt yerine, daha yüksek entropi için SecureStorage'da
+   * saklanan kalıcı ve rastgele bir sır kullanır.
+   */
+  private static readonly RECOVERY_SESSION_SECURE_KEY = 'aegis_recovery_session_v2';
+
   static async getRecoverySessionSecret(): Promise<string> {
+    // 1. Try to get persistent secret from SecureStorage
+    if (typeof SecureStorage?.getItem === 'function') {
+      try {
+        const stored = await SecureStorage.getItem(this.RECOVERY_SESSION_SECURE_KEY);
+        if (stored && stored.length >= 32) return stored;
+      } catch {}
+    }
+
+    // 2. Generate new if not exists
     const salt = await this.getDeviceSalt();
     const hmac = getCryptoImpl()!.createHmac('sha256', salt);
-    hmac.update('aegis_recovery_session_secret_v1');
-    return hmac.digest('hex');
+    hmac.update('aegis_recovery_session_secret_v2');
+    hmac.update(randomBytesSafe(16)); // Add extra randomness
+    const newSecret = hmac.digest('hex');
+
+    // 3. Persist
+    if (typeof SecureStorage?.setItem === 'function') {
+      try {
+        await SecureStorage.setItem(this.RECOVERY_SESSION_SECURE_KEY, newSecret);
+      } catch {}
+    }
+    
+    return newSecret;
   }
 
   private static normalizeArgon2RawHash(rawHash: any): Uint8Array {
@@ -2193,10 +2315,20 @@ export class SecurityModule {
   }
 
   static async panicWipe(): Promise<boolean> {
+    // SECURITY: Log the event BEFORE data destruction, as the 
+    // database will be unavailable after factoryReset().
+    // GÜVENLİK: Olayı veri imhasından ÖNCE logla, çünkü 
+    // factoryReset() sonrası veritabanı erişilemez olacaktır.
+    await this.logSecurityEvent('panic_wipe_initiated', 'info', {
+      timestamp: new Date().toISOString()
+    });
+
     this.lockVault();
     const ok = await this.factoryReset();
+    
+    // Attempt success log (will go to buffer since DB is gone)
     if (ok) {
-      await this.logSecurityEvent('panic_wipe', 'success', {});
+      await this.logSecurityEvent('panic_wipe_completed', 'success', {});
     }
     return ok;
   }
@@ -3013,6 +3145,17 @@ export class SecurityModule {
     }
   }
 
+  /**
+   * Reads a local file and converts it to a Base64 string for vault storage.
+   *
+   * PERFORMANCE WARNING: Large files (attachments) are loaded into JS heap.
+   * Base64 encoding increases memory usage by ~33%. 
+   * Files over 10MB may cause OOM on low-end devices.
+   *
+   * PERFORMANS UYARISI: Büyük dosyalar JS heap'e yüklenir.
+   * Base64 kodlaması bellek kullanımını ~%33 artırır.
+   * 10MB üzerindeki dosyalar düşük seviyeli cihazlarda OOM hatasına yol açabilir.
+   */
   static async readFileToBase64(
     path: string,
     filename: string,
@@ -3021,16 +3164,30 @@ export class SecurityModule {
     let targetPath = path;
     let copiedTempPath: string | null = null;
     try {
+      const stats = await RNFS.stat(path);
+      const size = stats.size;
+
+      // Limit safety check
+      if (size > MAX_ATTACHMENT_SIZE_BYTES) {
+        throw new Error(`File too large: ${Math.round(size / 1024 / 1024)}MB exceeds limit.`);
+      }
+
+      if (size > 10 * 1024 * 1024) {
+        debugWarn(`[Security] Reading large file (${Math.round(size / 1024 / 1024)}MB) into memory. Risk of OOM.`);
+      }
       const isContentUri = path.startsWith('content://');
       if (isContentUri) {
         targetPath = `${RNFS.CachesDirectoryPath}/${tempPrefix}_${Date.now()}_${filename}`;
         copiedTempPath = targetPath;
         await RNFS.copyFile(path, targetPath);
       }
-      const stat = await RNFS.stat(targetPath);
       const base64 = await RNFS.readFile(targetPath, 'base64');
-      return { base64, size: stat.size };
-    } catch {
+      return { base64, size: stats.size };
+    } catch (e: any) {
+      // If it was a size limit error, re-throw it.
+      // Eğer limit aşımı hatasıysa, tekrar fırlat.
+      if (e.message?.includes('File too large')) throw e;
+
       try {
         const base64 = await RNFS.readFile(targetPath, 'base64');
         return { base64, size: Math.ceil((base64.length * 3) / 4) };
